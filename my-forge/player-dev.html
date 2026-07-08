@@ -154,7 +154,7 @@
             {
               id: "biodread",
               title: "Biodread Empire",
-              text: "The reigning power"
+              text: '<img src=x onerror="alert(\'gotcha\')">'
             },
             {
               id: "phoenix",
@@ -173,28 +173,41 @@
 
     const app = document.getElementById('app');
 
+    // Escapes the four characters the HTML parser treats as structural,
+    // so data can't smuggle in tags or attributes. & goes first so its
+    // replacement doesn't corrupt the &s introduced by the later steps.
+    function esc(input) {
+      return String(input)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
     function render() {
       let html = `
-        <h1 class="main-heading">${project.title}</h1>
-        <p class="tagline">${project.byline}</p>
-        <p class="intro-text">${project.intro}</p>
+        <h1 class="main-heading">${esc(project.title)}</h1>
+        <p class="tagline">${esc(project.byline)}</p>
+        <p class="intro-text">${esc(project.intro)}</p>
       `;
 
       for (const section of project.sections) {
         let cards = '';
         for (const choice of section.choices) {
+          // choice.id stays unescaped — it's used as a class name, which
+          // needs its literal characters intact for CSS matching.
           cards += `
             <div class="faction-card ${choice.id}">
-              <h3 class="card-heading">${choice.title}</h3>
-              <p class="card-desc">${choice.text}</p>
+              <h3 class="card-heading">${esc(choice.title)}</h3>
+              <p class="card-desc">${esc(choice.text)}</p>
             </div>
           `;
         }
 
         html += `
           <div class="row" id="${section.id}">
-            <h2>${section.title}</h2>
-            <p class="flavor">${section.flavor}</p>
+            <h2>${esc(section.title)}</h2>
+            <p class="flavor">${esc(section.flavor)}</p>
             <div class="card-container">${cards}</div>
           </div>
         `;
@@ -214,4 +227,4 @@
 
     </script>
 </body>
-</html> 
+</html>
