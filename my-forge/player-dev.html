@@ -135,37 +135,83 @@
 <body class="light">
   <main>
     <button id="theme-btn">switch</button>
+    <div id="app">
 
-    <h1 class="main-heading">2147</h1>
-    <p class="tagline">The legacy of the Metal Wars</p>
-    <p class="intro-text">When man fought Machine, and Machines won.</p>
-    <section class="row">
-      <h2>Choose a faction</h2>
-      <p class="flavor">Pick your patron</p>
-      <div class="card-container">
-        <div class="faction-card">
-          <h3 class="card-heading biodread">Biodread Empire</h3>
-          <p class="card-desc">The reigning power</p>
-        </div>
-        <div class="faction-card">
-          <h3 class="card-heading phoenix">Phoenix Force</h3>
-          <p class="card-desc">The resistance</p>
-        </div>
-        <div class="faction-card">
-          <h3 class="card-heading firestorm">Firestormers</h3>
-          <p class="card-desc">Tough guys of the Badlands</p>
-        </div>
-      </div>
-    </section>
+    </div>
   </main>
 
   <script>
+    const project = {
+      title: "Metal Wars",
+      byline: "The legacy of the Metal Wars",
+      intro: "When man fought Machine, and Machines won.",
+      sections: [
+        {
+          id: "faction",
+          title: "Choose a faction",
+          flavor: "Pick your patron",
+          choices: [
+            {
+              id: "biodread",
+              title: "Biodread Empire",
+              text: "The reigning power"
+            },
+            {
+              id: "phoenix",
+              title: "Phoenix Force",
+              text: "The resistance"
+            },
+            {
+              id: "firestorm",
+              title: "Firestormers",
+              text: "Tough guys of the Badlands"
+            }
+          ]
+        }
+      ]
+    };
+
+    const app = document.getElementById('app');
+
+    function render() {
+      let html = `
+        <h1 class="main-heading">${project.title}</h1>
+        <p class="tagline">${project.byline}</p>
+        <p class="intro-text">${project.intro}</p>
+      `;
+
+      for (const section of project.sections) {
+        let cards = '';
+        for (const choice of section.choices) {
+          cards += `
+            <div class="faction-card ${choice.id}">
+              <h3 class="card-heading">${choice.title}</h3>
+              <p class="card-desc">${choice.text}</p>
+            </div>
+          `;
+        }
+
+        html += `
+          <div class="row" id="${section.id}">
+            <h2>${section.title}</h2>
+            <p class="flavor">${section.flavor}</p>
+            <div class="card-container">${cards}</div>
+          </div>
+        `;
+      }
+
+      app.innerHTML = html;
+    }
+
+    render();
+
     const themeBtn = document.getElementById('theme-btn');
     themeBtn.addEventListener('click', () => {
       document.body.classList.contains('light')
         ? document.body.classList.replace('light', 'dark')
         : document.body.classList.replace('dark', 'light');
     });
-  </script>
+
+    </script>
 </body>
-</html>
+</html> 
