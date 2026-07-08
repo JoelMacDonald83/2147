@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root{
+      box-sizing: border-box;
+    }
+    *, *::before, *::after{
+      box-sizing: inherit;
+    }
+    .light{
+      --bg: #f7f0e6;
+      --text: #1a1a1a;
+      --dim-text: #6f6658;
+      --card-bg: #fffdf8;
+      --accent: #b8860b;
+      --border-color: #cda94a;
+    }
+    .dark{
+      --bg: #1a1a1a;
+      --text: #f5f5f5;
+      --dim-text: #a39a86;
+      --card-bg: #262626;
+      --accent: #d4af37;
+      --border-color: #d4af37;
+    }
+    body{
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 10px;
+      font-family: sans-serif;
+      line-height: 1.5;
+    }
+    main{
+      width: 100%;
+      max-width: var(--main-width, 800px);
+      margin: 0 auto;
+      padding: 24px 8px 48px;
+    }
+
+    /* Buttons */
+    button{
+      font: inherit;
+      color: var(--text);
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      padding: 8px 16px;
+      margin: 0 8px 24px 0;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover{
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* Header text */
+    .main-heading{
+      color: var(--accent);
+      margin: 0 0 4px;
+      letter-spacing: 3px;
+    }
+    .tagline{
+      color: var(--text);
+      margin: 0 0 4px;
+      font-style: italic;
+    }
+    .intro-text{
+      color: var(--dim-text);
+      margin: 0 0 40px;
+    }
+
+    /* Faction section */
+    .row > h2{
+      margin: 0 0 4px;
+    }
+    .row > .flavor{
+      color: var(--dim-text);
+      margin: 0 0 20px;
+    }
+
+    /* Cards */
+    .faction-card{
+      background-color: var(--card-bg);
+      border: 3px solid var(--border-color);
+      border-radius: 6px;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 150ms ease, box-shadow 150ms ease;
+
+    }
+    .faction-card.selected{
+  box-shadow: 0 0 0 2px var(--accent);
+}
+  .faction-card:not(.disabled):hover{
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+    .faction-card.selected:not(.disabled):hover{
+      box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .faction-card.disabled{
+      opacity:0.4;
+      cursor: not-allowed;
+    }
+    .biodread{
+      --accent: #e63946;
+    }
+    .phoenix{
+      --accent: #ffd60a;
+    }
+    .firestorm{
+      --accent: #fb5607;
+    }
+    .card-heading{
+      color: var(--accent);
+      margin: 0 0 4px;
+    }
+    .card-desc{
+      color: var(--dim-text);
+      margin: 0;
+    }
+    .card-container{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap:16px;
+    }
+  </style>
+  <title>2147</title>
+</head>
+<body class="light">
+  <main>
+    <button id="theme-btn">switch</button>
+
+    <h1 class="main-heading">2147</h1>
+    <p class="tagline">The legacy of the Metal Wars</p>
+    <p class="intro-text">When man fought Machine, and Machines won.</p>
+    <section class="row">
+      <h2>Choose a faction</h2>
+      <p class="flavor">Pick your patron</p>
+      <div class="card-container">
+        <div class="faction-card">
+          <h3 class="card-heading biodread">Biodread Empire</h3>
+          <p class="card-desc">The reigning power</p>
+        </div>
+        <div class="faction-card">
+          <h3 class="card-heading phoenix">Phoenix Force</h3>
+          <p class="card-desc">The resistance</p>
+        </div>
+        <div class="faction-card">
+          <h3 class="card-heading firestorm">Firestormers</h3>
+          <p class="card-desc">Tough guys of the Badlands</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const themeBtn = document.getElementById('theme-btn');
+    themeBtn.addEventListener('click', () => {
+      document.body.classList.contains('light')
+        ? document.body.classList.replace('light', 'dark')
+        : document.body.classList.replace('dark', 'light');
+    });
+  </script>
+</body>
+</html>
