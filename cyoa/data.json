@@ -1,0 +1,68 @@
+{
+  "title": "My CYOA",
+
+  "currencies":{
+    "build":{ 
+      "label": "Build Points", "short": "BP"
+    },
+    "mutation": 
+    {"label": "Mutations",    "short": "MU"
+  }
+},
+
+
+  "startingPool": {
+    "build": 20,
+    "mutation": 3
+  },
+  "sections": [
+    {
+      "id": "origin",
+      "title": "Where You're From",
+      "selectedChoiceId": null,
+      "choices": [
+        { "id": "spacer", "title": "Spacer", "text": "Born in transit.",
+        "costs": { 
+          "build": 1, 
+          "mutation": 1 
+        }
+       },
+        { "id": "dirtborn", "title": "Dirtborn", "text": "Grew up under real sky.",
+        "costs": { 
+          "build": 3, 
+          "mutation": -1 
+        }
+       },
+        { "id": "vault", "title": "Vault-kin", "text": "Never saw the surface.",
+        "costs": { 
+          "build": -2, 
+          "mutation": 3 
+        }
+       }
+      ]
+    },
+    {
+      "id": "training",
+      "title": "How You Were Trained",
+      "selectedChoiceId": null,
+      "choices": [
+        { "id": "pilot", "title": "Pilot", "text": "Reflexes over reason.",
+        "costs": { 
+          "build": -4, 
+          "mutation": 3 
+        }
+       },
+        { "id": "medic", "title": "Medic", "text": "You learned what bodies do.",
+        "costs": { 
+
+        }
+       },
+        { "id": "broker", "title": "Broker", "text": "Information is leverage.",
+        "costs": { 
+          "build": 0, 
+          "mutation": 1 
+        } }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+.choice {
+  color: blue;
+  cursor: pointer;
+  padding: 0.5rem;
+  border: 2px solid transparent;
+}
+
+.choice.selected {
+  font-weight: bold;
+  border-color: blue;
+}
