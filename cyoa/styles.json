@@ -1,8 +1,11 @@
 {
   "section": {
-    "color": "blue"
+    "tag": "h3",
+    "elementStyle": {"color": "blue"}
+
   },
   "choice": {
-    "color":"green"
+    "tag": "p",
+    "elementStyle": {"color": "green"}
   }
 }

@@ -1,23 +1,15 @@
-// DOM variables
+import styles from './styles.json' with { type: 'json' }
 
 const displayArea = document.getElementById("display-area");
 
-// render function
 export const render = (displayState, onClick) => {
   displayArea.innerHTML = "";
-
-};
-
-
-/* 
-
-const renderNode = (node) => {
-  const newDiv = createElement('div')
-  if(node.children){
-    node.children.forEach(child => {
-      newDiv
-    })
+  for (const entry of displayState) {
+    const style = styles[entry.type];
+    const area = document.createElement(style.tag);
+    Object.assign(area.style, style.elementStyle);
+    area.textContent = entry.text;
+    if (onClick) area.addEventListener("click", () => onClick(entry));
+    displayArea.appendChild(area);
   }
-}
-
-*/
+};

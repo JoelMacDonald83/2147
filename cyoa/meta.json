@@ -1,0 +1,20 @@
+{"meta": {
+  "author": "Wiebling83",
+  "version": 0.1
+},
+"config": {
+  "currencies": {
+    "build": {
+      "label": "Build Points",
+      "short": "BP"
+    },
+    "mutation": {
+      "label": "Mutations",
+      "short": "MU"
+    }
+  },
+  "startingPool": {
+    "build": 20,
+    "mutation": 3
+  }
+}}
