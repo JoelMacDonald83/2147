@@ -1,11 +1,11 @@
 {
-  "children": [
+  "entries": [
     {
       "type": "section",
       "id": "origin",
       "text": "Where You're From",
       "selectedChoiceId": null,
-      "children": [
+      "entries": [
         {
           "type": "choice",
           "id": "spacer",
@@ -41,9 +41,9 @@
     {
       "type": "section",
       "id": "training",
-      "title": "How You Were Trained",
+      "text": "How You Were Trained",
       "selectedChoiceId": null,
-      "children": [
+      "entries": [
         {
           "type": "choice",
           "id": "pilot",
@@ -52,7 +52,19 @@
           "costs": {
             "build": -4,
             "mutation": 3
-          }
+          },
+          "entries": [
+            {
+              "type": "subChoice",
+              "id": "wdc",
+              "title": "wdc",
+              "text": "wdcwdcwdec",
+              "costs": {
+                "build": -4,
+                "mutation": 3
+              }
+            }
+          ]
         },
         {
           "type": "choice",
