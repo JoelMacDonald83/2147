@@ -2,10 +2,14 @@ import styles from './styles.json' with { type: 'json' }
 
 const displayArea = document.getElementById("display-area");
 
+
+
 const renderEntry = (entry, parent, onClick) => {
   const style = styles[entry.type];
-  const area = document.createElement(style.tag);
-  Object.assign(area.style, style.elementStyle);
+  if (!style) console.warn(`renderEntry: no style for type "${entry.type}"`);
+  const { tag, elementStyle } = style ?? styles.default;
+  const area = document.createElement(tag);
+  Object.assign(area.style, elementStyle);
   area.textContent = entry.text;
   if (onClick) area.addEventListener("click", () => onClick(entry));
   parent.appendChild(area);

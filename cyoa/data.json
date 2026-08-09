@@ -17,7 +17,7 @@
           }
         },
         {
-          "type": "choice",
+          "type": "lore",
           "id": "dirtborn",
           "title": "Dirtborn",
           "text": "Grew up under real sky.",

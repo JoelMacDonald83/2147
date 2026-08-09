@@ -7,5 +7,14 @@
   "choice": {
     "tag": "p",
     "elementStyle": {"color": "green"}
+  },
+  "subChoice": {
+    "tag": "p",
+    "elementStyle": { "color": "purple", "marginLeft": "1rem" }
+  },
+  "default": {
+    "tag": "div",
+    "elementStyle": { "color": "red" }
   }
 }
+
