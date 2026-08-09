@@ -1,5 +1,7 @@
 // imports
 import initialContent from './data.json' with { type: 'json' }
+import playerState from './playerState.JSON'
+
 import {render} from './render.js'
 // state variables
 

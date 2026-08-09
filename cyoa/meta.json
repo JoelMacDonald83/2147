@@ -12,9 +12,5 @@
       "label": "Mutations",
       "short": "MU"
     }
-  },
-  "startingPool": {
-    "build": 20,
-    "mutation": 3
   }
 }}
