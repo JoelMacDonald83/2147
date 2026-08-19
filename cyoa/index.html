@@ -1,18 +1,54 @@
+<!--  Index.html
+
+Contains:
+
+A link to app.js, which links to the other js files.
+
+display-area: displayArea in the JS, it is directly inside the body and is what everything else fits inside
+
+hero-section: heroSection in the JS, this is where the hero stuff will go
+
+options-section: optionsSection in the JS, this is where our options go. Right now it has inside it:
+
+  patron selection:
+
+points-area: pointsArea in the JS, its where the user's remaining points are shown
+
+results-area: resultsArea in the JS, this is where the user selections are shown
+
+-->
+
 <!DOCTYPE html>
+
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="styles.css">
+    <title>Document</title>
+  </head>
+  <body>
+    <div id="display-area">
+      <div id="points-area"></div>
+      <div id="hero-section"></div>
+      <div id="options-section">
+        <div id="patron-area">
+          <div id="patron-choices"></div>
+        </div>
 
-  <div id="display-area"></div>
-  <script src="app.js" type="module"></script>
-</body>
+        <div id="faction-area">
+          <div id="faction-choices"></div>
+        </div>
+      </div>
+
+      <div id="results-area">
+        <div id="patron-result"></div>
+        <div id="faction-result"></div>
+      </div>
+    </div>
+
+
+<script type="module" src="app.js"></script>
+
+  </body>
 </html>
-
-<!-- 
-
-
- -->

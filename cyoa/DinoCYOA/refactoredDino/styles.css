@@ -1,0 +1,183 @@
+/* ===== Page ===== */
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #1a1423;
+}
+
+/* ===== Hero ===== */
+
+.hero {
+  min-height: 340px;
+  display: flex;
+  align-items: center;        /* vertical centering */
+  justify-content: center;    /* horizontal centering */
+  background-image: url('heroBG.jpg');
+  background-size: cover;
+  background-position: center;
+}
+
+.hero-title {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 4.5rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 2px;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  padding: 0 24px;
+}
+
+@media (max-width: 600px) {
+  .hero-title { font-size: 2.6rem; }
+}
+
+#status {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin: 0;
+  padding: 14px 24px;
+  background: #12101a;
+  color: #ffd166;
+  font-size: 1.35rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+#groups {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* ===== Sections ===== */
+
+.group-section {
+  padding: 28px;
+  margin-bottom: 36px;
+  border-radius: 16px;
+  background-size: cover;
+  background-position: center;
+}
+
+.group-heading {
+  margin: 0 0 4px;
+  font-size: 2.4rem;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.group-summary {
+  margin: 0 0 20px;
+  font-size: 1.15rem;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* ===== The grid: 4 per row, equal sizes ===== */
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+@media (max-width: 1100px) {
+  .cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .cards-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== Cards ===== */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 3px solid transparent;
+  border-radius: 14px;
+  padding: 14px;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.card-image {
+  width: 100%;
+  height: 180px;          /* every image the same box... */
+  object-fit: cover;      /* ...cropped to fit, never squished */
+  border-radius: 10px;
+}
+
+.card-name {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin: 12px 0 4px;
+}
+
+.card-label {
+  font-size: 1.4rem;
+  font-style: italic;
+  color: #555;
+  margin: 0 0 8px;
+}
+
+.card-traits {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 1.25rem;
+  color: #444;
+  flex-grow: 1;           /* traits absorb spare height... */
+}
+
+.card-button {
+  margin-top: auto;       /* ...and the button pins to the bottom */
+  padding: 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #fff;
+  background-image: linear-gradient(-45deg, #cc3843, #cb193f);
+}
+
+.card-button:disabled {
+  cursor: not-allowed;
+  background-image: none;
+  background: #9aa0a6;
+}
+
+/* ===== Card states ===== */
+
+.card--selected {
+  border-color: #2e7d32;
+  box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.25), 0 10px 25px rgba(0, 0, 0, 0.25);
+  transform: translateY(-4px);
+}
+
+.card--selected .card-button {
+  background-image: linear-gradient(-45deg, #2e7d32, #43a047);
+}
+
+.card--locked {
+  filter: grayscale(0.85);
+  opacity: 0.65;
+}
+
+/* ===== Themes ===== */
+
+.dinos {
+  background-image: linear-gradient(160deg, #123c2b, #1e5b3f);
+  /* got a jungle photo? swap the line above for:
+     background-image: url('jungle-bg.jpg'); */
+}
+
+.stuffables {
+  background-image: linear-gradient(160deg, #3a1d5d, #5b2a86);
+  /* background-image: url('toybox-bg.jpg'); */
+}

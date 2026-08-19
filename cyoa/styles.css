@@ -1,0 +1,112 @@
+#points-area {
+  color: red;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+}
+
+#hero-section{
+  background-image:url('heroBG.jpg');
+  font-size: 4em;
+  height: 20vh;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#patron-area{
+
+  background: #000000;
+}
+
+.patronTop{
+  display:flex;
+  padding-top: 1.25em;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font: 2em sans-serif;
+}
+
+#patron-choices{
+
+  display:flex;
+  flex-wrap: wrap;
+  flex-direction:row;
+  padding: 1.25em;
+  align-items:flex-end;
+  gap: 1em;
+}
+
+.patron-choice{
+  width: 200px;
+  height: 420px;
+  color: blue;
+  background:antiquewhite
+}
+
+.patron-choice img { 
+  width: 100%;
+ }
+
+.patron-choice-selected{
+  color: green;
+  background:rgb(247, 177, 86)
+}
+
+#faction-area{
+
+  background: #000000;
+}
+
+.factionTop{
+  display:flex;
+  padding-top: 1.25em;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font: 2em sans-serif;
+}
+
+#faction-choices{
+
+  display:flex;
+  flex-wrap: wrap;
+  flex-direction:row;
+  padding: 1.25em;
+  align-items:flex-end;
+  gap: 1em;
+}
+
+.faction-choice{
+  width: 200px;
+  height: 380px;
+  color: blue;
+  background:antiquewhite
+}
+
+.faction-choice img { 
+  width: 100%;
+ }
+
+.faction-choice-selected{
+  color: green;
+  background:rgb(247, 177, 86)
+}
+
+.faction-image {
+  width: 100%;
+  height: 120px; 
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.patron-image {
+  width: 100%;
+  height: 120px; 
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
