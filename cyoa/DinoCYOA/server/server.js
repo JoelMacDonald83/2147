@@ -4,6 +4,7 @@ import {fileURLToPath} from 'url'
 import { dirname, join, sep, extname } from 'path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const PUBLIC_DIR = join(__dirname, "..", "revisedDino");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -17,11 +18,12 @@ const MIME_TYPES = {
 };
 const server = createServer(async (req, res) => {
   console.log("Knock", req.method, req.url);
+  res.setHeader("Cache-Control", "no-store");
   const urlPath = req.url === '/' ? '/index.html' : req.url
-  const requestedPath = join(__dirname, "public", urlPath);
+  const requestedPath = join(PUBLIC_DIR, urlPath);
   console.log("wants:", requestedPath);
 
-  if (!requestedPath.startsWith(join(__dirname, "public") + sep)) {
+  if (!requestedPath.startsWith(PUBLIC_DIR + sep)) {
     res.statusCode = 403;
     res.end("Forbidden");
     return;
