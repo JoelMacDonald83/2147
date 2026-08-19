@@ -4,7 +4,9 @@ import {fileURLToPath} from 'url'
 import { dirname, join, sep, extname } from 'path'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const PUBLIC_DIR = join(__dirname, "..", "revisedDino");
+
+const GAME_DIR = join(__dirname, "..", "revisedDino")
+const EDITOR_DIR = join(__dirname, "..", "dinoEdit")
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -17,13 +19,19 @@ const MIME_TYPES = {
   ".svg":  "image/svg+xml",
 };
 const server = createServer(async (req, res) => {
+  let root = GAME_DIR
   console.log("Knock", req.method, req.url);
   res.setHeader("Cache-Control", "no-store");
-  const urlPath = req.url === '/' ? '/index.html' : req.url
-  const requestedPath = join(PUBLIC_DIR, urlPath);
+  let urlPath = req.url === '/' ? '/index.html' : req.url
+  if (urlPath.startsWith('/dinoEdit/')) {
+    root = EDITOR_DIR
+    urlPath = urlPath.slice('/dinoEdit'.length)  // '/dinoEdit/main.js' → '/main.js'
+    if (urlPath === '/') urlPath = '/index.html'
+  }
+  const requestedPath = join(root, urlPath);
   console.log("wants:", requestedPath);
 
-  if (!requestedPath.startsWith(PUBLIC_DIR + sep)) {
+  if (!requestedPath.startsWith(root + sep)) {
     res.statusCode = 403;
     res.end("Forbidden");
     return;
