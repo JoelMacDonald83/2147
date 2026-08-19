@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "totalBudget": 10,
+  "groupRules": {
+    "dc59d633-7a9d-441b-a8c5-e9224d16eec8": { "min": 1, "max": 1 },
+    "2f388c57-809e-49c0-b03d-216b9bd894f7": {}
+  }
+}

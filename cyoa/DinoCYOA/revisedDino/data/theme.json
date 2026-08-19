@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "page": {
+    "bodyBackground": "#1a1423",
+    "fontFamily": "'Segoe UI', system-ui, sans-serif",
+    "heroImage": "heroBG.jpg",
+    "statusBackground": "#12101a",
+    "statusColor": "#ffd166"
+  },
+  "groupThemes": {
+    "dc59d633-7a9d-441b-a8c5-e9224d16eec8": { "background": "linear-gradient(160deg, #123c2b, #1e5b3f)" },
+    "2f388c57-809e-49c0-b03d-216b9bd894f7": { "background": "linear-gradient(160deg, #3a1d5d, #5b2a86)" }
+  }
+}

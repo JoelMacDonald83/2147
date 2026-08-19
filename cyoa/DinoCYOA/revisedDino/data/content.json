@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "meta": {
+    "pageTitle": "Adopt a Dino CYOA",
+    "heroTitle": "Silly Pet Dino CYOA"
+  },
+  "groups": [
+    {
+      "id": "dc59d633-7a9d-441b-a8c5-e9224d16eec8",
+      "label": "Choose your Dino pet uWu",
+      "items": [
+        {
+          "id": "a8d09a0f-f269-4a04-a173-d694dc36b105",
+          "name": "Tali",
+          "label": "A biggie dino!",
+          "cost": 1,
+          "imageURL": "dino.jpg",
+          "traits": ["likes making stompies", "enjoys peanut butter", "very sad peanut butter not invented yet"]
+        },
+        {
+          "id": "0c63d4ce-f909-4682-b27f-c77929d1f40c",
+          "name": "Miku",
+          "label": "The great winged one!",
+          "cost": 2,
+          "imageURL": "flyer.jpg",
+          "traits": ["Will give rides", "Loves the water", "Loves long flights above the beach"]
+        },
+        {
+          "id": "cc02b3ab-0e90-4f7f-81ec-30a2df4f12d8",
+          "name": "Speedy Gonzales",
+          "label": "Soft boy, pleased with facial feather growth",
+          "cost": 2,
+          "imageURL": "velo.png",
+          "traits": ["Wants uppies", "404 gender not found", "Squirrel! Has never seen one, but needs to chase one"]
+        },
+        {
+          "id": "0d41c512-0fc3-447f-ad34-9144677fda68",
+          "name": "The King",
+          "label": "Gayer than Dino Jesus",
+          "cost": 3,
+          "imageURL": "trex.jpg",
+          "traits": ["Excellent cook", "Trans rights or gives bites", "Bowsette's bestie"]
+        },
+        {
+          "id": "921404f5-64b3-47cc-b707-27b6da612a6a",
+          "name": "Dino Jesus",
+          "label": "Less gay than the King",
+          "cost": 1,
+          "imageURL": "trex.jpg",
+          "traits": ["Openly Libertarian", "Confuses librarian with libertarian", "Ao3 writer"]
+        },
+        {
+          "id": "71ed5f9a-929a-46b6-aa8c-026327eea828",
+          "name": "Jeff",
+          "label": "He looks like a Jeff",
+          "cost": 2,
+          "imageURL": "anky.jpg",
+          "traits": ["Cursed to play bongos", "Sensual kisser", "Needs scritches"]
+        },
+        {
+          "id": "975c1877-b228-4ee7-99ba-48a5bbaabcee",
+          "name": "Dino Sandra Bullock",
+          "label": "From a distance, she looks like Jeff... I swear",
+          "cost": 4,
+          "imageURL": "stag.jpg",
+          "traits": ["My partner dies inside every time I say her name", "Star of Miss Scaliality", "Can lick her elbow"]
+        },
+        {
+          "id": "2caf350f-9251-4af8-9dde-ea0e49d2901f",
+          "name": "Miette",
+          "label": "'My first love' -- Chuck Tingle",
+          "cost": 4,
+          "imageURL": "tri.png",
+          "traits": ["Chuck Tingle's personal muse", "Rootinest tootinest", "Read the whole dictionary. Insists is not autistic."]
+        }
+      ]
+    },
+    {
+      "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
+      "label": "Now give your Dino stuffables!",
+      "items": [
+        {
+          "id": "0a18ac24-52b5-4403-8b12-cda899a86c7b",
+          "name": "Water Gun",
+          "label": "Strong enough to hit outer space",
+          "cost": 1,
+          "imageURL": "cannon.jpg",
+          "traits": ["its really fun", "can even hit meteors", "no one cares because meteors can't get mad"]
+        },
+        {
+          "id": "275d5a26-03b1-49af-9a4f-a359418269bd",
+          "name": "Dino Skates",
+          "label": "What's cooler than a dinosaur on roller skates??",
+          "cost": 1,
+          "imageURL": "skates.jpg",
+          "traits": ["Goes wheeeeeeee", "Good for enrichment", "Helps get them to dino school on time"]
+        },
+        {
+          "id": "b9655bf4-9665-477e-bcac-77059cc21d93",
+          "name": "THE BANANA",
+          "label": "Ohhhhh banana!",
+          "cost": 9,
+          "imageURL": "banana.png",
+          "traits": ["Grind for banana", "Earn banana", "Cherish banana"]
+        },
+        {
+          "id": "4d836958-7630-4c5a-a130-08b44101820f",
+          "name": "Cute rock",
+          "label": "It means no harm, I prommy~",
+          "cost": 0,
+          "imageURL": "rock.jpeg",
+          "traits": ["Give your pet a pet rock", "Super fast", "Nice and warm"]
+        }
+      ]
+    }
+  ]
+}
