@@ -95,7 +95,7 @@
         },
         {
           "id": "2caf350f-9251-4af8-9dde-ea0e49d2901f",
-          "name": "Miette",
+          "name": "Cery",
           "label": "'My first love' -- Chuck Tingle",
           "cost": 4,
           "imageURL": "tri.png",
@@ -139,7 +139,7 @@
           "id": "b9655bf4-9665-477e-bcac-77059cc21d93",
           "name": "THE BANANA",
           "label": "Ohhhhh banana!",
-          "cost": 9,
+          "cost": 2,
           "imageURL": "banana.png",
           "traits": [
             "Grind for banana",

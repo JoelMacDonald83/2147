@@ -1,5 +1,5 @@
 import { editorState } from './state.js'
-import { renderMetaEditor, renderSaveStatus } from './view.js'
+import { render, renderSaveStatus } from './view.js'
 import { save } from './saveData.js'
 
 const actions = {
@@ -18,4 +18,4 @@ const actions = {
   }
 }
 
-renderMetaEditor(actions)
+render(actions)
