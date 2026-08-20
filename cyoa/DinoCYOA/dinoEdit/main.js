@@ -1,3 +1,21 @@
-import { renderMetaEditor } from "./view.js";
+import { editorState } from './state.js'
+import { renderMetaEditor, renderSaveStatus } from './view.js'
+import { save } from './saveData.js'
 
-renderMetaEditor()
+const actions = {
+  async save() {
+    renderSaveStatus('Saving…')
+
+    const receipts = await Promise.all([
+      save('content', editorState.content),
+      save('rules', editorState.rules),
+      save('themes', editorState.themes)
+    ])
+
+    const allOk = receipts.every(receipt => receipt.ok)
+    renderSaveStatus(allOk ? 'Saved ✓' : 'Save failed — check the console')
+    if (!allOk) console.log('Save receipts:', receipts)
+  }
+}
+
+renderMetaEditor(actions)
