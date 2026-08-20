@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import {fileURLToPath} from 'url'
 import { dirname, join, sep, extname } from 'path'
 
@@ -18,11 +18,49 @@ const MIME_TYPES = {
   ".jpeg": "image/jpeg",
   ".svg":  "image/svg+xml",
 };
+
+const readBody = async (req) => {
+  const chunks = []
+  for await (const chunk of req) {
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+
 const server = createServer(async (req, res) => {
   let root = GAME_DIR
   console.log("Knock", req.method, req.url);
   res.setHeader("Cache-Control", "no-store");
+  if (req.method === 'POST' && req.url === '/api/save/content') {
+    const body = await readBody(req)
+    console.log('Package contents:', body)
+    let parsed
+try {
+  parsed = JSON.parse(body)
+} catch {
+  res.statusCode = 400
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.end(JSON.stringify({ ok: false, error: 'Body is not valid JSON' }))
+  return
+} await writeFile(
+  join(GAME_DIR, "data", "content.json"),
+  JSON.stringify(parsed, null, 2) + "\n"
+)
+
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8')
+    res.end(JSON.stringify({ ok: true }))
+    return
+  }
+
   let urlPath = req.url === '/' ? '/index.html' : req.url
+  if (urlPath === '/dinoEdit') {
+    res.statusCode = 302
+    res.setHeader('Location', '/dinoEdit/')
+    res.end()
+    return
+  }
   if (urlPath.startsWith('/dinoEdit/')) {
     root = EDITOR_DIR
     urlPath = urlPath.slice('/dinoEdit'.length)  // '/dinoEdit/main.js' → '/main.js'

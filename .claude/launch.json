@@ -1,0 +1,11 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "iccplus",
+			"runtimeExecutable": "python3",
+			"runtimeArgs": ["-m", "http.server", "42017", "--directory", "/Users/joelmacdonld/Downloads/ICCPlus-Desktop-2.10.2"],
+			"port": 42017
+		}
+	]
+}
