@@ -160,6 +160,20 @@
           ]
         }
       ]
+    },
+    {
+      "id": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e",
+      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!",
+      "items": [
+        {
+          "id": "6ff555af-d3b4-404f-99f6-d84e66ed54c0",
+          "name": "New item",
+          "label": "",
+          "cost": 0,
+          "imageURL": "",
+          "traits": []
+        }
+      ]
     }
   ]
 }
