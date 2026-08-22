@@ -167,11 +167,51 @@
       "items": [
         {
           "id": "6ff555af-d3b4-404f-99f6-d84e66ed54c0",
-          "name": "New item",
-          "label": "",
+          "name": "The Scritches Dimension",
+          "label": " Makes dino make happi noisees!",
           "cost": 0,
           "imageURL": "",
-          "traits": []
+          "traits": [
+            "Happi dino noisees!",
+            "PhD in Scritch Studies",
+            "Comes out refreshed :)"
+          ]
+        },
+        {
+          "id": "6df9e5c4-c5c9-4bb1-898b-4982df7e4722",
+          "name": "Lava Pit",
+          "label": "So warm! Too warm!!!",
+          "cost": 3,
+          "imageURL": "",
+          "traits": [
+            "Like dino nuggies?",
+            "Literally a lava pit. With convenient breading and seasoning.",
+            "What is wrong with you? Why are you playing this?"
+          ]
+        },
+        {
+          "id": "c31ea05e-63d5-4ddc-89f8-e8fcf7f482bf",
+          "name": "Play pen",
+          "label": "Baby dino safe place",
+          "cost": 2,
+          "imageURL": "",
+          "traits": [
+            "Wheeeeeee!",
+            "Lossa toys!",
+            "Invite friend over!"
+          ]
+        },
+        {
+          "id": "b0e6c387-5297-4cd6-9a4a-a61fb51990c7",
+          "name": "King of Burger!!",
+          "label": "Burgie for good dino!",
+          "cost": 2,
+          "imageURL": "",
+          "traits": [
+            "Om yom yom!!!",
+            "Good for hungie dino!",
+            "All dinos paid living wage! #UnionStrong"
+          ]
         }
       ]
     }
