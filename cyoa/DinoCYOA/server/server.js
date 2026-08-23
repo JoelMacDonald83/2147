@@ -4,9 +4,11 @@ import { fileURLToPath } from "url";
 import { dirname, join, sep, extname } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const GAME_NAME = process.argv[2] ?? "dino"
 
-const GAME_DIR = join(__dirname, "..", "revisedDino");
-const EDITOR_DIR = join(__dirname, "..", "dinoEdit");
+const ENGINE_DIR = join(__dirname, "..", "engine")
+const GAME_DIR = join(__dirname, "..", "games", GAME_NAME)
+const EDITOR_DIR = join(__dirname, "..", "dinoEdit")
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -33,7 +35,7 @@ const readBody = async (req) => {
 };
 
 const server = createServer(async (req, res) => {
-  let root = GAME_DIR;
+  let root = ENGINE_DIR
   console.log("Knock", req.method, req.url);
   res.setHeader("Cache-Control", "no-store");
   if (req.method === "POST" && req.url.startsWith("/api/save/")) {
@@ -78,6 +80,9 @@ const server = createServer(async (req, res) => {
     urlPath = urlPath.slice("/dinoEdit".length); // '/dinoEdit/main.js' → '/main.js'
     if (urlPath === "/") urlPath = "/index.html";
   }
+  if (urlPath.startsWith("/data/") || urlPath.startsWith("/assets/")) {
+    root = GAME_DIR
+  }
   const requestedPath = join(root, urlPath);
   console.log("wants:", requestedPath);
 
@@ -105,5 +110,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(3000, () => {
-  console.log("Server online at http://localhost:3000");
+  console.log(`Server online at hhtp://localhost:3000 - game: ${GAME_NAME}`);
 });

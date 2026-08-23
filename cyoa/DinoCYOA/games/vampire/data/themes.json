@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "page": {
+    "bodyBackground": "#0d0608",
+    "fontFamily": "Georgia, serif",
+    "heroImage": "",
+    "statusBackground": "#1a0b10",
+    "statusColor": "#c9184a"
+  },
+  "groupThemes": {}
+}
