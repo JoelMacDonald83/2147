@@ -1,5 +1,825 @@
 {
   "version": 1,
-  "meta": { "pageTitle": "Vampire CYOA", "heroTitle": "Choose Your Eternal Night" },
-  "groups": []
+  "meta": {
+    "pageTitle": "Vampire CYOA",
+    "heroTitle": "Choose Your Eternal Night"
+  },
+  "groups": [
+    {
+      "id": "a1172238-9ded-422f-840a-2a50c42ff58b",
+      "label": "Your Bloodline",
+      "items": [
+        {
+          "id": "9ca85ccd-2802-400b-baf3-1d83fce6a3c0",
+          "name": "House Valdrei",
+          "label": "The old blood, older than the maps that forgot them.",
+          "cost": 4,
+          "imageURL": "portrait.jpg",
+          "traits": [
+            "Keepers of nine centuries of grudges, alphabetized",
+            "Their word, once given, outlives the giver",
+            "The candles bow slightly when one enters"
+          ]
+        },
+        {
+          "id": "982383d7-a8ae-4a8a-a25f-cf37c663762f",
+          "name": "The Carmine Court",
+          "label": "Where appetite was refined into etiquette.",
+          "cost": 3,
+          "imageURL": "goblet.jpg",
+          "traits": [
+            "Feeding is conducted as a formal dinner, with courses",
+            "They consider fangs a vulgarity; they use silver straws",
+            "Invitations arrive written in a red that never dries"
+          ]
+        },
+        {
+          "id": "b790d0dd-6c0a-41d5-b579-0a1ca4e4049e",
+          "name": "Order of the Pale Rose",
+          "label": "Sworn to remember what being mortal felt like.",
+          "cost": 3,
+          "imageURL": "rose.jpg",
+          "traits": [
+            "Each keeps one living flower, tended at terrible cost",
+            "They weep rarely, and save it, and mean it",
+            "Their oath: harm nothing that is already grieving"
+          ]
+        },
+        {
+          "id": "7b0d07a2-cd24-48c4-b065-bb3d7fd045ac",
+          "name": "The Gravebound",
+          "label": "They never left the churchyards that made them.",
+          "cost": 2,
+          "imageURL": "crypt.jpg",
+          "traits": [
+            "They know every name on every stone, and visit",
+            "Earth from the home grave, worn in a locket",
+            "Patient the way only the buried learn to be"
+          ]
+        },
+        {
+          "id": "3e965d1b-37e6-4360-a232-a52c06373579",
+          "name": "Children of the Second Moon",
+          "label": "Turned beneath an eclipse; the night claims them twice.",
+          "cost": 3,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "Their shadows arrive a half-second late",
+            "Tides answer them faintly, embarrassingly",
+            "They dream, which vampires are not supposed to do"
+          ]
+        },
+        {
+          "id": "e60e45de-dc16-4dae-ab20-04eaa073ffb6",
+          "name": "The Unnamed",
+          "label": "A bloodline so old its founder's name wore away.",
+          "cost": 5,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "Records of them un-write themselves within a decade",
+            "Even elders lower their voices, unsure whom they lower them for",
+            "To join is to begin forgetting, starting with yourself"
+          ]
+        },
+        {
+          "id": "bab167fe-096e-4aee-b420-9deeed8117ad",
+          "name": "House of Quiet Wings",
+          "label": "They took the bat not as a shape but as a philosophy.",
+          "cost": 2,
+          "imageURL": "bat.jpg",
+          "traits": [
+            "Arrive unannounced; leave unremembered",
+            "Sleep in congregations, dreaming in chorus",
+            "Consider echolocation a form of prayer"
+          ]
+        },
+        {
+          "id": "d736a8ce-698d-4e65-960e-f5bdd6a7131b",
+          "name": "The Last Parish",
+          "label": "Faithful still, to a church that would not have them.",
+          "cost": 1,
+          "imageURL": "cathedral.jpg",
+          "traits": [
+            "They keep the ruined chapels swept and candled",
+            "Sing the old services to empty pews at midnight",
+            "Believe, with terrible patience, in forgiveness"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "f846e994-10f5-4112-9589-35847e5ec299",
+      "label": "The Century of Your Turning",
+      "items": [
+        {
+          "id": "5d10dde6-87ff-4210-bead-92c06700b749",
+          "name": "Before the Bells",
+          "label": "Turned before church bells; your memories predate the calendar.",
+          "cost": 5,
+          "imageURL": "grimoire.jpg",
+          "traits": [
+            "You remember languages that are now only riverbeds",
+            "Modern nights feel loud, bright, and briefly amusing",
+            "You have outlived three separate ends of the world"
+          ]
+        },
+        {
+          "id": "160fae3d-6588-4997-b7fc-afa2c485d37e",
+          "name": "The Age of Plagues",
+          "label": "You rose from a century that buried its dead in haste.",
+          "cost": 4,
+          "imageURL": "crypt.jpg",
+          "traits": [
+            "You are impossible to sicken and difficult to surprise",
+            "You keep herbs in your pockets out of old habit",
+            "You count doors in any room you enter. All of them"
+          ]
+        },
+        {
+          "id": "b6d7531f-195a-44ef-859a-88d08dbb250d",
+          "name": "The Candlelit Court",
+          "label": "Turned amid intrigue, in a palace that trusted no one.",
+          "cost": 3,
+          "imageURL": "candles.jpg",
+          "traits": [
+            "Fluent in fan-language, dueling etiquette, and poison",
+            "You can read a room by how its shadows sit",
+            "You still bow slightly when lying"
+          ]
+        },
+        {
+          "id": "d9d8dcac-a91d-4ab2-9fe1-dbac80f278bf",
+          "name": "The Age of Powder and Silk",
+          "label": "The century of wigs, letters, and beautiful ruin.",
+          "cost": 3,
+          "imageURL": "portrait.jpg",
+          "traits": [
+            "Your correspondence is legendary and largely threatening",
+            "You duel left-handed, out of courtesy",
+            "You have opinions about harpsichords. Strong ones"
+          ]
+        },
+        {
+          "id": "c9b68268-1b08-4d6a-b5b6-43c789d79fde",
+          "name": "The Gaslit Century",
+          "label": "Turned under gas-lamps, in the fog that hid so much.",
+          "cost": 2,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "At home in cities that never quite see you",
+            "You read the penny dreadfuls about yourself, annotated",
+            "Fog follows you at a respectful distance"
+          ]
+        },
+        {
+          "id": "dbe6af44-0876-4f8d-a928-2a49feb7d429",
+          "name": "The Century of Wires",
+          "label": "Turned as the world electrified and stopped looking up.",
+          "cost": 1,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "Comfortable with telephones; suspicious of cameras",
+            "You learned to vanish into paperwork instead of mist",
+            "You still flinch at flashbulbs"
+          ]
+        },
+        {
+          "id": "f47d23c4-4d4b-4018-bbb9-d3bafab9da7d",
+          "name": "The Blue Glow",
+          "label": "Turned recently, mid-notification.",
+          "cost": 0,
+          "imageURL": "candles.jpg",
+          "traits": [
+            "Your last text remains unanswered, which is fine",
+            "You know the sun mostly as a screen-brightness setting",
+            "The elders find you baffling and faintly delicious"
+          ]
+        },
+        {
+          "id": "777dda1a-2431-433b-a47c-1c08162b76d6",
+          "name": "Between Centuries",
+          "label": "You genuinely cannot remember when it happened.",
+          "cost": 4,
+          "imageURL": "dagger.jpg",
+          "traits": [
+            "Your memories argue with each other about dates",
+            "Every era feels like home and none of them are",
+            "Something was taken with the memory. You intend to find it"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "70cfc783-6698-47c6-8d3f-dd430495a7aa",
+      "label": "Your Lair",
+      "items": [
+        {
+          "id": "e5652b31-71de-4e84-8464-300314df8cdd",
+          "name": "The Mountain Keep",
+          "label": "A fortress the roads gave up reaching.",
+          "cost": 4,
+          "imageURL": "castle.jpg",
+          "traits": [
+            "Weather arrives here first and leaves last",
+            "The village below sets out lanterns, just in case",
+            "Seventy rooms; you use three; the rest remember"
+          ]
+        },
+        {
+          "id": "2ea42433-ac33-448f-8f3a-7e31d7a7d053",
+          "name": "The Ossuary Below",
+          "label": "You sleep among the politely stacked dead.",
+          "cost": 2,
+          "imageURL": "crypt.jpg",
+          "traits": [
+            "The bones approve of you, in their quiet way",
+            "No one visits twice voluntarily",
+            "Excellent acoustics for melancholy"
+          ]
+        },
+        {
+          "id": "0f9a06a6-0777-4038-a44b-0fe7658d1e20",
+          "name": "The Ruined Nave",
+          "label": "A roofless church, open to the stars and nothing else.",
+          "cost": 2,
+          "imageURL": "cathedral.jpg",
+          "traits": [
+            "Rain falls where the altar was, softly, like applause",
+            "The ivy holds the walls up out of respect",
+            "Consecrated once; the ground still hums with it"
+          ]
+        },
+        {
+          "id": "a21de307-a819-4b5c-8531-6aeebc502da0",
+          "name": "The River Palace",
+          "label": "City lights across the water, and you above them.",
+          "cost": 5,
+          "imageURL": "heroBG.jpg",
+          "traits": [
+            "The skyline performs for your windows nightly",
+            "Old money remembers your family; so do you: it was you",
+            "The river carries rumors to you by morning"
+          ]
+        },
+        {
+          "id": "b6717178-7958-412c-8c9c-6f8fd2b450c6",
+          "name": "The Mausoleum Garden",
+          "label": "A modest marble house among the cypresses.",
+          "cost": 1,
+          "imageURL": "coffin.jpg",
+          "traits": [
+            "Room for one, plus grief",
+            "The groundskeeper leaves flowers and asks nothing",
+            "Small, but the neighbors are quiet"
+          ]
+        },
+        {
+          "id": "852f462a-24ac-499c-811c-37c42af11699",
+          "name": "The Librarian's Tower",
+          "label": "Every shelf a century, every book a debt.",
+          "cost": 3,
+          "imageURL": "grimoire.jpg",
+          "traits": [
+            "The books reshelve themselves, resentfully",
+            "One volume is missing. You know which. So does it",
+            "Candle wax on everything; the books have made peace"
+          ]
+        },
+        {
+          "id": "07164d3c-69f9-49fc-a408-7da8cc3b421f",
+          "name": "The Mirror Gallery",
+          "label": "A hall of frames that no longer bother showing you.",
+          "cost": 3,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "Ninety mirrors, all of them politely vacant",
+            "Sometimes they show other rooms. You do not visit those",
+            "Guests find the gallery unsettling. Guests are correct"
+          ]
+        },
+        {
+          "id": "dacb07c1-a041-4078-a626-0f23c8dea264",
+          "name": "Nowhere, and Everywhere",
+          "label": "No lair at all; the night itself shelters you.",
+          "cost": 0,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "You sleep in borrowed dark and owe no rent",
+            "Dawn has chased you across four countries. It has never won",
+            "Everything you own fits in one coat. The coat is ancient"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "f3e9503d-c61e-489e-be7d-5c4a67b2be1d",
+      "label": "Gifts of the Night",
+      "items": [
+        {
+          "id": "e416ba76-b791-44b6-b53b-6a41f6747f6f",
+          "name": "The Mist Shape",
+          "label": "You may come apart into weather.",
+          "cost": 3,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "Keyholes are doors; drafts are highways",
+            "In mist you feel everything the fog touches",
+            "Reassembling takes concentration and vanity"
+          ]
+        },
+        {
+          "id": "4254059e-3b34-453b-8e09-c22e44b1790c",
+          "name": "Command of Wings",
+          "label": "The bats attend you like a scattered congregation.",
+          "cost": 2,
+          "imageURL": "bat.jpg",
+          "traits": [
+            "A thousand small ears at your disposal",
+            "They bring you gossip, gnats, and warnings",
+            "In extremity, they will carry you. Undignified. Effective"
+          ]
+        },
+        {
+          "id": "5d5cd16a-5e2b-4582-88f2-6fb5a20a91fb",
+          "name": "The Wolf's Accord",
+          "label": "The packs acknowledge you as winter acknowledges wolves.",
+          "cost": 2,
+          "imageURL": "wolf.jpg",
+          "traits": [
+            "No wolf will harm you; several will insist on helping",
+            "You can borrow their senses on the hunt",
+            "Full moons feel like a letter from an old friend"
+          ]
+        },
+        {
+          "id": "f5489397-a174-4447-a6ec-ba4255cb2fcc",
+          "name": "The Raven's Errand",
+          "label": "One black bird serves as your voice abroad.",
+          "cost": 1,
+          "imageURL": "raven.jpg",
+          "traits": [
+            "Delivers messages with judgmental punctuality",
+            "Remembers every face you ask it to",
+            "Refuses to work during heavy opera"
+          ]
+        },
+        {
+          "id": "1d4960c6-0a04-4ab2-a080-566844f22029",
+          "name": "Mesmer's Voice",
+          "label": "Your suggestion outlives the conversation.",
+          "cost": 3,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "Mortals agree with you, then agree they always had",
+            "Works best by candlelight; fails on the deaf and the furious",
+            "Overuse leaves you speaking in echoes for days"
+          ]
+        },
+        {
+          "id": "4a09763b-7a00-4170-a926-d27e64da0cbe",
+          "name": "The Still Heart",
+          "label": "You may be perfectly, convincingly dead.",
+          "cost": 1,
+          "imageURL": "coffin.jpg",
+          "traits": [
+            "Undetectable to physicians, hunters, and tax collectors",
+            "Time passes strangely while still; bring a thought to keep",
+            "Waking is sudden and inconvenient for onlookers"
+          ]
+        },
+        {
+          "id": "2698131c-d0be-44cb-9861-f38a02a06c73",
+          "name": "Red Alchemy",
+          "label": "You read blood the way scholars read letters.",
+          "cost": 2,
+          "imageURL": "goblet.jpg",
+          "traits": [
+            "A single drop yields a life's rough table of contents",
+            "You can taste lies, illness, and inherited debts",
+            "Vintage snobbery is a genuine occupational hazard"
+          ]
+        },
+        {
+          "id": "64812884-2008-4f60-be0c-274f2cea1b85",
+          "name": "The Unopened Door",
+          "label": "Thresholds have stopped applying to you.",
+          "cost": 3,
+          "imageURL": "castle.jpg",
+          "traits": [
+            "No invitation required; doors sigh and permit you",
+            "Wards and salt lines file formal complaints, uselessly",
+            "Other vampires find this deeply unfair. It is"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "b3a61a01-9a55-4a3a-9eaf-db8336a0c9fc",
+      "label": "Your Curse",
+      "items": [
+        {
+          "id": "92029fb8-252b-4414-917e-afda234b7a6a",
+          "name": "The Empty Mirror",
+          "label": "Glass has forgotten you entirely.",
+          "cost": 0,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "No reflection, no photographs, no proof",
+            "You paint self-portraits from memory; memory flatters",
+            "Barbers are a recurring logistical crisis"
+          ]
+        },
+        {
+          "id": "8496b552-618b-48f9-be46-028ee4ce3adf",
+          "name": "The Counting Compulsion",
+          "label": "Scattered things demand tallying, and you must oblige.",
+          "cost": 0,
+          "imageURL": "grimoire.jpg",
+          "traits": [
+            "Spilled grain stops you as surely as any wall",
+            "You know the seed count of every rice sack in the county",
+            "Hunters know this. Clever ones carry millet"
+          ]
+        },
+        {
+          "id": "7ed93547-f2c9-49e6-bd6d-fbbba136871c",
+          "name": "The Silver Ache",
+          "label": "The moon's metal despises you.",
+          "cost": 0,
+          "imageURL": "dagger.jpg",
+          "traits": [
+            "Silver burns cold and heals slow",
+            "You can smell it through velvet, through walls, through lies",
+            "Heirlooms are now a matter of careful gloves"
+          ]
+        },
+        {
+          "id": "fc3f74ff-2257-4c26-a1cd-4ab3c16b3072",
+          "name": "The Threshold Law",
+          "label": "You must be invited, every single time.",
+          "cost": 0,
+          "imageURL": "castle.jpg",
+          "traits": [
+            "Homes are fortresses; doormats are treaties",
+            "The words must be sincere; sarcasm bounces",
+            "You have become genuinely excellent company. You had to"
+          ]
+        },
+        {
+          "id": "f038749f-bf52-4bc4-b74c-cfc2dd44e1f8",
+          "name": "The Sun's Verdict",
+          "label": "Daylight has issued its sentence, and it is total.",
+          "cost": 0,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "Even overcast noon feels like an accusation",
+            "Dawn is a wall of fire; you have seen it once. Once",
+            "You know every sunset time for the next forty years"
+          ]
+        },
+        {
+          "id": "5ef0537f-5d48-4985-a83a-1a6fb9e6ad5e",
+          "name": "The Long Thirst",
+          "label": "No feeding has ever made you full.",
+          "cost": 0,
+          "imageURL": "goblet.jpg",
+          "traits": [
+            "Hunger is a room you live in, not a visitor",
+            "Discipline is your entire personality now",
+            "The thirst grows patient when you do. It is winning"
+          ]
+        },
+        {
+          "id": "aaca2312-d1f0-46b1-b35e-0beb1d9bb8bc",
+          "name": "The River's Refusal",
+          "label": "Running water will not have you.",
+          "cost": 0,
+          "imageURL": "heroBG.jpg",
+          "traits": [
+            "Bridges only, and only at the darkest hour",
+            "Rain is survivable; storms are humiliating",
+            "Ferrymen know you by your standing very still"
+          ]
+        },
+        {
+          "id": "7d6b340f-a5f7-4568-99be-1a512bb0ae34",
+          "name": "The Rose's Grief",
+          "label": "Living flowers die of your company.",
+          "cost": 0,
+          "imageURL": "rose.jpg",
+          "traits": [
+            "Gardens brown behind you like an apology",
+            "You press flowers now, before you can wilt them",
+            "One rose, once, refused to die. You think about it often"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "0bfad480-3d75-498a-9b21-09671c25625e",
+      "label": "Your Companion",
+      "items": [
+        {
+          "id": "a33dcfb5-0ced-42d7-9b19-941d0afb7487",
+          "name": "The Patient Archivist",
+          "label": "A mortal scholar who found you in the footnotes.",
+          "cost": 2,
+          "imageURL": "grimoire.jpg",
+          "traits": [
+            "Catalogues your centuries with gentle rigor",
+            "Asks the questions no vampire dares to",
+            "You have not discussed what happens when they grow old. You will have to"
+          ]
+        },
+        {
+          "id": "94e39d5f-c50d-471a-8d82-8b630602d1f6",
+          "name": "A Wolf Called Sorrow",
+          "label": "She was the last of her pack; now she is yours.",
+          "cost": 2,
+          "imageURL": "wolf.jpg",
+          "traits": [
+            "Sleeps across your doorway like a drawn bolt",
+            "Distrusts everyone you should distrust, earlier",
+            "Howls only on the anniversary. Both of you know which one"
+          ]
+        },
+        {
+          "id": "1bc9e036-dcb1-4693-b558-3a3de98430b3",
+          "name": "The Raven Matthias",
+          "label": "Elderly, opinionated, indispensable.",
+          "cost": 1,
+          "imageURL": "raven.jpg",
+          "traits": [
+            "Claims to have served three emperors; two confirm",
+            "Critiques your wardrobe by pulling threads",
+            "Knows every window in the city that never latches"
+          ]
+        },
+        {
+          "id": "f7725d75-28b4-43eb-b1f8-6c90e7d1f286",
+          "name": "The Colony",
+          "label": "Four hundred small allies in the rafters.",
+          "cost": 1,
+          "imageURL": "bat.jpg",
+          "traits": [
+            "The evening departure is your calendar and your applause",
+            "They dislike your enemies before you do",
+            "The guano is a subject you have agreed not to discuss"
+          ]
+        },
+        {
+          "id": "f1f70e26-933d-40c3-ae5d-3ce731626354",
+          "name": "The Gravekeeper",
+          "label": "He buried you once, and apologized when you returned.",
+          "cost": 2,
+          "imageURL": "coffin.jpg",
+          "traits": [
+            "Keeps your resting place immaculate and unlisted",
+            "Speaks to the dead as colleagues; they respond as such",
+            "Has dug precisely one grave he refuses to fill"
+          ]
+        },
+        {
+          "id": "76cdf340-b775-4a39-ab5b-3f41253632d3",
+          "name": "The Portrait That Watches",
+          "label": "Someone you loved, still paying attention.",
+          "cost": 3,
+          "imageURL": "portrait.jpg",
+          "traits": [
+            "The eyes follow you with recognition, not menace",
+            "Speaks only in dreams, and only good advice",
+            "Restorers have offered to clean the painting. You have declined"
+          ]
+        },
+        {
+          "id": "31e05dbb-6abe-494c-817c-a6723e48e44e",
+          "name": "The Choir of Candles",
+          "label": "Small flames that gather where you grieve.",
+          "cost": 2,
+          "imageURL": "candles.jpg",
+          "traits": [
+            "They light themselves when you enter; you stopped asking why",
+            "In their flicker, sometimes, familiar profiles",
+            "Blowing one out feels like interrupting someone"
+          ]
+        },
+        {
+          "id": "bc626122-b880-4cd0-a1a5-9710eb76114d",
+          "name": "No One",
+          "label": "You walk the centuries unaccompanied, by choice.",
+          "cost": 0,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "Grief taught you the arithmetic of outliving",
+            "Your solitude is furnished, comfortable, and locked",
+            "Sometimes you set two glasses out anyway"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ec8c9f7b-9924-431e-b8ba-09cdc8ed5cfc",
+      "label": "The Hunt",
+      "items": [
+        {
+          "id": "27fa8366-b4bd-4cac-96f7-6fa1986bf8d3",
+          "name": "The Willing Cup",
+          "label": "Only from those who offer, and understand.",
+          "cost": 3,
+          "imageURL": "goblet.jpg",
+          "traits": [
+            "Your table is set with candor and consent",
+            "The offered vintage is sweeter; everyone lies about why",
+            "Waiting lists exist. You find this mortifying"
+          ]
+        },
+        {
+          "id": "e9a94b3b-d148-4d0c-a915-f51c338c7e41",
+          "name": "The Sleeping City",
+          "label": "Sips from a thousand dreamers, harming none.",
+          "cost": 2,
+          "imageURL": "moon.jpg",
+          "traits": [
+            "No one wakes; everyone half-remembers a kind dream",
+            "The city is your cellar, gently rationed",
+            "You know the taste of every neighborhood by heart"
+          ]
+        },
+        {
+          "id": "3f42c631-e5bc-43b6-8f4d-cc5aae4e650e",
+          "name": "The Wretched Only",
+          "label": "You dine exclusively on the deserving.",
+          "cost": 2,
+          "imageURL": "dagger.jpg",
+          "traits": [
+            "The city's alleys grew mysteriously safer",
+            "You read the papers to plan the menu",
+            "Justice and appetite agree more often than you expected"
+          ]
+        },
+        {
+          "id": "b32c4907-c79d-466b-910e-212c426762a3",
+          "name": "The Cold Vintage",
+          "label": "Stored blood, taken warm from no one.",
+          "cost": 1,
+          "imageURL": "candles.jpg",
+          "traits": [
+            "Clinical, ethical, and faintly disappointing",
+            "Your cellar is labeled by year, type, and mood",
+            "Connoisseurs pity you. Their conscience does not"
+          ]
+        },
+        {
+          "id": "9434158e-490c-4d55-9f35-a7ad8c330e5a",
+          "name": "The Beast's Table",
+          "label": "Animal blood, and the hunger managed.",
+          "cost": 1,
+          "imageURL": "wolf.jpg",
+          "traits": [
+            "The forest tithes to you and is kept in return",
+            "Thin fare; your temper runs thinner with it",
+            "The deer have reached an understanding with you"
+          ]
+        },
+        {
+          "id": "42d57eb3-adb7-46c2-8a63-0c8808381d81",
+          "name": "The Fasting Way",
+          "label": "You refuse the thirst outright, night after night.",
+          "cost": 4,
+          "imageURL": "rose.jpg",
+          "traits": [
+            "A discipline older and harder than any bloodline",
+            "Your restraint frightens other vampires profoundly",
+            "One slip would be catastrophic. You do not slip"
+          ]
+        },
+        {
+          "id": "a0d7cca6-8b7c-442f-8888-7587d07ebd4c",
+          "name": "The Old Terror",
+          "label": "Fear itself sustains you; blood is optional theater.",
+          "cost": 0,
+          "imageURL": "castle.jpg",
+          "traits": [
+            "You feed on gasps, gooseflesh, and fleeing footsteps",
+            "Nobody is harmed; everybody is briefly improved",
+            "Halloween is, for you, a harvest festival"
+          ]
+        },
+        {
+          "id": "adcf986c-6f50-4a8b-8020-2213dd589d64",
+          "name": "The Chalice Trade",
+          "label": "A discreet arrangement with discreet institutions.",
+          "cost": 2,
+          "imageURL": "cathedral.jpg",
+          "traits": [
+            "Standing appointments, drawn curtains, no questions",
+            "The paperwork is impeccable and entirely false",
+            "You tip extravagantly in forgotten currencies"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01020ba0-46bf-4686-998e-b968d30a53ce",
+      "label": "Relics & Possessions",
+      "items": [
+        {
+          "id": "7a6c149e-34cc-4237-80ee-e17857ea6766",
+          "name": "The Family Signet",
+          "label": "A ring that remembers being kissed by kings.",
+          "cost": 1,
+          "imageURL": "portrait.jpg",
+          "traits": [
+            "Seals letters that cannot be opened by the wrong hands",
+            "Old doors recognize it and unbolt",
+            "Wearing it, you dream the founder's dreams. They are cold"
+          ]
+        },
+        {
+          "id": "f3ad48fd-0c28-4ad7-856d-4153fe5a152c",
+          "name": "A Grimoire of Small Doors",
+          "label": "A book whose pages open onto elsewhere.",
+          "cost": 2,
+          "imageURL": "grimoire.jpg",
+          "traits": [
+            "Each chapter is a place; the index is a map",
+            "New doors write themselves on the solstices",
+            "Page 41 is torn out. Something wanted to stay shut"
+          ]
+        },
+        {
+          "id": "f77a7eb6-8547-4d4d-8fb3-48c151880422",
+          "name": "The Silver Parrying Dagger",
+          "label": "Painful to hold, and holds anything at bay.",
+          "cost": 2,
+          "imageURL": "dagger.jpg",
+          "traits": [
+            "Turns hunter's steel and elder's claw alike",
+            "The grip is bound in leather; the ache seeps through anyway",
+            "Carrying your own bane makes a certain argument to enemies"
+          ]
+        },
+        {
+          "id": "e6d2a08a-e4fa-4c97-a562-0cdb8a212bfc",
+          "name": "The Unemptying Chalice",
+          "label": "Wine, always; answers, sometimes.",
+          "cost": 3,
+          "imageURL": "goblet.jpg",
+          "traits": [
+            "Never runs dry; never quite satisfies",
+            "Reflections in the wine show yesterday, accurately",
+            "It hums against silverware. The silverware hums back"
+          ]
+        },
+        {
+          "id": "4365e7d2-65eb-4495-8e24-5c6664943791",
+          "name": "A Mirror That Remembers",
+          "label": "The one glass that never forgot your face.",
+          "cost": 2,
+          "imageURL": "mirror.jpg",
+          "traits": [
+            "Shows you as you were, the year you were turned",
+            "Consulted sparingly; nostalgia bites deeper than hunters",
+            "Sometimes the reflection waves first"
+          ]
+        },
+        {
+          "id": "aceae97d-fce2-413f-b501-327718505916",
+          "name": "The Reliquary Coffin",
+          "label": "Your first coffin, kept the way mortals keep cradles.",
+          "cost": 2,
+          "imageURL": "coffin.jpg",
+          "traits": [
+            "Sleep within heals wounds the centuries left",
+            "Lined with earth from a country that no longer exists",
+            "It is, and you resent this, genuinely the best sleep"
+          ]
+        },
+        {
+          "id": "f0144d06-a5a9-4702-91ef-156d0f1217b9",
+          "name": "A Rose From the Old Garden",
+          "label": "Cut the night you were turned; not dead yet.",
+          "cost": 1,
+          "imageURL": "rose.jpg",
+          "traits": [
+            "Neither wilts nor blooms; it waits, as you do",
+            "Its scent returns one specific evening completely",
+            "If it ever opens, something ends. You water it anyway"
+          ]
+        },
+        {
+          "id": "5e9134a5-1447-4e2b-8e06-165b876b975d",
+          "name": "The Candle That Never Gutters",
+          "label": "Lit at your turning; burning still.",
+          "cost": 1,
+          "imageURL": "candles.jpg",
+          "traits": [
+            "Its flame leans toward true north and old friends",
+            "Blows out only in the presence of lies. Awkward at parties",
+            "By its light, the dead are briefly legible"
+          ]
+        }
+      ]
+    }
+  ]
 }

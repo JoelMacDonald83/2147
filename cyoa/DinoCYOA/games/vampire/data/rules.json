@@ -1,5 +1,33 @@
 {
   "version": 1,
-  "totalBudget": 10,
-  "groupRules": {}
+  "totalBudget": 15,
+  "groupRules": {
+    "a1172238-9ded-422f-840a-2a50c42ff58b": {
+      "min": 1,
+      "max": 1
+    },
+    "f846e994-10f5-4112-9589-35847e5ec299": {
+      "min": 1,
+      "max": 1
+    },
+    "70cfc783-6698-47c6-8d3f-dd430495a7aa": {
+      "min": 1,
+      "max": 1
+    },
+    "f3e9503d-c61e-489e-be7d-5c4a67b2be1d": {
+      "max": 3
+    },
+    "b3a61a01-9a55-4a3a-9eaf-db8336a0c9fc": {
+      "min": 1,
+      "max": 1
+    },
+    "0bfad480-3d75-498a-9b21-09671c25625e": {
+      "max": 1
+    },
+    "ec8c9f7b-9924-431e-b8ba-09cdc8ed5cfc": {
+      "min": 1,
+      "max": 1
+    },
+    "01020ba0-46bf-4686-998e-b968d30a53ce": {}
+  }
 }

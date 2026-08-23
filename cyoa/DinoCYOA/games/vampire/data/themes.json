@@ -1,11 +1,36 @@
 {
   "version": 1,
   "page": {
-    "bodyBackground": "#0d0608",
-    "fontFamily": "Georgia, serif",
-    "heroImage": "",
-    "statusBackground": "#1a0b10",
-    "statusColor": "#c9184a"
+    "bodyBackground": "#0b0709",
+    "fontFamily": "Georgia, 'Times New Roman', serif",
+    "heroImage": "heroBG.jpg",
+    "statusBackground": "#160a10",
+    "statusColor": "#d34a5e"
   },
-  "groupThemes": {}
+  "groupThemes": {
+    "a1172238-9ded-422f-840a-2a50c42ff58b": {
+      "background": "linear-gradient(160deg, #3d0a12, #6b1020)"
+    },
+    "f846e994-10f5-4112-9589-35847e5ec299": {
+      "background": "linear-gradient(160deg, #2b2118, #4a3a26)"
+    },
+    "70cfc783-6698-47c6-8d3f-dd430495a7aa": {
+      "background": "linear-gradient(160deg, #0e1a30, #1c3157)"
+    },
+    "f3e9503d-c61e-489e-be7d-5c4a67b2be1d": {
+      "background": "linear-gradient(160deg, #241236, #3f1f5c)"
+    },
+    "b3a61a01-9a55-4a3a-9eaf-db8336a0c9fc": {
+      "background": "linear-gradient(160deg, #1c1c1f, #37373d)"
+    },
+    "0bfad480-3d75-498a-9b21-09671c25625e": {
+      "background": "linear-gradient(160deg, #0f231a, #1e4231)"
+    },
+    "ec8c9f7b-9924-431e-b8ba-09cdc8ed5cfc": {
+      "background": "linear-gradient(160deg, #2d0d0d, #521717)"
+    },
+    "01020ba0-46bf-4686-998e-b968d30a53ce": {
+      "background": "linear-gradient(160deg, #221a08, #453711)"
+    }
+  }
 }

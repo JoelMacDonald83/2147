@@ -1,0 +1,84 @@
+Vampire CYOA image sources — all public domain / CC0, via Wikimedia Commons
+
+
+
+bat.jpg
+  source: https://commons.wikimedia.org/wiki/File:Big_free-tailed_bat_(Nyctinomops_macrotis)_(8cfc04c6-1c7f-4b27-8dd2-a85ec7f33ee8).jpg
+  file: File:Big free-tailed bat (Nyctinomops macrotis).jpg
+  license: Public domain
+
+candles.jpg
+  source: https://commons.wikimedia.org/wiki/File:Candle-flame-and-reflection.jpg
+  file: File:Candle-flame-and-reflection.jpg
+  license: Public domain
+
+castle.jpg
+  source: https://commons.wikimedia.org/wiki/File:Burg_Eltz_5.jpg
+  file: File:Burg Eltz 5.jpg
+  license: CC0
+
+cathedral.jpg
+  source: https://commons.wikimedia.org/wiki/File:Cemetery_by_a_Ruined_Gothic_Church.jpg
+  file: File:Cemetery by a Ruined Gothic Church.jpg
+  license: Public domain
+
+coffin.jpg
+  source: https://commons.wikimedia.org/wiki/File:Sarcophagus_archmus_Heraklion.jpg
+  file: File:Sarcophagus archmus Heraklion.jpg
+  license: CC0
+
+crypt.jpg
+  source: https://commons.wikimedia.org/wiki/File:Sedlec_Ossuary_2010_1.jpg
+  file: File:Sedlec Ossuary 2010 1.jpg
+  license: CC0
+
+dagger.jpg
+  source: https://commons.wikimedia.org/wiki/File:Dagger_(Khanjar)_MET_DP701252.jpg
+  file: File:Dagger (Khanjar) MET DP701252.jpg
+  license: CC0
+
+goblet.jpg
+  source: https://commons.wikimedia.org/wiki/File:Byzantine_-_Silver_Chalice_-_Walters_57633_-_Profile.jpg
+  file: File:Byzantine - Silver Chalice - Walters 57633 - Profile.jpg
+  license: Public domain
+
+grimoire.jpg
+  source: https://commons.wikimedia.org/wiki/File:Illuminated_Manuscripts_(Middleton)_figure31.jpg
+  file: File:Illuminated Manuscripts (Middleton) figure31.jpg
+  license: Public domain
+
+heroBG.jpg
+  source: https://commons.wikimedia.org/wiki/File:Budapest_castle_night_1.jpg
+  file: File:Budapest castle night 1.jpg
+  license: Public domain
+
+mirror.jpg
+  source: https://commons.wikimedia.org/wiki/File:Wall_mirror_MET_204851.jpg
+  file: File:Wall mirror MET 204851.jpg
+  license: CC0
+
+moon.jpg
+  source: https://commons.wikimedia.org/wiki/File:Full_moon_-_Flickr_-_GeorgeTan.jpg
+  file: File:Full moon - Flickr - GeorgeTan.jpg
+  license: Public domain
+
+portrait.jpg
+  source: https://commons.wikimedia.org/wiki/File:Emma,_Lady_Hamilton_by_George_Romney.jpg
+  file: File:Emma, Lady Hamilton by George Romney.jpg
+  license: Public domain
+
+raven.jpg
+  source: https://commons.wikimedia.org/wiki/File:Common_raven_at_dawn_(52849121914).jpg
+  file: File:Common raven at dawn (52849121914).jpg
+  license: Public domain
+
+rose.jpg
+  source: https://commons.wikimedia.org/wiki/File:Red_rose_flower_detailed_imge.jpg
+  file: File:Red rose flower detailed imge.jpg
+  license: Public domain
+
+wolf.jpg
+  source: https://commons.wikimedia.org/wiki/File:Canis_lupus_lupus_in_Alpenzoo,_Innsbruck.jpg
+  file: File:Canis lupus lupus in Alpenzoo, Innsbruck.jpg
+  license: CC0
+
