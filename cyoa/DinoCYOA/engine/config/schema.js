@@ -38,8 +38,9 @@ export const pageThemeSchema = [
 ]
 
 export const groupThemeSchema = [
-  { key: "background", caption: "Background", type: "optionalText", default: "" }
+  { key: "background", caption: "Background", type: "optionalText", default: "", hydrateDefault: null }
 ]
+
 
 // RULE SCHEMAS
 export const totalBudgetSchema = [
@@ -47,6 +48,6 @@ export const totalBudgetSchema = [
 ]
 
 export const groupRulesSchema = [
-  { key: "min", caption: "Min points", type: "optionalNumber", default: null },
-  { key: "max", caption: "Max points", type: "optionalNumber", default: null },
+  { key: "min", caption: "Min points", type: "optionalNumber", default: null, hydrateDefault: 0 },
+  { key: "max", caption: "Max points", type: "optionalNumber", default: null, hydrateDefault: Infinity }
 ]

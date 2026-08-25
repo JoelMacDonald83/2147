@@ -1,6 +1,7 @@
 import { content } from "./loadContent.js"
 import { rules } from "./loadRules.js"
 import { themes } from "./loadThemes.js"
+import { groupRulesSchema, groupThemeSchema } from "./schema.js"
 
 // helper functions
 
@@ -16,22 +17,21 @@ import { themes } from "./loadThemes.js"
       them into real URLs ("/assets/dino.jpg") so the view never has to build paths
 */
 
-// "what are this group's effective rules?" — one question, one answer
-const resolveRules = (group, rules) => {
-  const groupRules = rules.groupRules[group.id] ?? {}
-  return {
-    min: groupRules.min ?? 0,
-    max: groupRules.max ?? Infinity
-  }
+const resolveFromSheet = (sheet, source) => {
+  const resolved = {}
+  sheet.forEach(entry => {
+    resolved[entry.key] = source?.[entry.key] ?? entry.hydrateDefault
+  })
+  return resolved
 }
 
-// "what is this group's look?" — null means "no custom look", the view checks for it
-const resolveTheme = (group, themes) => {
-  const groupTheme = themes.groupThemes[group.id] ?? {}
-  return {
-    background: groupTheme.background ?? null
-  }
-}
+const hydrateGroups = (content, rules, themes) =>
+  content.groups.map(group => ({
+    ...group,
+    ...resolveFromSheet(groupRulesSchema, rules.groupRules[group.id]),
+    ...resolveFromSheet(groupThemeSchema, themes.groupThemes[group.id]),
+    ...resolveItems(group)
+  }))
 
 // "where do this group's images actually live?" — only the image path changes,
 // every other item field passes through untouched
@@ -44,13 +44,7 @@ const resolveItems = (group) => {
   }
 }
 
-const hydrateGroups = (content, rules, themes) =>
-  content.groups.map(group => ({
-    ...group,
-    ...resolveRules(group, rules),
-    ...resolveTheme(group, themes),
-    ...resolveItems(group) // must come after ...group so the fixed items overwrite the raw ones
-  }))
+
 
 export const meta = content.meta
 export const totalBudget = rules.totalBudget
