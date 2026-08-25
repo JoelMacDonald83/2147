@@ -5,6 +5,8 @@
 //   "lines"          → textarea, one entry per line, array in storage
 //   "optionalNumber" → number input where EMPTY means "key absent";
 //                      default null = key not written at birth
+//   "optionalText"   → text input whose HOLDING OBJECT may not exist until
+//                      first edit (peek/ensure target); empty writes ""
 
 
 // CONTENT SCHEMAS
@@ -36,7 +38,7 @@ export const pageThemeSchema = [
 ]
 
 export const groupThemeSchema = [
-  { key: "background", caption: "Background", type: "text", default: "" }
+  { key: "background", caption: "Background", type: "optionalText", default: "" }
 ]
 
 // RULE SCHEMAS

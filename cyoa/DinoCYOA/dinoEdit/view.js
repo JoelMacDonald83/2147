@@ -1,4 +1,121 @@
 import { editorState } from './state.js'
+import { metaSchema, groupSchema, itemSchema, pageThemeSchema, groupThemeSchema, totalBudgetSchema, groupRulesSchema } from '/config/schema.js'
+// The craftsperson directory: type name → function that builds that field.
+// The walker consults this; adding a type = adding one entry.
+const FIELD_BUILDERS = {
+  text: (entry, target) => {
+    const fieldEl = document.createElement('label')
+    fieldEl.className = 'field'
+
+    const captionEl = document.createElement('span')
+    captionEl.textContent = entry.caption
+
+    const inputEl = document.createElement('input')
+    inputEl.type = 'text'
+    inputEl.value = target[entry.key]            
+    inputEl.addEventListener('input', () => {
+      target[entry.key] = inputEl.value         
+    })
+
+    fieldEl.appendChild(captionEl)
+    fieldEl.appendChild(inputEl)
+    return fieldEl
+  },
+  number: (entry, target) => {
+  const fieldEl = document.createElement('label')
+  fieldEl.className = 'field'
+
+  const captionEl = document.createElement('span')
+  captionEl.textContent = entry.caption
+
+  const inputEl = document.createElement('input')
+  inputEl.type = 'number'
+  inputEl.value = target[entry.key]
+  inputEl.addEventListener('input', () => {
+    target[entry.key] = Number(inputEl.value)   // the type border, now written ONCE, ever
+  })
+
+  fieldEl.appendChild(captionEl)
+  fieldEl.appendChild(inputEl)
+  return fieldEl
+},
+lines: (entry, target) => {
+  const fieldEl = document.createElement('label')
+  fieldEl.className = 'field'
+
+  const captionEl = document.createElement('span')
+  captionEl.textContent = entry.caption
+
+  const inputEl = document.createElement('textarea')
+  inputEl.rows = 3
+  inputEl.value = target[entry.key].join('\n')       // array → text, going in
+  inputEl.addEventListener('input', () => {
+    target[entry.key] = inputEl.value                // text → array, coming out
+      .split('\n')
+      .filter(line => line.trim() !== '')
+  })
+
+  fieldEl.appendChild(captionEl)
+  fieldEl.appendChild(inputEl)
+  return fieldEl
+},
+optionalNumber: (entry, target) => {
+  // target here is { peek, ensure }: peek() returns the entry object or undefined
+  // WITHOUT creating it; ensure() creates-if-missing and returns it.
+  const fieldEl = document.createElement('label')
+  fieldEl.className = 'field'
+
+  const captionEl = document.createElement('span')
+  captionEl.textContent = entry.caption
+
+  const inputEl = document.createElement('input')
+  inputEl.type = 'number'
+  inputEl.value = target.peek()?.[entry.key] ?? ''   // absent entry or absent key → blank
+  inputEl.addEventListener('input', () => {
+    if (inputEl.value === '') {
+      const obj = target.peek()
+      if (obj) delete obj[entry.key]                 // empty = un-write, never 0
+    } else {
+      target.ensure()[entry.key] = Number(inputEl.value)
+    }
+  })
+
+  fieldEl.appendChild(captionEl)
+  fieldEl.appendChild(inputEl)
+  return fieldEl
+},
+optionalText: (entry, target) => {
+  // target is { peek, ensure } like optionalNumber — the holding object may not
+  // exist until first edit. UNLIKE optionalNumber, emptying the field writes ""
+  // rather than deleting the key (faithful to the longhand background border).
+  const fieldEl = document.createElement('label')
+  fieldEl.className = 'field'
+
+  const captionEl = document.createElement('span')
+  captionEl.textContent = entry.caption
+
+  const inputEl = document.createElement('input')
+  inputEl.type = 'text'
+  inputEl.value = target.peek()?.[entry.key] ?? ''
+  inputEl.addEventListener('input', () => {
+    target.ensure()[entry.key] = inputEl.value
+  })
+
+  fieldEl.appendChild(captionEl)
+  fieldEl.appendChild(inputEl)
+  return fieldEl
+}
+
+}
+
+const renderField = (entry, target) => {
+  const builder = FIELD_BUILDERS[entry.type]
+  if (!builder) {
+    console.warn(`No builder for type "${entry.type}" (field: ${entry.key})`)
+    return document.createTextNode('')
+  }
+  return builder(entry, target)
+}
 
 const editorEl = document.querySelector('#editor')
 const statusEl = document.querySelector('#status')
@@ -56,124 +173,21 @@ const renderPageSection = () => {
   headingEl.textContent = 'Page'
   sectionEl.appendChild(headingEl)
 
-  // The full bind-loop pattern, written out once — every field below repeats it:
-  // window shows the throne (input.value = state), keystroke updates the throne.
-  const pageTitleField = document.createElement('label')
-  pageTitleField.className = 'field'
-  const pageTitleCaption = document.createElement('span')
-  pageTitleCaption.textContent = 'Page title (browser tab) — content.json'
-  const pageTitleInput = document.createElement('input')
-  pageTitleInput.type = 'text'
-  pageTitleInput.value = editorState.content.meta.pageTitle
-  pageTitleInput.addEventListener('input', () => {
-    editorState.content.meta.pageTitle = pageTitleInput.value
+  metaSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, editorState.content.meta))
   })
-  pageTitleField.appendChild(pageTitleCaption)
-  pageTitleField.appendChild(pageTitleInput)
-  sectionEl.appendChild(pageTitleField)
-
-  const heroTitleField = document.createElement('label')
-  heroTitleField.className = 'field'
-  const heroTitleCaption = document.createElement('span')
-  heroTitleCaption.textContent = 'Hero title — content.json'
-  const heroTitleInput = document.createElement('input')
-  heroTitleInput.type = 'text'
-  heroTitleInput.value = editorState.content.meta.heroTitle
-  heroTitleInput.addEventListener('input', () => {
-    editorState.content.meta.heroTitle = heroTitleInput.value
+  totalBudgetSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, editorState.rules))
   })
-  heroTitleField.appendChild(heroTitleCaption)
-  heroTitleField.appendChild(heroTitleInput)
-  sectionEl.appendChild(heroTitleField)
-
-  const budgetField = document.createElement('label')
-  budgetField.className = 'field'
-  const budgetCaption = document.createElement('span')
-  budgetCaption.textContent = 'Total budget — rules.json'
-  const budgetInput = document.createElement('input')
-  budgetInput.type = 'number'
-  budgetInput.value = editorState.rules.totalBudget
-  budgetInput.addEventListener('input', () => {
-    editorState.rules.totalBudget = Number(budgetInput.value) // type border: string → number
-  })
-  budgetField.appendChild(budgetCaption)
-  budgetField.appendChild(budgetInput)
-  sectionEl.appendChild(budgetField)
 
   // ── page theme values (themes.json → applied as CSS custom properties by the game) ──
 
-  const bodyBgField = document.createElement('label')
-  bodyBgField.className = 'field'
-  const bodyBgCaption = document.createElement('span')
-  bodyBgCaption.textContent = 'Body background — themes.json'
-  const bodyBgInput = document.createElement('input')
-  bodyBgInput.type = 'text'
-  bodyBgInput.value = editorState.themes.page.bodyBackground
-  bodyBgInput.addEventListener('input', () => {
-    editorState.themes.page.bodyBackground = bodyBgInput.value
+  pageThemeSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, editorState.themes.page))
   })
-  bodyBgField.appendChild(bodyBgCaption)
-  bodyBgField.appendChild(bodyBgInput)
-  sectionEl.appendChild(bodyBgField)
-
-  const fontField = document.createElement('label')
-  fontField.className = 'field'
-  const fontCaption = document.createElement('span')
-  fontCaption.textContent = 'Font family — themes.json'
-  const fontInput = document.createElement('input')
-  fontInput.type = 'text'
-  fontInput.value = editorState.themes.page.fontFamily
-  fontInput.addEventListener('input', () => {
-    editorState.themes.page.fontFamily = fontInput.value
-  })
-  fontField.appendChild(fontCaption)
-  fontField.appendChild(fontInput)
-  sectionEl.appendChild(fontField)
-
-  const heroImageField = document.createElement('label')
-  heroImageField.className = 'field'
-  const heroImageCaption = document.createElement('span')
-  heroImageCaption.textContent = 'Hero image filename — themes.json'
-  const heroImageInput = document.createElement('input')
-  heroImageInput.type = 'text'
-  heroImageInput.value = editorState.themes.page.heroImage
-  heroImageInput.addEventListener('input', () => {
-    editorState.themes.page.heroImage = heroImageInput.value
-  })
-  heroImageField.appendChild(heroImageCaption)
-  heroImageField.appendChild(heroImageInput)
-  sectionEl.appendChild(heroImageField)
-
-  const statusBgField = document.createElement('label')
-  statusBgField.className = 'field'
-  const statusBgCaption = document.createElement('span')
-  statusBgCaption.textContent = 'Status bar background — themes.json'
-  const statusBgInput = document.createElement('input')
-  statusBgInput.type = 'text'
-  statusBgInput.value = editorState.themes.page.statusBackground
-  statusBgInput.addEventListener('input', () => {
-    editorState.themes.page.statusBackground = statusBgInput.value
-  })
-  statusBgField.appendChild(statusBgCaption)
-  statusBgField.appendChild(statusBgInput)
-  sectionEl.appendChild(statusBgField)
-
-  const statusColorField = document.createElement('label')
-  statusColorField.className = 'field'
-  const statusColorCaption = document.createElement('span')
-  statusColorCaption.textContent = 'Status bar text color — themes.json'
-  const statusColorInput = document.createElement('input')
-  statusColorInput.type = 'text'
-  statusColorInput.value = editorState.themes.page.statusColor
-  statusColorInput.addEventListener('input', () => {
-    editorState.themes.page.statusColor = statusColorInput.value
-  })
-  statusColorField.appendChild(statusColorCaption)
-  statusColorField.appendChild(statusColorInput)
-  sectionEl.appendChild(statusColorField)
-
   editorEl.appendChild(sectionEl)
 }
+
 
 // ───────────────────────── group cards ─────────────────────────
 
@@ -181,17 +195,9 @@ const renderGroupSection = (group) => {
   const sectionEl = document.createElement('section')
   sectionEl.className = 'editor-section'
 
-  // header row: editable group label + remove button
+  // header row: the remove button (the label is a walked field now)
   const headerEl = document.createElement('div')
   headerEl.className = 'group-header'
-
-  const labelInput = document.createElement('input')
-  labelInput.className = 'group-label-input'
-  labelInput.type = 'text'
-  labelInput.value = group.label
-  labelInput.addEventListener('input', () => {
-    group.label = labelInput.value
-  })
 
   const removeGroupBtn = document.createElement('button')
   removeGroupBtn.className = 'remove-button'
@@ -206,72 +212,32 @@ const renderGroupSection = (group) => {
     rerender()
   })
 
-  headerEl.appendChild(labelInput)
   headerEl.appendChild(removeGroupBtn)
   sectionEl.appendChild(headerEl)
+
+  // ── group content fields (content.json) ──
+  groupSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, group))
+  })
 
   // ── group rules (rules.json) ──
   // Empty input = rule not set. That upholds the omission contract:
   // no min → 0, no max → Infinity, restored by the game's hydration.
   // So an empty field DELETES the key rather than writing 0.
-  const rulesRowEl = document.createElement('div')
-  rulesRowEl.className = 'inline-fields'
-
-  const minField = document.createElement('label')
-  minField.className = 'field'
-  const minCaption = document.createElement('span')
-  minCaption.textContent = 'Min picks — rules.json (empty = 0)'
-  const minInput = document.createElement('input')
-  minInput.type = 'number'
-  minInput.value = editorState.rules.groupRules[group.id]?.min ?? ''
-  minInput.addEventListener('input', () => {
-    editorState.rules.groupRules[group.id] ??= {} // create the entry the first time (assign only if missing)
-    if (minInput.value === '') {
-      delete editorState.rules.groupRules[group.id].min
-    } else {
-      editorState.rules.groupRules[group.id].min = Number(minInput.value)
-    }
+  groupRulesSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, {
+      peek: () => editorState.rules.groupRules[group.id],
+      ensure: () => (editorState.rules.groupRules[group.id] ??= {})
+    }))
   })
-  minField.appendChild(minCaption)
-  minField.appendChild(minInput)
 
-  const maxField = document.createElement('label')
-  maxField.className = 'field'
-  const maxCaption = document.createElement('span')
-  maxCaption.textContent = 'Max picks — rules.json (empty = unlimited)'
-  const maxInput = document.createElement('input')
-  maxInput.type = 'number'
-  maxInput.value = editorState.rules.groupRules[group.id]?.max ?? ''
-  maxInput.addEventListener('input', () => {
-    editorState.rules.groupRules[group.id] ??= {}
-    if (maxInput.value === '') {
-      delete editorState.rules.groupRules[group.id].max
-    } else {
-      editorState.rules.groupRules[group.id].max = Number(maxInput.value)
-    }
+  // ── group background (themes.json) — same peek/ensure cabinet as the rules ──
+  groupThemeSchema.forEach(entry => {
+    sectionEl.appendChild(renderField(entry, {
+      peek: () => editorState.themes.groupThemes[group.id],
+      ensure: () => (editorState.themes.groupThemes[group.id] ??= {})
+    }))
   })
-  maxField.appendChild(maxCaption)
-  maxField.appendChild(maxInput)
-
-  rulesRowEl.appendChild(minField)
-  rulesRowEl.appendChild(maxField)
-  sectionEl.appendChild(rulesRowEl)
-
-  // ── group background (themes.json) ──
-  const bgField = document.createElement('label')
-  bgField.className = 'field'
-  const bgCaption = document.createElement('span')
-  bgCaption.textContent = 'Background (any CSS image value) — themes.json'
-  const bgInput = document.createElement('input')
-  bgInput.type = 'text'
-  bgInput.value = editorState.themes.groupThemes[group.id]?.background ?? ''
-  bgInput.addEventListener('input', () => {
-    editorState.themes.groupThemes[group.id] ??= {} // a brand-new group has no entry until you style it
-    editorState.themes.groupThemes[group.id].background = bgInput.value
-  })
-  bgField.appendChild(bgCaption)
-  bgField.appendChild(bgInput)
-  sectionEl.appendChild(bgField)
 
   // ── the items ──
   group.items.forEach(item => renderItemCard(group, item, sectionEl))
@@ -301,83 +267,9 @@ const renderItemCard = (group, item, sectionEl) => {
   const cardEl = document.createElement('div')
   cardEl.className = 'item-card'
 
-  // every handler below closes over THIS item — the reference is the targeting system
-  const rowEl = document.createElement('div')
-  rowEl.className = 'inline-fields'
-
-  const nameField = document.createElement('label')
-  nameField.className = 'field'
-  const nameCaption = document.createElement('span')
-  nameCaption.textContent = 'Name'
-  const nameInput = document.createElement('input')
-  nameInput.type = 'text'
-  nameInput.value = item.name
-  nameInput.addEventListener('input', () => {
-    item.name = nameInput.value
+  itemSchema.forEach(entry => {
+    cardEl.appendChild(renderField(entry, item))
   })
-  nameField.appendChild(nameCaption)
-  nameField.appendChild(nameInput)
-
-  const labelField = document.createElement('label')
-  labelField.className = 'field'
-  const labelCaption = document.createElement('span')
-  labelCaption.textContent = 'Label'
-  const labelInput = document.createElement('input')
-  labelInput.type = 'text'
-  labelInput.value = item.label
-  labelInput.addEventListener('input', () => {
-    item.label = labelInput.value
-  })
-  labelField.appendChild(labelCaption)
-  labelField.appendChild(labelInput)
-
-  const costField = document.createElement('label')
-  costField.className = 'field field--small'
-  const costCaption = document.createElement('span')
-  costCaption.textContent = 'Cost'
-  const costInput = document.createElement('input')
-  costInput.type = 'number'
-  costInput.value = item.cost
-  costInput.addEventListener('input', () => {
-    item.cost = Number(costInput.value) // type border: string → number
-  })
-  costField.appendChild(costCaption)
-  costField.appendChild(costInput)
-
-  const imageField = document.createElement('label')
-  imageField.className = 'field'
-  const imageCaption = document.createElement('span')
-  imageCaption.textContent = 'Image filename'
-  const imageInput = document.createElement('input')
-  imageInput.type = 'text'
-  imageInput.value = item.imageURL
-  imageInput.addEventListener('input', () => {
-    item.imageURL = imageInput.value
-  })
-  imageField.appendChild(imageCaption)
-  imageField.appendChild(imageInput)
-
-  rowEl.appendChild(nameField)
-  rowEl.appendChild(labelField)
-  rowEl.appendChild(costField)
-  rowEl.appendChild(imageField)
-  cardEl.appendChild(rowEl)
-
-  const traitsField = document.createElement('label')
-  traitsField.className = 'field'
-  const traitsCaption = document.createElement('span')
-  traitsCaption.textContent = 'Traits (one per line)'
-  const traitsInput = document.createElement('textarea')
-  traitsInput.rows = 3
-  traitsInput.value = item.traits.join('\n')             // array → text, going in
-  traitsInput.addEventListener('input', () => {
-    item.traits = traitsInput.value                      // text → array, coming out
-      .split('\n')
-      .filter(trait => trait.trim() !== '')
-  })
-  traitsField.appendChild(traitsCaption)
-  traitsField.appendChild(traitsInput)
-  cardEl.appendChild(traitsField)
 
   const removeItemBtn = document.createElement('button')
   removeItemBtn.className = 'remove-button'
