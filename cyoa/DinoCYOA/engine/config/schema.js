@@ -1,3 +1,7 @@
+// The shape edition this contract describes. Files carrying an older
+// version get migrated up to this at the border.
+export const SCHEMA_VERSION = 2
+
 // The form specification sheet: everything the editor (and someday the engine)
 // knows about the data's fields, as data. type names are OUR vocabulary:
 //   "text"           → one-line text input
@@ -16,8 +20,10 @@ export const metaSchema = [
 ]
 
 export const groupSchema = [
-  { key: "label", caption: "Label", type: "text", default: "New group" }
-  // TODO Phase 5: items as a container type ("itemSet")
+  { key: "label", caption: "Label", type: "text", default: "New group" },
+  {key: "items", caption: "Items", type: "collection", of: "item", default: []},
+  {key: "children", caption: "Subgroups", type: "collection", of: "group", default: []}
+
 ]
 
 export const itemSchema = [
@@ -27,6 +33,11 @@ export const itemSchema = [
   { key: "imageURL", caption: "Image filename",        type: "text",   default: "" },
   { key: "traits",   caption: "Traits (one per line)", type: "lines",  default: [] }
 ]
+
+export const SHEETS = {
+  item: itemSchema,
+  group: groupSchema
+}
 
 // THEME SCHEMAS
 export const pageThemeSchema = [
