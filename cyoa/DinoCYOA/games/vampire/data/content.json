@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "meta": {
     "pageTitle": "Vampire CYOA",
     "heroTitle": "Choose Your Eternal Night"
@@ -105,7 +105,8 @@
             "Believe, with terrible patience, in forgiveness"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "f846e994-10f5-4112-9589-35847e5ec299",
@@ -207,7 +208,8 @@
             "Something was taken with the memory. You intend to find it"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "70cfc783-6698-47c6-8d3f-dd430495a7aa",
@@ -309,7 +311,8 @@
             "Everything you own fits in one coat. The coat is ancient"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "f3e9503d-c61e-489e-be7d-5c4a67b2be1d",
@@ -411,7 +414,8 @@
             "Other vampires find this deeply unfair. It is"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "b3a61a01-9a55-4a3a-9eaf-db8336a0c9fc",
@@ -513,7 +517,8 @@
             "One rose, once, refused to die. You think about it often"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "0bfad480-3d75-498a-9b21-09671c25625e",
@@ -615,7 +620,8 @@
             "Sometimes you set two glasses out anyway"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "ec8c9f7b-9924-431e-b8ba-09cdc8ed5cfc",
@@ -717,7 +723,8 @@
             "You tip extravagantly in forgotten currencies"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "01020ba0-46bf-4686-998e-b968d30a53ce",
@@ -819,7 +826,8 @@
             "By its light, the dead are briefly legible"
           ]
         }
-      ]
+      ],
+      "children": []
     }
   ]
 }
