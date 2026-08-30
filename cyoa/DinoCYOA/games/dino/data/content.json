@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "meta": {
     "pageTitle": "Adopt a Dino! CYOA",
     "heroTitle": "dw"
@@ -105,7 +105,8 @@
             "Read the whole dictionary. Insists is not autistic."
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
@@ -159,7 +160,8 @@
             "Nice and warm"
           ]
         }
-      ]
+      ],
+      "children": []
     },
     {
       "id": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e",
@@ -213,7 +215,8 @@
             "All dinos paid living wage! #UnionStrong"
           ]
         }
-      ]
+      ],
+      "children": []
     }
   ]
 }
