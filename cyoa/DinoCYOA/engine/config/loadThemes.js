@@ -1,3 +1,6 @@
 import { loadJSON } from "../helpers.js";
 
-export const themes = await loadJSON("/data/themes.json")
+
+import { migrateThemes } from "./migrations.js";
+
+export const themes = migrateThemes(await loadJSON("/data/themes.json"))

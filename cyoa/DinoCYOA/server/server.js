@@ -110,5 +110,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(3000, () => {
-  console.log(`Server online at hhtp://localhost:3000 - game: ${GAME_NAME}`);
+  console.log(`Server online at http://localhost:3000 - game: ${GAME_NAME}`);
 });
