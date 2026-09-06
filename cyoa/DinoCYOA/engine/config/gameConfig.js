@@ -25,13 +25,16 @@ const resolveFromSheet = (sheet, source) => {
   return resolved
 }
 
+const hydrateGroup = (group, rules, themes) => ({
+  ...group,
+  ...resolveFromSheet(groupRulesSchema, rules.groupRules[group.id]),
+  ...resolveFromSheet(groupThemeSchema, themes.groupThemes[group.id]),
+  ...resolveItems(group),
+  children: group.children.map(child => hydrateGroup(child, rules, themes))
+})
+
 const hydrateGroups = (content, rules, themes) =>
-  content.groups.map(group => ({
-    ...group,
-    ...resolveFromSheet(groupRulesSchema, rules.groupRules[group.id]),
-    ...resolveFromSheet(groupThemeSchema, themes.groupThemes[group.id]),
-    ...resolveItems(group)
-  }))
+  content.groups.map(group => hydrateGroup(group, rules, themes))
 
 // "where do this group's images actually live?" — only the image path changes,
 // every other item field passes through untouched
@@ -39,7 +42,7 @@ const resolveItems = (group) => {
   return {
     items: group.items.map(item => ({
       ...item,
-      imageURL: `/assets/${item.imageURL}`
+      imageURL: item.imageURL ? `/assets/${item.imageURL}` : ""
     }))
   }
 }
@@ -53,7 +56,7 @@ export const totalBudget = rules.totalBudget
 // heroImage arrives as a bare filename and leaves as a real URL
 export const pageTheme = {
   ...themes.page,
-  heroImage: `/assets/${themes.page.heroImage}`
+  heroImage: themes.page.heroImage ? `/assets/${themes.page.heroImage}` : ""
 }
 
 export const groups = hydrateGroups(content, rules, themes)

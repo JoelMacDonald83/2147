@@ -1,4 +1,9 @@
 import { totalBudget, groups } from './config/gameConfig.js'
+import { flattenGroups } from './helpers.js'
+
+// the fire-drill roster: every group at every depth, for the mechanics
+const allGroups = flattenGroups(groups)
+
 // CHANGED from the old game: state used to import raw config (TOTAL_BUDGET and
 // selectionGroups from config.js). Now everything arrives through the gameConfig
 // doorway already hydrated — same shapes as before, but min, max and background
@@ -8,7 +13,7 @@ import { totalBudget, groups } from './config/gameConfig.js'
 
 const buildEmptySelections = () => {
   const selections = {}
-  groups.forEach(group => {
+  allGroups.forEach(group => {
     selections[group.id] = [] // group.id is a UUID now, but the pattern is identical
   })
   return selections
@@ -23,7 +28,7 @@ export const gameState = {
   selections: buildEmptySelections(),
 
   get spent() {
-    return groups.reduce(
+    return allGroups.reduce(
       (acc, group) => acc + totalCost(this.selections[group.id]),
       0
     )
@@ -35,7 +40,7 @@ export const gameState = {
   // NEW: min support (min arrived with rules.json — the old game had no concept
   // of "required picks"). A group is unmet while it has fewer picks than its min.
   get unmetGroups() {
-    return groups.filter(group => this.selections[group.id].length < group.min)
+    return allGroups.filter(group => this.selections[group.id].length < group.min)
   },
   get isComplete() {
     return this.unmetGroups.length === 0
