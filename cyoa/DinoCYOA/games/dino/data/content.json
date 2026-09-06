@@ -106,7 +106,35 @@
           ]
         }
       ],
-      "children": []
+      "children": [
+        {
+          "id": "25d4aef8-2f68-451e-a224-db747d2333b5",
+          "label": "sub group",
+          "items": [
+            {
+              "id": "21f13810-7e5a-49e2-827f-b0d089a783bb",
+              "name": "New item 1",
+              "label": "xsc vsdc",
+              "cost": 0,
+              "imageURL": "",
+              "traits": [
+                "sd sd sd sd "
+              ]
+            },
+            {
+              "id": "d32f9cf5-9743-4cc2-afee-791adf824d14",
+              "name": "New itemsddcscsd",
+              "label": "sdcsdcsd",
+              "cost": 0,
+              "imageURL": "",
+              "traits": [
+                "ascdadscsdc"
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
     },
     {
       "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
