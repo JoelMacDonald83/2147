@@ -1,5 +1,6 @@
 import { editorState } from './state.js'
 import { metaSchema, groupSchema, itemSchema, pageThemeSchema, groupThemeSchema, totalBudgetSchema, groupRulesSchema } from '/config/schema.js'
+import { flattenGroups } from '/helpers.js' // engine's tree-flattener, through the same cross-world door as the schema
 // The craftsperson directory: type name → function that builds that field.
 // The walker consults this; adding a type = adding one entry.
 const FIELD_BUILDERS = {
@@ -141,7 +142,13 @@ export const render = (actions) => {
 
   renderTopBar(actions)
   renderPageSection()
-  editorState.content.groups.forEach(group => renderGroupSection(group))
+  // CHANGED: group cards now RETURN themselves (like the engine's view) so they
+  // can nest. The second argument is the array that OWNS this group — needed so
+  // "Remove group" knows which list to remove it from (top level here;
+  // a parent's children array for subgroups).
+  editorState.content.groups.forEach(group => {
+    editorEl.appendChild(buildGroupCard(group, editorState.content.groups))
+  })
   renderAddGroupButton()
 }
 
@@ -191,7 +198,10 @@ const renderPageSection = () => {
 
 // ───────────────────────── group cards ─────────────────────────
 
-const renderGroupSection = (group) => {
+// Builds ONE group's card and RETURNS it — the caller decides where it hangs
+// (the top-level wall, or inside a parent card for subgroups).
+// parentList = the array this group lives in, so removal edits the right list.
+const buildGroupCard = (group, parentList) => {
   const sectionEl = document.createElement('section')
   sectionEl.className = 'editor-section'
 
@@ -203,12 +213,17 @@ const renderGroupSection = (group) => {
   removeGroupBtn.className = 'remove-button'
   removeGroupBtn.textContent = 'Remove group'
   removeGroupBtn.addEventListener('click', () => {
-    editorState.content.groups = editorState.content.groups.filter(g => g !== group)
-    // cascade: the group's UUID keys in the other two files go with it,
-    // so no orphaned entries are left behind. `delete` removes a key from
-    // an object entirely (and is a quiet no-op if the key isn't there).
-    delete editorState.rules.groupRules[group.id]
-    delete editorState.themes.groupThemes[group.id]
+    // CHANGED: remove from whichever list owns this group (splice = remove
+    // in place), not always from the top level.
+    parentList.splice(parentList.indexOf(group), 1)
+    // CHANGED: the cascade now walks the WHOLE subtree. Removing a group
+    // removes its descendants too — so every descendant's UUID keys in the
+    // rules and themes cabinets must go, or they'd be orphaned forever.
+    // flattenGroups([group]) = this group plus everything inside it.
+    flattenGroups([group]).forEach(g => {
+      delete editorState.rules.groupRules[g.id]
+      delete editorState.themes.groupThemes[g.id]
+    })
     rerender()
   })
 
@@ -258,7 +273,28 @@ const renderGroupSection = (group) => {
   })
   sectionEl.appendChild(addItemBtn)
 
-  editorEl.appendChild(sectionEl)
+  // ── the subgroups: the recursion ──
+  // each child's card is built by THIS same function and hung inside THIS card;
+  // the child's parentList is my children array. children: [] starts nothing.
+  group.children.forEach(child => {
+    sectionEl.appendChild(buildGroupCard(child, group.children))
+  })
+
+  const addSubgroupBtn = document.createElement('button')
+  addSubgroupBtn.className = 'add-button'
+  addSubgroupBtn.textContent = '+ Add subgroup'
+  addSubgroupBtn.addEventListener('click', () => {
+    group.children.push({
+      id: crypto.randomUUID(),
+      label: 'New group',
+      items: [],
+      children: [] // v2 newborns always carry their (empty) children array
+    })
+    rerender()
+  })
+  sectionEl.appendChild(addSubgroupBtn)
+
+  return sectionEl
 }
 
 // ───────────────────────── item cards ─────────────────────────
@@ -293,7 +329,9 @@ const renderAddGroupButton = () => {
     editorState.content.groups.push({
       id: crypto.randomUUID(),
       label: 'New group',
-      items: []
+      items: [],
+      children: [] // CHANGED: v2 newborns must carry children — the recursive
+                   // walkers (editor cards, engine hydration) rely on it existing
       // no rules/themes entries on purpose: the game's hydration defaults
       // (min 0, max Infinity, background null) cover absent entries,
       // and editing min/max/background above creates them when needed

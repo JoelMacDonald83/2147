@@ -173,3 +173,10 @@ button {
 .remove-button:hover {
   background: #fdf3f3;
 }
+
+/* ===== nested group cards ===== */
+/* a left rail so depth reads at a glance; each level indents inside its parent */
+.editor-section .editor-section {
+  margin: 14px 0;
+  border-left: 4px solid #cfc9bc;
+}
