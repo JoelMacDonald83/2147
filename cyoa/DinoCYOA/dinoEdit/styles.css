@@ -157,7 +157,9 @@ button {
   color: #7a6ff0;
 }
 
-.add-button--group {
+/* CHANGED: the top-level "+ Add group" is the one add button sitting straight
+   inside #editor — nested ones live inside a card. Bigger by position, not by class. */
+#editor > .add-button {
   padding: 16px;
   font-size: 1rem;
 }

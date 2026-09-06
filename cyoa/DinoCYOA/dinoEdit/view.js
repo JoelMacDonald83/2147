@@ -1,6 +1,12 @@
 import { editorState } from './state.js'
-import { metaSchema, groupSchema, itemSchema, pageThemeSchema, groupThemeSchema, totalBudgetSchema, groupRulesSchema } from '/config/schema.js'
-import { flattenGroups } from '/helpers.js' // engine's tree-flattener, through the same cross-world door as the schema
+// CHANGED: cards reach every sheet by NAME through SHEETS (the same way a
+// collection entry's `of` does), so the named imports shrink to the Page card's
+// three plus contentSchema, the top of the group tree.
+import { SHEETS, contentSchema, metaSchema, pageThemeSchema, totalBudgetSchema } from '/config/schema.js'
+// CHANGED: flattenGroups is gone. The editor's cascade (cascadeDelete, below)
+// descends through the sheets itself, so it works for ANY nested list, not
+// just group.children. The engine keeps its own flattenGroups untouched.
+
 // The craftsperson directory: type name → function that builds that field.
 // The walker consults this; adding a type = adding one entry.
 const FIELD_BUILDERS = {
@@ -13,9 +19,9 @@ const FIELD_BUILDERS = {
 
     const inputEl = document.createElement('input')
     inputEl.type = 'text'
-    inputEl.value = target[entry.key]            
+    inputEl.value = target[entry.key]
     inputEl.addEventListener('input', () => {
-      target[entry.key] = inputEl.value         
+      target[entry.key] = inputEl.value
     })
 
     fieldEl.appendChild(captionEl)
@@ -105,6 +111,55 @@ optionalText: (entry, target) => {
   fieldEl.appendChild(captionEl)
   fieldEl.appendChild(inputEl)
   return fieldEl
+},
+
+// NEW: the collection builder. target[entry.key] is the REAL array in state
+// (content.groups, group.items, group.children) — not a copy. The builder
+// keeps hold of it: every card's Remove and the "+ Add" button edit that ONE
+// array, so nobody has to be told which list a card lives in any more.
+// Nesting costs nothing: a card walks its sheet, meets another collection
+// entry, and lands back here.
+collection: (entry, target) => {
+  const list = target[entry.key]
+
+  // a fragment is a bag of nodes: append the bag and its contents spill into
+  // the parent as direct children, the bag itself vanishes. So the DOM looks
+  // exactly as the hand-built version did — cards and add button straight
+  // inside the card (or straight inside #editor, at the top level).
+  const bagEl = document.createDocumentFragment()
+  list.forEach(element => {
+    bagEl.appendChild(buildCard(entry.of, element, list))
+  })
+
+  const addBtn = document.createElement('button')
+  addBtn.className = 'add-button'
+  addBtn.textContent = `+ Add ${entry.of}`           // "+ Add item", "+ Add group"
+  addBtn.addEventListener('click', () => {
+    list.push(newborn(entry.of))                     // born from the sheet, into MY list
+    rerender()
+  })
+  bagEl.appendChild(addBtn)
+  return bagEl
+},
+
+// NEW: fields that belong to this element but are STORED in a side cabinet,
+// filed under the element's id. target is the ELEMENT itself (we need its id).
+// The cabinet slot may not exist yet, so the inner fields get the same
+// { peek, ensure } target optionalNumber/optionalText already expect:
+// peek looks and never creates (rendering must not change what gets saved);
+// ensure creates on first edit only — it is only ever called from an input
+// handler. This is the same pair the group card used to write by hand, with
+// the cabinet address now coming from the sheet.
+attachment: (entry, target) => {
+  const slot = {
+    peek:   () => cabinetOf(entry)[target.id],
+    ensure: () => (cabinetOf(entry)[target.id] ??= {})
+  }
+  const bagEl = document.createDocumentFragment()
+  SHEETS[entry.of].forEach(inner => {
+    bagEl.appendChild(renderField(inner, slot))
+  })
+  return bagEl
 }
 
 }
@@ -130,7 +185,10 @@ export const renderSaveStatus = (text) => {
    Content edits (typing in a field) mutate state directly through the
    bind-loop — no re-render needed, the input already shows what you typed.
    STRUCTURAL edits (add/remove item or group) mutate state and then call
-   rerender(), so the screen is repainted from the new state. */
+   rerender(), so the screen is repainted from the new state.
+   Rule of the file: structural edits change the array IN PLACE (push/splice)
+   and then rerender. Never replace a list (group.items = group.items.filter(…))
+   — the collection builder is holding the original array. */
 
 let currentActions = null // remembered at render time so rerender() keeps the same wiring
 
@@ -142,14 +200,14 @@ export const render = (actions) => {
 
   renderTopBar(actions)
   renderPageSection()
-  // CHANGED: group cards now RETURN themselves (like the engine's view) so they
-  // can nest. The second argument is the array that OWNS this group — needed so
-  // "Remove group" knows which list to remove it from (top level here;
-  // a parent's children array for subgroups).
-  editorState.content.groups.forEach(group => {
-    editorEl.appendChild(buildGroupCard(group, editorState.content.groups))
+  // CHANGED: no hand-built group cards. The whole group tree is ONE walk of
+  // content's sheet: groups is a collection of "group", and group's own sheet
+  // holds a collection of "group" — the nesting lives in the data, not here.
+  // The big "+ Add group" at the bottom comes from the same collection builder
+  // as every other add button.
+  contentSchema.forEach(entry => {
+    editorEl.appendChild(renderField(entry, editorState.content))
   })
-  renderAddGroupButton()
 }
 
 // ───────────────────────── top bar ─────────────────────────
@@ -170,7 +228,7 @@ const renderTopBar = (actions) => {
 // ─────────────────── page-wide settings card ───────────────────
 // One card holding everything that isn't a group: meta (content.json),
 // the page theme (themes.json) and the budget (rules.json).
-// Each field's caption says which file it lives in.
+// The comment above each walk says which file its fields come from.
 
 const renderPageSection = () => {
   const sectionEl = document.createElement('section')
@@ -196,150 +254,102 @@ const renderPageSection = () => {
 }
 
 
-// ───────────────────────── group cards ─────────────────────────
+// ───────────────────────── side cabinets ─────────────────────────
 
-// Builds ONE group's card and RETURNS it — the caller decides where it hangs
-// (the top-level wall, or inside a parent card for subgroups).
-// parentList = the array this group lives in, so removal edits the right list.
-const buildGroupCard = (group, parentList) => {
-  const sectionEl = document.createElement('section')
-  sectionEl.className = 'editor-section'
+// NEW: the cabinet an attachment entry points at: <file>.<cabinet>, e.g.
+// rules.groupRules. schema.js only knows the file's NAME; this is the ONE line
+// that turns that name into the editor's object (editorState is keyed by the
+// same three file names). The attachment builder and cascadeDelete both ask here.
+// The cabinet object itself must already be in the loaded file — a missing one
+// is a border (migration) problem, never something to create while drawing.
+const cabinetOf = (entry) => editorState[entry.file][entry.cabinet]
 
-  // header row: the remove button (the label is a walked field now)
+// NEW: when an element leaves, everything the side cabinets hold about it
+// leaves too — and so does everything they hold about every element INSIDE
+// it, or rules.json/themes.json would keep orphan UUIDs forever. The sheet is
+// the map: an attachment entry says which cabinet to clear, a collection entry
+// says where the descendants are. For a group: clear its rules and theme
+// slots, then repeat for every item (items have neither, so that stops) and
+// for every child (a group, so it repeats all of this). Replaces the old
+// flattenGroups([group]) loop, and covers any future sheet with cabinets or
+// nesting without touching this function.
+const cascadeDelete = (sheetName, element) => {
+  SHEETS[sheetName].forEach(entry => {
+    if (entry.type === 'attachment') {
+      delete cabinetOf(entry)[element.id]
+    }
+    if (entry.type === 'collection') {
+      element[entry.key].forEach(child => cascadeDelete(entry.of, child))
+    }
+  })
+}
+
+// ───────────────────────── newborns ─────────────────────────
+
+// NEW: a brand-new element, born from its sheet: a forever-id first, then each
+// entry's default in sheet order — the same key order the old literals had and
+// the saved files have. Two kinds of entry are skipped: attachment entries
+// (no key — nothing is stored in the element) and entries whose default is
+// null (the sheet rule: null = key not written at birth).
+// structuredClone hands back a SEPARATE COPY of each default. Arrays are
+// references: without the copy every newborn group would share ONE items
+// array, and adding an item to group A would show up in group B.
+// (No rules/themes slots are born on purpose: the game's hydration defaults
+// cover absent entries, and editing min/max/background creates them — ensure.)
+const newborn = (sheetName) => {
+  const born = { id: crypto.randomUUID() }
+  SHEETS[sheetName].forEach(entry => {
+    if (entry.key === undefined) return                // attachment: nothing lives in the element
+    if (entry.default === null) return                 // sheet rule: null = not written at birth
+    born[entry.key] = structuredClone(entry.default)   // a FRESH copy, never the sheet's own []
+  })
+  return born
+}
+
+// ───────────────────────── cards ─────────────────────────
+
+// NEW: how a card of each sheet dresses. The sheet decides what goes IN a card;
+// this table decides what the card looks like. A sheet without a row gets the
+// plain item look, so a brand-new sheet renders before anyone styles it.
+const CARD_CLASS = {
+  group: 'editor-section',   // the big white card; nested ones get the left rail via CSS
+  item:  'item-card'         // the small beige card
+}
+
+// CHANGED: buildGroupCard and renderItemCard are gone. ONE function builds
+// every card and RETURNS it: a header row holding Remove, then the element's
+// sheet walked top to bottom — scalars, cabinets, lists, in sheet order.
+// list = the array the collection builder read this element from. The builder
+// owns it and lends it ONE hop so Remove can splice it; it is never passed
+// further down (a nested list is re-read from element[entry.key] by the next
+// collection entry). That is what replaces the old parentList threading.
+const buildCard = (sheetName, element, list) => {
+  const cardEl = document.createElement('section')
+  cardEl.className = CARD_CLASS[sheetName] ?? 'item-card'
+
   const headerEl = document.createElement('div')
   headerEl.className = 'group-header'
 
-  const removeGroupBtn = document.createElement('button')
-  removeGroupBtn.className = 'remove-button'
-  removeGroupBtn.textContent = 'Remove group'
-  removeGroupBtn.addEventListener('click', () => {
-    // CHANGED: remove from whichever list owns this group (splice = remove
-    // in place), not always from the top level.
-    parentList.splice(parentList.indexOf(group), 1)
-    // CHANGED: the cascade now walks the WHOLE subtree. Removing a group
-    // removes its descendants too — so every descendant's UUID keys in the
-    // rules and themes cabinets must go, or they'd be orphaned forever.
-    // flattenGroups([group]) = this group plus everything inside it.
-    flattenGroups([group]).forEach(g => {
-      delete editorState.rules.groupRules[g.id]
-      delete editorState.themes.groupThemes[g.id]
-    })
+  const removeBtn = document.createElement('button')
+  removeBtn.className = 'remove-button'
+  removeBtn.textContent = `Remove ${sheetName}`       // "Remove group", "Remove item"
+  removeBtn.addEventListener('click', () => {
+    const at = list.indexOf(element)
+    if (at !== -1) list.splice(at, 1)                  // out of the list that owns it, in place
+    cascadeDelete(sheetName, element)                  // and out of every cabinet, subtree included
     rerender()
   })
 
-  headerEl.appendChild(removeGroupBtn)
-  sectionEl.appendChild(headerEl)
+  headerEl.appendChild(removeBtn)
+  cardEl.appendChild(headerEl)
 
-  // ── group content fields (content.json) ──
-  // structural entries (type "collection") are skipped here on purpose: this
-  // card renders its items and children itself, below. The guard in renderField
-  // stays reserved for genuinely unknown types.
-  groupSchema.filter(entry => entry.type !== 'collection').forEach(entry => {
-    sectionEl.appendChild(renderField(entry, group))
+  // the card IS the sheet: every entry goes through renderField, so a
+  // collection entry lands in the collection builder (which calls buildCard
+  // again for each element — that loop is the recursion) and an attachment
+  // entry lands in the attachment builder.
+  SHEETS[sheetName].forEach(entry => {
+    cardEl.appendChild(renderField(entry, element))
   })
 
-  // ── group rules (rules.json) ──
-  // Empty input = rule not set. That upholds the omission contract:
-  // no min → 0, no max → Infinity, restored by the game's hydration.
-  // So an empty field DELETES the key rather than writing 0.
-  groupRulesSchema.forEach(entry => {
-    sectionEl.appendChild(renderField(entry, {
-      peek: () => editorState.rules.groupRules[group.id],
-      ensure: () => (editorState.rules.groupRules[group.id] ??= {})
-    }))
-  })
-
-  // ── group background (themes.json) — same peek/ensure cabinet as the rules ──
-  groupThemeSchema.forEach(entry => {
-    sectionEl.appendChild(renderField(entry, {
-      peek: () => editorState.themes.groupThemes[group.id],
-      ensure: () => (editorState.themes.groupThemes[group.id] ??= {})
-    }))
-  })
-
-  // ── the items ──
-  group.items.forEach(item => renderItemCard(group, item, sectionEl))
-
-  const addItemBtn = document.createElement('button')
-  addItemBtn.className = 'add-button'
-  addItemBtn.textContent = '+ Add item'
-  addItemBtn.addEventListener('click', () => {
-    group.items.push({
-      id: crypto.randomUUID(), // a new item is born with its forever-id
-      name: 'New item',
-      label: '',
-      cost: 0,
-      imageURL: '',
-      traits: []
-    })
-    rerender()
-  })
-  sectionEl.appendChild(addItemBtn)
-
-  // ── the subgroups: the recursion ──
-  // each child's card is built by THIS same function and hung inside THIS card;
-  // the child's parentList is my children array. children: [] starts nothing.
-  group.children.forEach(child => {
-    sectionEl.appendChild(buildGroupCard(child, group.children))
-  })
-
-  const addSubgroupBtn = document.createElement('button')
-  addSubgroupBtn.className = 'add-button'
-  addSubgroupBtn.textContent = '+ Add subgroup'
-  addSubgroupBtn.addEventListener('click', () => {
-    group.children.push({
-      id: crypto.randomUUID(),
-      label: 'New group',
-      items: [],
-      children: [] // v2 newborns always carry their (empty) children array
-    })
-    rerender()
-  })
-  sectionEl.appendChild(addSubgroupBtn)
-
-  return sectionEl
-}
-
-// ───────────────────────── item cards ─────────────────────────
-
-const renderItemCard = (group, item, sectionEl) => {
-  const cardEl = document.createElement('div')
-  cardEl.className = 'item-card'
-
-  itemSchema.forEach(entry => {
-    cardEl.appendChild(renderField(entry, item))
-  })
-
-  const removeItemBtn = document.createElement('button')
-  removeItemBtn.className = 'remove-button'
-  removeItemBtn.textContent = 'Remove item'
-  removeItemBtn.addEventListener('click', () => {
-    group.items = group.items.filter(i => i !== item)
-    rerender()
-  })
-  cardEl.appendChild(removeItemBtn)
-
-  sectionEl.appendChild(cardEl)
-}
-
-// ───────────────────────── add group ─────────────────────────
-
-const renderAddGroupButton = () => {
-  const addGroupBtn = document.createElement('button')
-  addGroupBtn.className = 'add-button add-button--group'
-  addGroupBtn.textContent = '+ Add group'
-  addGroupBtn.addEventListener('click', () => {
-    editorState.content.groups.push({
-      id: crypto.randomUUID(),
-      label: 'New group',
-      items: [],
-      children: [] // CHANGED: v2 newborns must carry children — the recursive
-                   // walkers (editor cards, engine hydration) rely on it existing
-      // no rules/themes entries on purpose: the game's hydration defaults
-      // (min 0, max Infinity, background null) cover absent entries,
-      // and editing min/max/background above creates them when needed
-    })
-    rerender()
-  })
-  editorEl.appendChild(addGroupBtn)
+  return cardEl
 }
