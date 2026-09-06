@@ -231,7 +231,10 @@ const buildGroupCard = (group, parentList) => {
   sectionEl.appendChild(headerEl)
 
   // ── group content fields (content.json) ──
-  groupSchema.forEach(entry => {
+  // structural entries (type "collection") are skipped here on purpose: this
+  // card renders its items and children itself, below. The guard in renderField
+  // stays reserved for genuinely unknown types.
+  groupSchema.filter(entry => entry.type !== 'collection').forEach(entry => {
     sectionEl.appendChild(renderField(entry, group))
   })
 
