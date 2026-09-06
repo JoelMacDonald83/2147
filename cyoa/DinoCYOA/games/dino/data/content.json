@@ -216,7 +216,26 @@
           ]
         }
       ],
-      "children": []
+      "children": [
+        {
+          "id": "cd9dd080-40ca-4ae9-9487-d67242cf7265",
+          "label": "Lair Location",
+          "items": [
+            {
+              "id": "0568ef76-cce6-4fa6-be85-0c4f56592e72",
+              "name": "Volcano Rim",
+              "label": "Toasty!",
+              "cost": 1,
+              "imageURL": "",
+              "traits": [
+                "Great views",
+                "Slight lava smell"
+              ]
+            }
+          ],
+          "children": []
+        }
+      ]
     }
   ]
 }
