@@ -4,8 +4,32 @@
 		{
 			"name": "iccplus",
 			"runtimeExecutable": "python3",
-			"runtimeArgs": ["-m", "http.server", "42017", "--directory", "/Users/joelmacdonld/Downloads/ICCPlus-Desktop-2.10.2"],
+			"runtimeArgs": [
+				"-m",
+				"http.server",
+				"42017",
+				"--directory",
+				"/Users/joelmacdonld/Downloads/ICCPlus-Desktop-2.10.2"
+			],
 			"port": 42017
+		},
+		{
+			"name": "dino",
+			"runtimeExecutable": "node",
+			"runtimeArgs": [
+				"cyoa/DinoCYOA/server/server.js",
+				"dino"
+			],
+			"port": 3000
+		},
+		{
+			"name": "vampire",
+			"runtimeExecutable": "node",
+			"runtimeArgs": [
+				"cyoa/DinoCYOA/server/server.js",
+				"vampire"
+			],
+			"port": 3000
 		}
 	]
 }
