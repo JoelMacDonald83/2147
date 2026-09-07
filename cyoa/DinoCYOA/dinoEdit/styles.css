@@ -60,12 +60,6 @@ h1 {
   margin-bottom: 14px;
 }
 
-.group-label-input {
-  flex: 1;
-  font-size: 1.15rem;
-  font-weight: 700;
-}
-
 .item-card {
   border: 1px solid #eae6de;
   border-radius: 10px;
@@ -90,7 +84,7 @@ h1 {
 
 .field input,
 .field textarea,
-.group-label-input {
+.field select {         /* NEW: selects dress like inputs */
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
@@ -103,23 +97,9 @@ h1 {
 
 .field input:focus,
 .field textarea:focus,
-.group-label-input:focus {
+.field select:focus {   /* NEW */
   outline: 2px solid #7a6ff0;
   border-color: transparent;
-}
-
-/* several fields sharing one row */
-.inline-fields {
-  display: flex;
-  gap: 12px;
-}
-
-.inline-fields .field {
-  flex: 1;
-}
-
-.inline-fields .field--small {
-  flex: 0 0 90px;
 }
 
 /* ===== buttons ===== */
@@ -157,8 +137,8 @@ button {
   color: #7a6ff0;
 }
 
-/* CHANGED: the top-level "+ Add group" is the one add button sitting straight
-   inside #editor — nested ones live inside a card. Bigger by position, not by class. */
+/* CHANGED: the two top-level add buttons ("+ Add type", "+ Add group") sit
+   straight inside #editor — nested ones live inside a card. Bigger by position, not by class. */
 #editor > .add-button {
   padding: 16px;
   font-size: 1rem;
@@ -174,6 +154,23 @@ button {
 
 .remove-button:hover {
   background: #fdf3f3;
+}
+
+/* ===== wall headings ===== */
+/* NEW: the three walls (Types, Things, Groups) get a small heading straight
+   on the wall, between the big cards — the same way the top-level add buttons
+   sit straight inside #editor */
+.wall-heading {
+  margin: 28px 0 12px;
+  font-size: 1.05rem;
+  color: #6f6a60;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.wall-hint {
+  color: #8a857b;
+  margin: 0 0 16px;
 }
 
 /* ===== nested group cards ===== */

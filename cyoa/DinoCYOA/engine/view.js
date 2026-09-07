@@ -30,6 +30,47 @@ export const applyPageTheme = (pageTheme) => {
   root.style.setProperty('--status-color', pageTheme.statusColor)
 }
 
+// NEW: how each KIND of author-defined field is drawn on a card. The twin of
+// the editor's FIELD_BUILDERS: the editor decides how a kind is EDITED, this
+// table decides how it is SHOWN. Core fields (image, name, cost) are not
+// here — they are drawn by hand below, exactly as before.
+const DISPLAY_BUILDERS = {
+  text: (field, value) => {
+    const el = document.createElement('p')
+    el.className = 'card-text'
+    el.textContent = value
+    return el
+  },
+  lines: (field, value) => {
+    const el = document.createElement('ul')
+    el.className = 'card-lines'
+    const lines = Array.isArray(value) ? value : []   // a field that used to be text may still hold a string
+    lines.forEach(line => {
+      const lineEl = document.createElement('li')
+      lineEl.textContent = line
+      el.appendChild(lineEl)
+    })
+    return el
+  },
+  number: (field, value) => {
+    const el = document.createElement('p')
+    el.className = 'card-number'
+    el.textContent = `${field.caption}: ${value}`
+    return el
+  }
+}
+
+// NEW: the mirror of the editor's renderField — look the kind up, warn (and
+// draw nothing) when no builder knows it
+const renderDisplay = (field, value) => {
+  const builder = DISPLAY_BUILDERS[field.type]
+  if (!builder) {
+    console.warn(`No display for kind "${field.type}" (field: ${field.key})`)
+    return document.createTextNode('')
+  }
+  return builder(field, value)
+}
+
 // Builds ONE group's section and RETURNS it — it never places itself.
 // The caller decides which wall it hangs on (top level today; a parent
 // section once subgroups render).
@@ -63,8 +104,9 @@ const buildGroupSection = (group, actions) => {
   cardsGridEl.className = 'cards-grid'
 
   group.items.forEach(item => {
-    // CHANGED: group.options is now group.items (items live inside their group
-    // in content.json — the old config.js variable indirection no longer exists)
+    // CHANGED: group.items is hung on the group by the border (gameConfig.js)
+    // from the bucket of things the group's type owns — the view never
+    // learns where they came from
     const cardEl = document.createElement('div')
     cardEl.className = 'card'
 
@@ -78,18 +120,6 @@ const buildGroupSection = (group, actions) => {
     const descEl = document.createElement('p')
     descEl.className = 'card-name'
     descEl.textContent = `${item.name} - ${item.cost} points`
-
-    const labelEl = document.createElement('p')
-    labelEl.className = 'card-label'
-    labelEl.textContent = item.label
-
-    const traitsEl = document.createElement('ul')
-    traitsEl.className = 'card-traits'
-    item.traits.forEach(trait => {
-      const traitEl = document.createElement('li')
-      traitEl.textContent = trait
-      traitsEl.appendChild(traitEl)
-    })
 
     const buttonEl = document.createElement('button')
     buttonEl.className = 'card-button'
@@ -113,8 +143,13 @@ const buildGroupSection = (group, actions) => {
 
     cardEl.appendChild(imgEl)
     cardEl.appendChild(descEl)
-    cardEl.appendChild(labelEl)
-    cardEl.appendChild(traitsEl)
+    // CHANGED: label and traits used to be drawn by hand right here. They are
+    // the author's fields now (a migrated game has exactly those two), drawn
+    // in the type's field order through the display table — same slot on the
+    // card as before: after the name line, before the button.
+    group.fields.forEach(field => {
+      cardEl.appendChild(renderDisplay(field, item[field.key]))
+    })
     cardEl.appendChild(buttonEl)
     cardsGridEl.appendChild(cardEl)
   })

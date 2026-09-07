@@ -23,7 +23,9 @@ const MIME_TYPES = {
 const SAVABLE_FILES = {
   content: "content.json",
   rules: "rules.json",
-  themes: "themes.json"
+  themes: "themes.json",
+  types: "types.json",     // NEW: two more drawers — the editor saves five files now
+  things: "things.json"    // NEW
 }
 
 const readBody = async (req) => {
