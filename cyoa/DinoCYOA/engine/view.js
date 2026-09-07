@@ -72,8 +72,9 @@ const renderDisplay = (field, value) => {
 }
 
 // Builds ONE group's section and RETURNS it — it never places itself.
-// The caller decides which wall it hangs on (top level today; a parent
-// section once subgroups render).
+// The caller decides which wall it hangs on: render() hangs top-level rows
+// on #groups; this function hangs each visible child inside its parent's
+// section (the recursion at the bottom).
 const buildGroupSection = (group, actions) => {
   const sectionEl = document.createElement('div')
   sectionEl.className = 'group-section'
@@ -154,16 +155,30 @@ const buildGroupSection = (group, actions) => {
     cardsGridEl.appendChild(cardEl)
   })
 
-  sectionEl.appendChild(cardsGridEl)
+  // NEW: a row with nothing to pick says so, in the grid's place. This is what
+  // makes a filter that matches nothing (or one the border refused to run)
+  // visible in the game itself — and it is honest for a row whose type is "".
+  sectionEl.appendChild(group.items.length === 0 ? buildEmptyNotice() : cardsGridEl)
 
   // the recursion: each child group's section is built by THIS same function
   // and hung inside THIS section — not on the top-level wall.
   // stopping lives in the data: children: [] starts nothing.
+  // NEW: a hidden child renders nothing — no heading, no placeholder. The page
+  // reads as if the row did not exist; a "locked" teaser is a later design
+  // choice and would need no data change.
   group.children.forEach(child => {
-    sectionEl.appendChild(buildGroupSection(child, actions))
+    if (gameState.isVisible(child)) sectionEl.appendChild(buildGroupSection(child, actions))
   })
 
   return sectionEl
+}
+
+// NEW: the empty state — one line where the cards would be
+const buildEmptyNotice = () => {
+  const emptyEl = document.createElement('p')
+  emptyEl.className = 'group-empty'
+  emptyEl.textContent = 'Nothing to choose here'
+  return emptyEl
 }
 
 // View: render — identical structure to the old game:
@@ -173,7 +188,9 @@ export const render = (actions) => {
   statusEl.textContent = gameState.statusMessage
   groupsEl.innerHTML = ''
 
+  // NEW: only the rows state.js says are on screen get a section. Hidden rows
+  // draw nothing at all (same rule as the child loop in buildGroupSection).
   groups.forEach(group => {
-    groupsEl.appendChild(buildGroupSection(group, actions))
+    if (gameState.isVisible(group)) groupsEl.appendChild(buildGroupSection(group, actions))
   })
 }

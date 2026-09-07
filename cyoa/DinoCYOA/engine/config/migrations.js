@@ -79,9 +79,42 @@ const migrateSetV2toV3 = (set) => {
   }
 }
 
+// NEW: a missing file stays null so migrateSet's "missing files" check can
+// still NAME it. ({ ...null, version: 4 } would quietly become { version: 4 },
+// slip past the check, and die later inside hydration.)
+const stamp = (file, version) => file === null ? null : { ...file, version }
+
+// ── step 3: v3 → v4 ──
+// A row stops POINTING at a type (displayType) and starts QUERYING the
+// library: { type, where }. where is null — a v3 row showed every thing of
+// its type, and that is what "no condition" means. Every row also gains the
+// empty gate. Nothing is minted: rows keep their ids and conditions carry no
+// ids, so migrating twice is byte-identical (the oracle checks bytes, not
+// uuid-normalised text as it must for v2 → v3). Rows are rebuilt key by key
+// so the canonical order (id, label, query, showWhen, children) holds
+// whatever order a v3 file had.
+// FROZEN HISTORY: `displayType` is spelled out here and never imported.
+const migrateSetV3toV4 = (set) => {
+  const convertGroup = (group) => ({
+    id:       group.id,
+    label:    group.label,
+    query:    { type: group.displayType, where: null },
+    showWhen: { kind: "always" },
+    children: group.children.map(convertGroup)
+  })
+  return {
+    content: { ...set.content, version: 4, groups: set.content.groups.map(convertGroup) },
+    rules:   stamp(set.rules,  4),
+    themes:  stamp(set.themes, 4),
+    types:   stamp(set.types,  4),
+    things:  stamp(set.things, 4)
+  }
+}
+
 const MIGRATIONS = {
   1: migrateSetV1toV2,
-  2: migrateSetV2toV3
+  2: migrateSetV2toV3,
+  3: migrateSetV3toV4   // NEW
 }
 
 const setVersion = (set) => set.content.version
@@ -99,9 +132,10 @@ const runMigrations = (set) => {
 }
 
 // CHANGED: one doorway instead of migrateContent/migrateRules/migrateThemes.
-// NEW: the border's promise — nothing leaves here missing. A game already at
-// version 3 whose types.json was deleted by hand is an error that NAMES the
-// file, not a null that blows up later inside hydration.
+// The border's promise — nothing leaves here missing. A game at version 3
+// or 4 whose types.json was deleted by hand is an error that NAMES the
+// file, not a null that blows up later inside hydration. (Step 3 keeps that
+// promise by carrying a null through untouched — see stamp above.)
 export const migrateSet = (set) => {
   const migrated = runMigrations(set)
   const missing = Object.keys(migrated).filter(name => migrated[name] === null)

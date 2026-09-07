@@ -1,6 +1,6 @@
 // The shape edition this contract describes. Files carrying an older
 // version get migrated up to this at the border.
-export const SCHEMA_VERSION = 3   // CHANGED: 2 → 3 — types.json and things.json arrive
+export const SCHEMA_VERSION = 4   // CHANGED: 3 → 4 — rows QUERY the library and can hide themselves
 
 // The form specification sheet: everything the editor and the engine know
 // about the data's fields, as data (the engine reads key + hydrateDefault;
@@ -30,6 +30,14 @@ export const SCHEMA_VERSION = 3   // CHANGED: 2 → 3 — types.json and things.
 //                      stored in the element itself, and nothing is born in a
 //                      cabinet — a cabinet slot appears on the first edit only.
 //                      Every walker that reads entry.key must skip these.
+// NEW: two COMPOUND types. One box on the form, but the value is an object:
+//   "query"          → { type, where }: which type a row shows plus an optional
+//                      one-condition filter. One builder owns the whole object.
+//   "showWhen"       → { kind, ... }: when the row is on screen at all. A tagged
+//                      object dispatched by kind — like builders are dispatched by type.
+// Both have an OBJECT default: newborn structuredClones it like any other.
+// (null default = "not written at birth" applies to sheet ENTRIES; the null
+// inside query.where is a value inside a compound entry and is written.)
 //
 // Sheet order = card order. The editor draws a card by walking its sheet top to
 // bottom, so where an entry sits on the sheet is where it sits on the screen.
@@ -46,30 +54,39 @@ export const metaSchema = [
   { key: "heroTitle", caption: "Hero title", type: "text", default: "" },
 ]
 
-// NEW: the top of content.json, as a sheet. Only the group tree lives here.
+// The top of content.json, as a sheet. Only the row tree lives here.
 // meta is drawn by the Page card (metaSchema) and version belongs to the
 // border (migrations.js), so neither is listed. Anything added here renders
-// on the wall AFTER the Page card, not inside it.
+// on the Rows tab AFTER the Page card, not inside it.
 export const contentSchema = [
-  { key: "groups", caption: "Groups", type: "collection", of: "group", default: [] }
+  { key: "groups", caption: "Rows", type: "collection", of: "group", default: [] }   // CHANGED: caption — a group is called a row on screen
 ]
 
+// CHANGED: on screen a group is a "Row" now (the tab, "+ Add row", "Remove
+// row"). The IDENTIFIERS keep "group" — the JSON key `groups`, the sheet name
+// `group`, this constant, the cabinets `groupRules`/`groupThemes` — because
+// renaming them would be a data migration plus code churn across the engine
+// and the editor with no player-visible gain. Only NEW names use "row".
 export const groupSchema = [
-  { key: "label", caption: "Label", type: "text", default: "New group" },
-  // NEW: which KIND of thing this group shows. The value is a type id from
-  // types.json; "" means "shows nothing yet". The options are the loaded
-  // types, which this file cannot know — optionsFrom names them instead.
-  { key: "displayType", caption: "Shows", type: "choice", optionsFrom: "types", default: "" },
-  // NEW: the side cabinets. They sit right after Shows ON PURPOSE — the
+  { key: "label",    caption: "Label",     type: "text",     default: "New row" },   // CHANGED: default
+  // CHANGED: displayType is gone. A row no longer points at a type; it asks
+  // the library a question: { type, where }. type is a type id from
+  // types.json ("" = "shows nothing yet"); where is null (every thing of the
+  // type) or one { field, op, value } condition — see query.js.
+  { key: "query",    caption: "Shows",     type: "query",    default: { type: "", where: null } },
+  // NEW: when the player gets to see this row. always = no gate. The other
+  // kinds and what they mean live in visibility.js (GATES).
+  { key: "showWhen", caption: "Show when", type: "showWhen", default: { kind: "always" } },
+  // The side cabinets. They sit right after Show when ON PURPOSE — the
   // card is drawn in sheet order, and this is where the rules and the look
   // have always been drawn: own fields, then rules, then look, then the lists.
   // file = one of the data files (the same names save() and the server
   // use); cabinet = the object inside that file keyed by group id.
   { type: "attachment", file: "rules",  cabinet: "groupRules",  of: "groupRules" },
   { type: "attachment", file: "themes", cabinet: "groupThemes", of: "groupTheme" },
-  // CHANGED: the items collection is gone. Things live in things.json now,
-  // and a group SHOWS a type (displayType, above) instead of HOLDING items.
-  { key: "children", caption: "Subgroups", type: "collection", of: "group", default: [] }
+  // Things live in things.json; a row SHOWS what its query answers instead
+  // of HOLDING items. Its only list is the rows nested inside it.
+  { key: "children", caption: "Nested rows", type: "collection", of: "group", default: [] }   // CHANGED: caption
 ]
 
 // (itemSchema used to live here. It is gone: what a v2 item looked like is
@@ -77,15 +94,27 @@ export const groupSchema = [
 
 
 // THING SCHEMAS (types.json + things.json)
-// NEW: the three fields EVERY thing has, whatever its type. Declared once,
+// The three fields EVERY thing has, whatever its type. Declared once,
 // here: the editor puts them at the top of every type's sheet; the engine
 // draws them by hand (image, name, cost) exactly as it always has. Authors
 // define only the extras, in types.json.
+// CHANGED: name and cost get code-only ids so a row's filter can point at
+// them the way it points at an author's field — by id, so renaming a key
+// never breaks a filter. imageURL has none: an id is what makes a field
+// queryable, and nobody filters on a filename. These ids never reach a file
+// except inside a row's where.field.
 export const coreThingSchema = [
-  { key: "name",     caption: "Name",           type: "text",   default: "New thing" },
-  { key: "cost",     caption: "Cost",           type: "number", default: 0 },
-  { key: "imageURL", caption: "Image filename", type: "text",   default: "" }
+  { id: "core:name", key: "name",     caption: "Name",           type: "text",   default: "New thing" },
+  { id: "core:cost", key: "cost",     caption: "Cost",           type: "number", default: 0 },
+  {                  key: "imageURL", caption: "Image filename", type: "text",   default: "" }
 ]
+
+// NEW: the fields a row's filter may name, in the order the thing's card
+// shows them: the two core fields that carry an id, then the type's own.
+export const queryableFields = (type) => [...coreThingSchema.filter(entry => entry.id !== undefined), ...type.fields]
+// NEW: one queryable field by its id, or undefined — the "does this field
+// still exist?" question every border check starts with.
+export const fieldById = (type, id) => queryableFields(type).find(field => field.id === id)
 
 // NEW: an author-defined field stores no default of its own — its KIND
 // decides. Text is blank, a number is 0, lines are none.
@@ -117,14 +146,20 @@ export const typeSchema = [
   { key: "fields", caption: "Fields", type: "collection", of: "fieldDef", default: [] }
 ]
 
-// NEW: one author-defined field. key = the name in the file, caption = what
+// One author-defined field. key = the name in the file, caption = what
 // the editor and the game show, type = the kind (one of FIELD_DEFAULTS' keys).
 // Name a field BEFORE adding things of its type: things store values under
-// the key, so renaming it later leaves the old values behind under the old key.
+// the key, so renaming it later leaves the old values behind under the old
+// key — a row filtering on the renamed field keeps following its id, finds
+// no thing holding the new key, and shows nothing until the values are moved.
 export const fieldDefSchema = [
   { key: "key",     caption: "Key (name in the file)", type: "text",   default: "newField" },
   { key: "caption", caption: "Caption",                type: "text",   default: "New field" },
-  { key: "type",    caption: "Kind",                   type: "choice", default: "text",
+  // NEW: afterChange names a hook in the editor's CHANGE_HOOKS table, the way
+  // optionsFrom names an OPTION_SOURCES entry. A field's kind decides which
+  // operators and values fit, so changing it must clear every row condition
+  // built on this field. The engine ignores this prop.
+  { key: "type",    caption: "Kind",                   type: "choice", default: "text", afterChange: "fieldKindChanged",
     options: [
       { value: "text",   label: "Text" },
       { value: "number", label: "Number" },
@@ -166,6 +201,8 @@ export const groupRulesSchema = [
 // loads — and the GAME imports this file too, so that would break the game,
 // not just the editor. Entries point at sheets by NAME (of: "group"); the name
 // is looked up here later, at render time, so a sheet naming itself is fine.
+// (queryableFields and fieldById above are safe: they read coreThingSchema,
+// which is defined before them, and only when called.)
 export const SHEETS = {
   group:      groupSchema,
   groupRules: groupRulesSchema,   // NEW: reachable by name from attachment entries

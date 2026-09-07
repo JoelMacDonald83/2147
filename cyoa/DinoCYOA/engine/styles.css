@@ -67,6 +67,10 @@ body {
   background-position: center;
 }
 
+/* NOTE: no reveal animation when a row appears. render() wipes and rebuilds
+   every section on every click, so a CSS animation here would replay on
+   every click, not just the one that opened the row. */
+
 /* NOTE: the old .dinos / .stuffables theme blocks are gone on purpose.
    Each group's background now travels IN THE DATA (themes.json → gameConfig
    hydration → group.background) and view.js applies it as an inline style.
@@ -85,6 +89,9 @@ body {
   color: #fff;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
+
+/* NEW: a row on screen with nothing to pick says so — a filter that matches nothing is visible, not silent */
+.group-empty { margin: 0 0 20px; color: #fff; opacity: .8; font-style: italic; text-shadow: 0 1px 4px rgba(0,0,0,.6); }
 
 /* ===== The grid: 4 per row, equal sizes ===== */
 
