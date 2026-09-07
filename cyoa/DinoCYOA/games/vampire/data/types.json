@@ -3,7 +3,7 @@
   "types": [
     {
       "id": "c65bc3b1-2f20-4302-ad22-ae15b1b752f7",
-      "label": "Your Bloodline",
+      "label": "Bloodline",
       "fields": [
         {
           "id": "f2b913b3-8262-46a5-a34a-85e06db319ae",
@@ -21,7 +21,7 @@
     },
     {
       "id": "8a72f705-a0f2-4424-b161-cc4df4c8d09d",
-      "label": "The Century of Your Turning",
+      "label": "Century",
       "fields": [
         {
           "id": "84642383-59b2-44ec-acd6-3568b93c95e8",
@@ -39,7 +39,7 @@
     },
     {
       "id": "1a030a34-b65d-4617-b9a2-7a4bea298cb0",
-      "label": "Your Lair",
+      "label": "Lair",
       "fields": [
         {
           "id": "15a69d47-53a7-426d-9365-34d444b4077e",
@@ -57,7 +57,7 @@
     },
     {
       "id": "05dbc8f5-0376-4264-99e9-c234065366f2",
-      "label": "Gifts of the Night",
+      "label": "Gift",
       "fields": [
         {
           "id": "1dafa2a0-9011-4d15-a759-4c5e9a271936",
@@ -75,7 +75,7 @@
     },
     {
       "id": "aeabc3ce-16e0-4c03-a2a6-1b9597705a97",
-      "label": "Your Curse",
+      "label": "Curse",
       "fields": [
         {
           "id": "07f4c574-e512-4909-a700-9fe7af174496",
@@ -93,7 +93,7 @@
     },
     {
       "id": "1f42e048-cb9d-40af-9aed-102705fc0d44",
-      "label": "Your Companion",
+      "label": "Companion",
       "fields": [
         {
           "id": "c3d315b8-7c92-4d3b-9171-1095670f6722",
@@ -111,7 +111,7 @@
     },
     {
       "id": "b37814dc-d3a0-429c-96e6-e999107361e3",
-      "label": "The Hunt",
+      "label": "Hunt",
       "fields": [
         {
           "id": "70592705-315d-4d3a-aa72-01d19719aaae",
@@ -129,7 +129,7 @@
     },
     {
       "id": "1d827d9a-311a-4365-9a19-18f16e698fb5",
-      "label": "Relics & Possessions",
+      "label": "Relic",
       "fields": [
         {
           "id": "e7fbffb5-5798-44ce-82ea-7212f4b151af",
