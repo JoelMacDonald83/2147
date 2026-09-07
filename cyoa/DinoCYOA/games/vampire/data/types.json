@@ -1,0 +1,149 @@
+{
+  "version": 3,
+  "types": [
+    {
+      "id": "c65bc3b1-2f20-4302-ad22-ae15b1b752f7",
+      "label": "Your Bloodline",
+      "fields": [
+        {
+          "id": "f2b913b3-8262-46a5-a34a-85e06db319ae",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "d3b1d484-5658-4066-96b7-b0088171119e",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "8a72f705-a0f2-4424-b161-cc4df4c8d09d",
+      "label": "The Century of Your Turning",
+      "fields": [
+        {
+          "id": "84642383-59b2-44ec-acd6-3568b93c95e8",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "085c6c8a-4b61-41dd-ab33-3eccaf20e010",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "1a030a34-b65d-4617-b9a2-7a4bea298cb0",
+      "label": "Your Lair",
+      "fields": [
+        {
+          "id": "15a69d47-53a7-426d-9365-34d444b4077e",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "eb8af26d-b0d7-406b-bb53-86d904e28d66",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "05dbc8f5-0376-4264-99e9-c234065366f2",
+      "label": "Gifts of the Night",
+      "fields": [
+        {
+          "id": "1dafa2a0-9011-4d15-a759-4c5e9a271936",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "1d7864d1-4e38-4de4-9d81-9b9f6627c06e",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "aeabc3ce-16e0-4c03-a2a6-1b9597705a97",
+      "label": "Your Curse",
+      "fields": [
+        {
+          "id": "07f4c574-e512-4909-a700-9fe7af174496",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "67cbe089-f9be-487e-8226-4b1c9d0a6390",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "1f42e048-cb9d-40af-9aed-102705fc0d44",
+      "label": "Your Companion",
+      "fields": [
+        {
+          "id": "c3d315b8-7c92-4d3b-9171-1095670f6722",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "5c38ec04-75ba-408b-b33c-464dd7d5c0e9",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "b37814dc-d3a0-429c-96e6-e999107361e3",
+      "label": "The Hunt",
+      "fields": [
+        {
+          "id": "70592705-315d-4d3a-aa72-01d19719aaae",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "1bdbf0c7-e78c-4eb1-a38f-abae2bc65dac",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    },
+    {
+      "id": "1d827d9a-311a-4365-9a19-18f16e698fb5",
+      "label": "Relics & Possessions",
+      "fields": [
+        {
+          "id": "e7fbffb5-5798-44ce-82ea-7212f4b151af",
+          "key": "label",
+          "caption": "Label",
+          "type": "text"
+        },
+        {
+          "id": "dab26ef5-0bff-4ddb-ad99-f83245a944c1",
+          "key": "traits",
+          "caption": "Traits (one per line)",
+          "type": "lines"
+        }
+      ]
+    }
+  ]
+}
