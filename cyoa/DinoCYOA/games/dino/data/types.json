@@ -3,7 +3,7 @@
   "types": [
     {
       "id": "4043b853-f2e2-43bd-9a59-a1df426f55e7",
-      "label": "Choose your Dino pet uWu",
+      "label": "Dino",
       "fields": [
         {
           "id": "099a26ea-dcca-421c-ab93-7b104996c3d5",
@@ -20,26 +20,8 @@
       ]
     },
     {
-      "id": "8e74d5de-a4c3-4a11-b86a-fcdaf3e371fd",
-      "label": "sub group",
-      "fields": [
-        {
-          "id": "badaf491-581c-4f5c-9956-13607bf4deb6",
-          "key": "label",
-          "caption": "Label",
-          "type": "text"
-        },
-        {
-          "id": "3b20a0b1-7fde-4c6c-b519-594f80ff69bb",
-          "key": "traits",
-          "caption": "Traits (one per line)",
-          "type": "lines"
-        }
-      ]
-    },
-    {
       "id": "126a2b60-f165-4974-b5d5-b19e1a7043ab",
-      "label": "Now give your Dino stuffables!",
+      "label": "Stuffable",
       "fields": [
         {
           "id": "b2126862-5720-4f21-a55d-b26f34b1753c",
@@ -57,7 +39,7 @@
     },
     {
       "id": "8f600498-8359-4ca2-aef8-c2a80a23ed5a",
-      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!",
+      "label": "Lair",
       "fields": [
         {
           "id": "516f7c05-417f-4764-a9e0-30e6fa79c299",
@@ -75,7 +57,7 @@
     },
     {
       "id": "9a439978-8907-4c37-a19d-fcc29faf472b",
-      "label": "Lair Location",
+      "label": "Location",
       "fields": [
         {
           "id": "8fb7e624-e823-49b5-86e4-a23483059387",

@@ -15,20 +15,7 @@
       "showWhen": {
         "kind": "always"
       },
-      "children": [
-        {
-          "id": "25d4aef8-2f68-451e-a224-db747d2333b5",
-          "label": "sub group",
-          "query": {
-            "type": "8e74d5de-a4c3-4a11-b86a-fcdaf3e371fd",
-            "where": null
-          },
-          "showWhen": {
-            "kind": "always"
-          },
-          "children": []
-        }
-      ]
+      "children": []
     },
     {
       "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
@@ -52,20 +39,20 @@
       "showWhen": {
         "kind": "always"
       },
-      "children": [
-        {
-          "id": "cd9dd080-40ca-4ae9-9487-d67242cf7265",
-          "label": "Lair Location",
-          "query": {
-            "type": "9a439978-8907-4c37-a19d-fcc29faf472b",
-            "where": null
-          },
-          "showWhen": {
-            "kind": "always"
-          },
-          "children": []
-        }
-      ]
+      "children": []
+    },
+    {
+      "id": "cd9dd080-40ca-4ae9-9487-d67242cf7265",
+      "label": "Lair Location",
+      "query": {
+        "type": "9a439978-8907-4c37-a19d-fcc29faf472b",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "anyInRow",
+        "row": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e"
+      },
+      "children": []
     }
   ]
 }
