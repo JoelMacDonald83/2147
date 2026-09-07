@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "meta": {
     "pageTitle": "Adopt a Dino! CYOA",
     "heroTitle": "dw"
@@ -8,12 +8,24 @@
     {
       "id": "dc59d633-7a9d-441b-a8c5-e9224d16eec8",
       "label": "Choose your Dino pet uWu",
-      "displayType": "4043b853-f2e2-43bd-9a59-a1df426f55e7",
+      "query": {
+        "type": "4043b853-f2e2-43bd-9a59-a1df426f55e7",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": [
         {
           "id": "25d4aef8-2f68-451e-a224-db747d2333b5",
           "label": "sub group",
-          "displayType": "8e74d5de-a4c3-4a11-b86a-fcdaf3e371fd",
+          "query": {
+            "type": "8e74d5de-a4c3-4a11-b86a-fcdaf3e371fd",
+            "where": null
+          },
+          "showWhen": {
+            "kind": "always"
+          },
           "children": []
         }
       ]
@@ -21,18 +33,36 @@
     {
       "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
       "label": "Now give your Dino stuffables!",
-      "displayType": "126a2b60-f165-4974-b5d5-b19e1a7043ab",
+      "query": {
+        "type": "126a2b60-f165-4974-b5d5-b19e1a7043ab",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e",
       "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!",
-      "displayType": "8f600498-8359-4ca2-aef8-c2a80a23ed5a",
+      "query": {
+        "type": "8f600498-8359-4ca2-aef8-c2a80a23ed5a",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": [
         {
           "id": "cd9dd080-40ca-4ae9-9487-d67242cf7265",
           "label": "Lair Location",
-          "displayType": "9a439978-8907-4c37-a19d-fcc29faf472b",
+          "query": {
+            "type": "9a439978-8907-4c37-a19d-fcc29faf472b",
+            "where": null
+          },
+          "showWhen": {
+            "kind": "always"
+          },
           "children": []
         }
       ]
