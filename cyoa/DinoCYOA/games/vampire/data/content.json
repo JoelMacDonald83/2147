@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "meta": {
     "pageTitle": "Vampire CYOA",
     "heroTitle": "Choose Your Eternal Night"
@@ -8,49 +8,97 @@
     {
       "id": "a1172238-9ded-422f-840a-2a50c42ff58b",
       "label": "Your Bloodline",
-      "displayType": "c65bc3b1-2f20-4302-ad22-ae15b1b752f7",
+      "query": {
+        "type": "c65bc3b1-2f20-4302-ad22-ae15b1b752f7",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "f846e994-10f5-4112-9589-35847e5ec299",
       "label": "The Century of Your Turning",
-      "displayType": "8a72f705-a0f2-4424-b161-cc4df4c8d09d",
+      "query": {
+        "type": "8a72f705-a0f2-4424-b161-cc4df4c8d09d",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "70cfc783-6698-47c6-8d3f-dd430495a7aa",
       "label": "Your Lair",
-      "displayType": "1a030a34-b65d-4617-b9a2-7a4bea298cb0",
+      "query": {
+        "type": "1a030a34-b65d-4617-b9a2-7a4bea298cb0",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "f3e9503d-c61e-489e-be7d-5c4a67b2be1d",
       "label": "Gifts of the Night",
-      "displayType": "05dbc8f5-0376-4264-99e9-c234065366f2",
+      "query": {
+        "type": "05dbc8f5-0376-4264-99e9-c234065366f2",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "b3a61a01-9a55-4a3a-9eaf-db8336a0c9fc",
       "label": "Your Curse",
-      "displayType": "aeabc3ce-16e0-4c03-a2a6-1b9597705a97",
+      "query": {
+        "type": "aeabc3ce-16e0-4c03-a2a6-1b9597705a97",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "0bfad480-3d75-498a-9b21-09671c25625e",
       "label": "Your Companion",
-      "displayType": "1f42e048-cb9d-40af-9aed-102705fc0d44",
+      "query": {
+        "type": "1f42e048-cb9d-40af-9aed-102705fc0d44",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "ec8c9f7b-9924-431e-b8ba-09cdc8ed5cfc",
       "label": "The Hunt",
-      "displayType": "b37814dc-d3a0-429c-96e6-e999107361e3",
+      "query": {
+        "type": "b37814dc-d3a0-429c-96e6-e999107361e3",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     },
     {
       "id": "01020ba0-46bf-4686-998e-b968d30a53ce",
       "label": "Relics & Possessions",
-      "displayType": "1d827d9a-311a-4365-9a19-18f16e698fb5",
+      "query": {
+        "type": "1d827d9a-311a-4365-9a19-18f16e698fb5",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
       "children": []
     }
   ]
