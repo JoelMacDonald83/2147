@@ -7,35 +7,123 @@ body {
   color: #2b2b2b;
 }
 
-h1 {
-  margin: 0;
-  padding: 18px 24px 6px;
-  font-size: 1.5rem;
-}
-
-/* save feedback line, always visible under the heading */
-#status {
+/* ===== the static header ===== */
+/* CHANGED: one sticky bar holds the title, the tab strip and the toolbar
+   (status + Save). It is in index.html, not painted — render() only fills #tabs. */
+.topbar {
   position: sticky;
   top: 0;
   z-index: 10;
-  margin: 0;
-  padding: 8px 24px;
-  min-height: 1.2em;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
   background: #f2f0eb;
+  border-bottom: 1px solid #e2ded6;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+/* NEW: the tab strip — plain links; the active one is underlined */
+#tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  padding: 8px 12px;
+  color: #6f6a60;
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: 3px solid transparent;
+}
+
+.tab:hover {
+  color: #2b2b2b;
+}
+
+.tab--active {
+  color: #2b2b2b;
+  border-bottom-color: #7a6ff0;
+}
+
+/* NEW: status and Save sit together at the right; the status line lost its
+   own sticky block and sits inline */
+.toolbar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+#status {
+  min-height: 1.2em;
   color: #2e7d32;
   font-weight: 600;
 }
 
 #editor {
-  max-width: 900px;
+  max-width: 1100px;    /* CHANGED: was 900px — room for the Things rail */
   margin: 0 auto;
-  padding: 0 24px 80px;
+  padding: 24px 24px 80px;
 }
 
-.topbar {
+/* ===== the Things tab: rail + pane ===== */
+/* NEW: a narrow list of types on the left, one type's bucket on the right */
+.things-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.rail {
   display: flex;
-  justify-content: flex-end;
-  padding: 8px 0 16px;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 80px;
+}
+
+.rail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #2b2b2b;
+  text-decoration: none;
+}
+
+.rail-item:hover {
+  background: #e9e6df;
+}
+
+.rail-item--active {
+  background: #fff;
+  border: 1px solid #e2ded6;
+  font-weight: 600;
+}
+
+.rail-count {
+  color: #8a857b;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.rail-manage {
+  margin-top: 12px;
+  padding: 0 12px;
+  font-size: 0.85rem;
+  color: #6f6a60;
+}
+
+.things-main h2 {
+  margin: 0 0 14px;
+  font-size: 1.15rem;
 }
 
 /* ===== cards ===== */
@@ -53,10 +141,16 @@ h1 {
   font-size: 1.15rem;
 }
 
+/* CHANGED: the header row now holds toggle · one-liner · Remove, and is the
+   only thing a folded card draws, so it carries no bottom margin of its own
+   when the card is folded — the card's padding is enough */
 .group-header {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+.group-header:not(:last-child) {
   margin-bottom: 14px;
 }
 
@@ -68,6 +162,39 @@ h1 {
   background: #faf9f6;
 }
 
+/* NEW: the fold toggle and the one-liner */
+.card-toggle {
+  width: 28px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: #6f6a60;
+  font-size: 1rem;
+}
+
+.card-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* the warnings never shrink or wrap: the sentence beside them takes the ellipsis */
+.summary-warns {
+  flex-shrink: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.summary-warn {
+  margin-left: 8px;
+  color: #b26a00;
+  font-weight: 400;
+}
+
 /* ===== fields ===== */
 
 .field {
@@ -75,7 +202,8 @@ h1 {
   margin-bottom: 12px;
 }
 
-.field span {
+.field span,
+.field-caption {          /* NEW: the caption the two condition builders use — same look as a field's caption */
   display: block;
   font-size: 0.78rem;
   color: #8a857b;
@@ -84,7 +212,8 @@ h1 {
 
 .field input,
 .field textarea,
-.field select {         /* NEW: selects dress like inputs */
+.field select,
+.condition-row select {   /* selects dress like inputs — in a labelled field or in a condition line */
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
@@ -97,9 +226,31 @@ h1 {
 
 .field input:focus,
 .field textarea:focus,
-.field select:focus {   /* NEW */
+.field select:focus,
+.condition-row select:focus {
   outline: 2px solid #7a6ff0;
   border-color: transparent;
+}
+
+/* NEW: one line of dropdowns — "Shows [type] where [field] [op] [value]",
+   "Show when [kind] [thing or row]" */
+.condition-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.condition-row select {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.condition-row .field-caption {
+  display: inline;
+  margin: 0;
+  white-space: nowrap;
 }
 
 /* ===== buttons ===== */
@@ -137,8 +288,8 @@ button {
   color: #7a6ff0;
 }
 
-/* CHANGED: the two top-level add buttons ("+ Add type", "+ Add group") sit
-   straight inside #editor — nested ones live inside a card. Bigger by position, not by class. */
+/* the two top-level add buttons ("+ Add type", "+ Add row") sit straight
+   inside #editor — nested ones live inside a card. Bigger by position, not by class. */
 #editor > .add-button {
   padding: 16px;
   font-size: 1rem;
@@ -156,24 +307,14 @@ button {
   background: #fdf3f3;
 }
 
-/* ===== wall headings ===== */
-/* NEW: the three walls (Types, Things, Groups) get a small heading straight
-   on the wall, between the big cards — the same way the top-level add buttons
-   sit straight inside #editor */
-.wall-heading {
-  margin: 28px 0 12px;
-  font-size: 1.05rem;
-  color: #6f6a60;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
+/* CHANGED: no wall headings any more — the walls became tabs. The hint stays
+   for an empty Things tab. */
 .wall-hint {
   color: #8a857b;
   margin: 0 0 16px;
 }
 
-/* ===== nested group cards ===== */
+/* ===== nested row cards ===== */
 /* a left rail so depth reads at a glance; each level indents inside its parent */
 .editor-section .editor-section {
   margin: 14px 0;

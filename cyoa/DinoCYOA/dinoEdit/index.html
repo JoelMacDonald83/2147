@@ -6,8 +6,17 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>CYOA Editor</h1>
-  <p id="status"></p>
+  <!-- NEW: a static header. The tab strip is painted by render(); the status
+       line and the Save button are shared by every tab, so they live here and
+       survive every repaint (Save is wired ONCE in main.js). -->
+  <header class="topbar">
+    <h1>CYOA Editor</h1>
+    <nav id="tabs"></nav>
+    <div class="toolbar">
+      <span id="status"></span>
+      <button id="save" class="save-button">Save all</button>
+    </div>
+  </header>
   <div id="editor"></div>
   <script src="main.js" type="module"></script>
 </body>
