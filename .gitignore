@@ -1,0 +1,5 @@
+# macOS Finder metadata — never content
+.DS_Store
+
+# published game folders written by cyoa/DinoCYOA/tools/export.mjs — build output, rebuilt on demand
+dist/
