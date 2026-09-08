@@ -21,6 +21,16 @@
 //   V2  the healthy set fits        V6  paths resolve
 //   V3  the breakage table          V7  problem format
 //   V4  leftovers are not problems
+// NEW: the manager's pure parts — the editor's hash grammar and the server's
+// games module, both import-time pure (no DOM, no HTTP, no disk touched):
+//   N1  hash grammar                parseHash tables; hashFor round-trips through it
+//   N2  names                       slugOf, titleProblems, isGameName — and the two grammars agree
+//   N3  the seed                    seedSet fits, migrates to itself, is read from the sheets, shares nothing
+//
+// NEW: the two imports below are the manager's pure halves. uiState.js reads
+// `location` only inside readHash (never at import), so node can load it;
+// games.js loads fs/promises and tools/export.mjs, which run nothing until
+// called (export.mjs's CLI is gated on argv[1]).
 
 import assert from 'node:assert/strict'
 import { FIELD_DEFAULTS, sheetOfType, SCHEMA_VERSION, FILE_SHEETS, SHEETS, fieldDefSchema, coreThingSchema, metaSchema, pageThemeSchema, totalBudgetSchema, contentSchema, typesSchema } from '../engine/config/schema.js'
@@ -29,6 +39,8 @@ import { OPERATORS, operatorOf, WHERE_VALUE_TYPE, WHERE_VALUE_DEFAULT, readAs, c
 import { GATES, SHOW_WHEN_KINDS, idsBelow, computeVisible, dropHidden, checkShowWhen, deadRows } from '../engine/config/visibility.js'
 import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, danglingReferences } from '../engine/config/references.js'
 import { validateFile, validateSet, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES } from '../engine/config/validate.js'
+import { parseHash, hashFor, uiState, TABS } from '../dinoEdit/uiState.js'
+import { NAME, NAME_MAX, RESERVED, isGameName, slugOf, titleProblems, seedSet } from '../server/games.js'
 
 assert.equal(SCHEMA_VERSION, 4, 'these oracles describe schema version 4')
 
@@ -700,6 +712,107 @@ const everyProblem = []
     assert.equal(problemText(problem), `${problem.path}: ${problem.message}`)
   })
   ok(`V7 problem format: ${everyProblem.length} problems, each { path, message } with a grammatical path and a one-line message; problemText joins them`)
+}
+
+// ═════════════════════════ the manager: N1–N3 ═════════════════════════
+// NEW: the editor's address grammar and the server's games module are pure
+// functions, so they are pinned here, in milliseconds, before the slow half
+// proves the same answers over HTTP (oracles.mjs, M1–M9).
+
+// ───────────────────────── N1 hash grammar ─────────────────────────
+{
+  // the table of §2.3: every shape of hash → { game, tab, selectedType }
+  const home = { game: '', tab: 'rows', selectedType: '' }
+  const table = [
+    ['',                 home],
+    ['#',                home],
+    ['#home',            home],
+    ['#home/rows',       home],
+    ['#dino',            { game: 'dino', tab: 'rows',   selectedType: '' }],
+    ['#dino/types',      { game: 'dino', tab: 'types',  selectedType: '' }],
+    ['#dino/things/abc', { game: 'dino', tab: 'things', selectedType: 'abc' }],
+    ['#dino/rows/abc',   { game: 'dino', tab: 'rows',   selectedType: '' }],     // a type id only means something on Things
+    ['#dino/nope',       { game: 'dino', tab: 'rows',   selectedType: '' }],     // an unknown tab is Rows
+    ['#dino/things',     { game: 'dino', tab: 'things', selectedType: '' }]
+  ]
+  table.forEach(([hash, expected]) => assert.deepEqual(parseHash(hash), expected, `parseHash(${JSON.stringify(hash)})`))
+  // round trip: what hashFor writes, parseHash reads back — for every tab
+  uiState.game = 'dino'
+  assert.equal(hashFor('things', 'abc'), '#dino/things/abc')
+  assert.equal(hashFor('types'), '#dino/types')
+  TABS.forEach(([id]) => {
+    const typeId = id === 'things' ? 'abc' : ''
+    assert.deepEqual(parseHash(hashFor(id, typeId)), { game: 'dino', tab: id, selectedType: typeId }, `hashFor(${id}) round-trips`)
+  })
+  ok(`N1 hash grammar: ${table.length} hashes parse as tabled (home, bare game → Rows, unknown tab → Rows, type id only on Things); hashFor round-trips for ${TABS.length} tabs`)
+}
+
+// ───────────────────────── N2 names ─────────────────────────
+{
+  const slugs = [
+    ['Space Pirates!',     'space-pirates'],
+    [' Ünïcode Café ',     'unicode-cafe'],
+    ['--a--b--',           'a-b'],
+    ['A1',                 'a1'],
+    ['!!!',                ''],
+    ['..',                 ''],
+    ['Adopt a Dino! CYOA', 'adopt-a-dino-cyoa']
+  ]
+  slugs.forEach(([title, slug]) => assert.equal(slugOf(title), slug, `slugOf(${JSON.stringify(title)})`))
+  // titleProblems: [] for a fine title; exactly ONE problem, at "title", for every refusal
+  const fine = ['Dino', 'x'.repeat(40)]
+  fine.forEach(title => assert.deepEqual(titleProblems(title), [], `${JSON.stringify(title)} is a fine title`))
+  const refused = ['', '   ', 42, null, undefined, '!!!', 'x'.repeat(41), ...RESERVED, ...RESERVED.map(word => word.toUpperCase())]
+  refused.forEach(title => {
+    const problems = titleProblems(title)
+    assert.equal(problems.length, 1, `${JSON.stringify(title)}: one problem`)
+    assert.equal(problems[0].path, 'title')
+    assert.ok(problems[0].message.length > 0)
+  })
+  // isGameName: the folder-and-URL grammar, both sides of the line
+  const yes = ['dino', 'my-cyoa-2', 'a'.repeat(40), 'types', 'api']
+  const no  = ['Dino', '..', '.', 'a b', '-a', 'a-', 'a--b', '', 'a/b', '%2e%2e', 'a.b', 'a'.repeat(41), 42, null]
+  yes.forEach(name => assert.equal(isGameName(name), true,  `${JSON.stringify(name)} is a game name`))
+  no.forEach(name  => assert.equal(isGameName(name), false, `${JSON.stringify(name)} is not a game name`))
+  assert.equal(NAME_MAX, 40)
+  assert.ok(NAME instanceof RegExp)
+  // the two grammars agree, by test: every title the server would accept slugs to a name the URL accepts
+  const accepted = [...slugs.map(([title]) => title), ...fine].filter(title => titleProblems(title).length === 0)
+  assert.ok(accepted.length >= 5, 'the table holds accepted titles')
+  accepted.forEach(title => assert.ok(isGameName(slugOf(title)), `slugOf(${JSON.stringify(title)}) = ${JSON.stringify(slugOf(title))} passes isGameName`))
+  ok(`N2 names: ${slugs.length} slugs; ${fine.length} fine titles, ${refused.length} refused at "title" (one problem each); isGameName ${yes.length} yes / ${no.length} no; ${accepted.length} accepted titles slug to game names`)
+}
+
+// ───────────────────────── N3 the seed ─────────────────────────
+{
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+  const seed = seedSet('T')
+  assert.deepEqual(validateSet(seed), [], 'the seed fits the contract')
+  assert.equal(migrateSet(seed), seed, 'the seed is already at SCHEMA_VERSION — the same object comes back')
+  assert.deepEqual(crossChecks(seed), [], 'nothing dangles in an empty game')
+  FILE_NAMES.forEach(name => assert.deepEqual(validateFile(name, seed[name]), [], `${name} alone fits`))
+  // the key orders migrations.js writes and B2 pins
+  assert.deepEqual(Object.keys(seed.content), ['version', 'meta', 'groups'])
+  assert.deepEqual(Object.keys(seed.rules),   ['version', 'totalBudget', 'groupRules'])
+  assert.deepEqual(Object.keys(seed.themes),  ['version', 'page', 'groupThemes'])
+  assert.deepEqual(Object.keys(seed.types),   ['version', 'types'])
+  assert.deepEqual(Object.keys(seed.things),  ['version', 'things'])
+  // read FROM the sheets: the page theme is every entry's default, the budget is the sheet's
+  assert.deepEqual(seed.content.meta, { pageTitle: 'T', heroTitle: 'T' })
+  assert.deepEqual(seed.themes.page, Object.fromEntries(pageThemeSchema.map(entry => [entry.key, entry.default])))
+  assert.equal(seed.rules.totalBudget, totalBudgetSchema[0].default)
+  assert.deepEqual(seed.content.groups, [])
+  assert.deepEqual(seed.types.types, [])
+  assert.deepEqual(seed.things.things, {})
+  assert.deepEqual(seed.rules.groupRules, {})
+  FILE_NAMES.forEach(name => assert.equal(seed[name].version, SCHEMA_VERSION, `${name} stamped ${SCHEMA_VERSION}`))
+  assert.doesNotMatch(JSON.stringify(seed), UUID, 'a newborn mints no ids')
+  // two seeds are equal but share nothing — a default that leaked its object would tie every new game together
+  const twin = seedSet('T')
+  assert.deepEqual(twin, seed)
+  assert.notEqual(twin.content.groups, seed.content.groups, 'groups is a fresh array per seed')
+  assert.notEqual(twin.themes.page, seed.themes.page, 'page is a fresh object per seed')
+  ok(`N3 the seed: fits, migrates to itself, no cross problems; key orders canonical; meta/page/budget read from the sheets; every file stamped ${SCHEMA_VERSION}; no uuid; two seeds share no object`)
 }
 
 console.log(`all ${checks} logic checks passed`)

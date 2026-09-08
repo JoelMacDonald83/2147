@@ -25,7 +25,7 @@
 // NEW: the border (server-side validation) and the export, per game, then one repo check:
 //   C4 relative paths           the v4 engine asks for data/… and builds assets/… — page-relative, never absolute
 //   S1 committed files fit      validateSet says [] over the committed, migrated, climbed and restructured sets; crossChecks names G1's faults by path
-//   S2 route refuses            a bad body is a 400 that names every path and writes nothing; a good one is a 200 and the exact bytes
+//   S2 route refuses            the per-game route (/api/games/<name>/save/<file>): a bad body is a 400 that names every path and writes nothing; a good one is a 200 and the exact bytes; an unknown game → 404; the old /api/save/ is dead
 //   S3 editor order end-to-end  four in parallel then content; a new type + thing + row + slot lands; a removal lands; content alone is refused first
 //   S4 checked against disk     content is refused while a sibling ON DISK is hand-broken, unparsable or missing
 //   E1 exact file set           the export is engine/ + data/ + assets/ + the manifest, nothing else; manifest keys fixed
@@ -38,6 +38,16 @@
 //   E8 wipe safety              only a marked or empty folder is written; the source game and the project are never targets
 //   E9 CLI                      exit 0 prints the tree; usage exits 1; refusals exit 2 and write nothing
 //   E10 ignore rules            .gitignore holds .DS_Store and dist/; git ignores both; no .DS_Store is tracked
+// NEW: the manager — ONE server over a root holding EVERY game, once, after the per-game loop:
+//   M1 GET /api/games           every folder with title, version, counts, exported flag; a bad name and a hollow folder listed with their problem
+//   M2 addresses                / → /dinoEdit/; /games/<name> → 302; /games/<name>/ serves the engine and hydrates over HTTP page-relative; /data/ dead; /config/ alive
+//   M3 POST /api/games          a newborn from the sheets: seed bytes, fits, no-op migration, hydrates clean over HTTP, byte-identical no-edit save, S3's add-a-type lands
+//   M4 create refusals          bad titles → 400 at title, repeat → 409, not-JSON → 400, PUT → not 201; nothing written
+//   M5 two games, one server    both save in the editor's order, isolated; dino's content at vampire → 400; unknown game → 404 on every route
+//   M6 export + /dist/          the route writes exportGame's bytes; /dist/<name>/ hydrates alone; a dangle → 400 and the old export survives; a newborn exports
+//   M7 traversal and case       literal "..", %2e%2e, Dino, dino%2F..%2F over http.request → 403/404, never a server file; nothing written
+//   M8 launch.json              one "cyoa" entry, no game argument, port 3000; "dist" kept; no dino/vampire
+//   M9 scratch only             the real games/ and dist/ are byte-identical to before the run
 //
 // Data for the migration and bridge checks always comes from git (the pins
 // below), never from the working tree — so restructuring the committed data
@@ -45,12 +55,13 @@
 // too (git archive), untouched. Each hydration runs in its own node process
 // (--hydrate / --hydrate-http / --play modes, below) because gameConfig.js
 // does its loading at import time, once per process. The S checks run the
-// REAL server (server/server.js) on a free port over a scratch copy of the
-// game; the E checks run the real export tool in-process and as a CLI.
+// REAL server (server/server.js) on a free port over a scratch GAMES ROOT
+// (CYOA_GAMES_DIR) and a scratch dist root (CYOA_DIST_DIR); the E checks run
+// the real export tool in-process and as a CLI.
 
 import { execFileSync, spawnSync, spawn } from 'node:child_process'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync, existsSync, statSync, rmSync, writeSync, chmodSync } from 'node:fs'
-import { createServer } from 'node:http'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync, existsSync, statSync, rmSync, writeSync, chmodSync } from 'node:fs'
+import { createServer, request as httpRequest } from 'node:http'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -220,6 +231,10 @@ const SERVER_SCRIPT = join(DINO_DIR, 'server', 'server.js')
 const EXPORT_SCRIPT = join(DINO_DIR, 'tools', 'export.mjs')
 const { validateSet, validateFile, crossChecks } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'validate.js')).href)
 const { exportGame, ExportRefusal, MANIFEST, TOOL, listFiles, sha256 } = await import(pathToFileURL(EXPORT_SCRIPT).href)
+// NEW: the server's games module — the seed M3 compares bytes against, the slug
+// and the name grammar N2 pins (imported here so M3 reads the SAME seed the
+// route writes, never a copy that could drift)
+const { seedSet, slugOf, isGameName } = await import(pathToFileURL(join(DINO_DIR, 'server', 'games.js')).href)
 assert.equal(SCHEMA_VERSION, 4, 'these oracles describe schema version 4')
 
 const games = process.argv.length > 2 ? process.argv.slice(2) : ['dino', 'vampire']
@@ -284,23 +299,62 @@ const runExportCLI = (args) => {
   return { status, stdout }
 }
 
-// NEW: the REAL server on a free port (PORT=0) over a scratch game dir
-// (CYOA_GAME_DIR). It logs every request to stdout, so stdout is DRAINED for
-// the life of the child — a full pipe would block it mid-request. The banner
-// carries the port the OS picked. A child that dies or stays silent rejects
-// (and is killed), so a broken server fails the run instead of hanging it.
-const startServer = (gameDir) => new Promise((resolve, reject) => {
-  const child = spawn(process.execPath, [SERVER_SCRIPT, 'scratch'], { env: { ...process.env, PORT: '0', CYOA_GAME_DIR: gameDir }, stdio: ['ignore', 'pipe', 'inherit'] })
+// NEW: the REAL server on a free port (PORT=0) over a scratch games ROOT
+// (CYOA_GAMES_DIR) and a scratch dist root (CYOA_DIST_DIR) — no game on the
+// command line: the server serves every folder under the root, and every
+// request names its game in the URL. It logs every request to stdout, so
+// stdout is DRAINED for the life of the child — a full pipe would block it
+// mid-request. The banner carries the port the OS picked. A child that dies
+// or stays silent rejects (and is killed), so a broken server fails the run
+// instead of hanging it.
+const startServer = (gamesDir, distDir) => new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, [SERVER_SCRIPT], { env: { ...process.env, PORT: '0', CYOA_GAMES_DIR: gamesDir, CYOA_DIST_DIR: distDir }, stdio: ['ignore', 'pipe', 'inherit'] })
   let banner = ''
   const timer = setTimeout(() => { child.kill(); reject(new Error('server did not start in 10 s')) }, 10_000)
   child.on('exit', code => { clearTimeout(timer); reject(new Error(`server exited (${code}) before its banner`)) })
   child.stdout.on('data', chunk => { banner += chunk; const m = banner.match(/Server online at (http:\/\/localhost:\d+)/); if (m) { clearTimeout(timer); resolve({ origin: m[1], stop: () => child.kill() }) } })
 })
-// one POST to the save route; a string body goes over the wire AS IS (the not-JSON case)
-const post = async (origin, name, body) => { const res = await fetch(`${origin}/api/save/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) }); return { status: res.status, body: await res.json() } }
-// exactly main.js's order: the four in parallel, content only when all four are ok
-const editorSave = async (origin, set) => { const receipts = await Promise.all(['types', 'things', 'rules', 'themes'].map(name => post(origin, name, set[name]))); if (receipts.every(r => r.body.ok)) receipts.push(await post(origin, 'content', set.content)); return receipts }
+// CHANGED: one POST to the save route OF ONE GAME; a string body goes over the wire AS IS (the not-JSON case)
+const post = async (origin, game, name, body) => { const res = await fetch(`${origin}/api/games/${game}/save/${name}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: typeof body === 'string' ? body : JSON.stringify(body) }); return { status: res.status, body: await res.json() } }
+// exactly main.js's order: the four in parallel, content only when all four are ok (CHANGED: for one named game)
+const editorSave = async (origin, game, set) => { const receipts = await Promise.all(['types', 'things', 'rules', 'themes'].map(name => post(origin, game, name, set[name]))); if (receipts.every(r => r.body.ok)) receipts.push(await post(origin, game, 'content', set.content)); return receipts }
 const SAVED = { status: 200, body: { ok: true } }
+// NEW: three more ways to ask the server, for the manager's routes (M1–M7).
+// api(): any method, any path, an optional body → { status, body } where body
+// is the parsed JSON — or the raw TEXT when the answer is not JSON (the engine
+// static's "File not found", a 302's empty body) — never a throw. A string
+// body goes over the wire as-is. redirect: 'manual', so a 302 is SEEN as a 302
+// (node's fetch would follow it and report the page it landed on).
+const api = async (origin, path, { method = 'GET', body } = {}) => {
+  const init = { method, redirect: 'manual' }
+  if (body !== undefined) { init.headers = { 'Content-Type': 'application/json' }; init.body = typeof body === 'string' ? body : JSON.stringify(body) }
+  const res = await fetch(`${origin}${path}`, init)
+  const text = await res.text()
+  let parsed
+  try { parsed = JSON.parse(text) } catch { parsed = text }
+  return { status: res.status, body: parsed }
+}
+// get(): one GET of a full url → { status, location, text, headers }, redirects NOT followed
+const get = async (url) => { const res = await fetch(url, { redirect: 'manual' }); return { status: res.status, location: res.headers.get('location'), text: await res.text(), headers: res.headers } }
+// raw(): the LITERAL path over http.request → { status, text }. fetch() is a
+// URL parser first: it folds "/games/../x" to "/x" and "%2e%2e" to ".." on the
+// CLIENT, before anything is sent (probed on this machine) — so a traversal
+// check through fetch would prove nothing about the server. http.request
+// sends the bytes it is given.
+const raw = (origin, path, method = 'GET', body = null) => new Promise((resolve, reject) => {
+  const { hostname, port } = new URL(origin)
+  const headers = body === null ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  const req = httpRequest({ hostname, port, path, method, headers }, res => {
+    let text = ''
+    res.setEncoding('utf8')
+    res.on('data', chunk => { text += chunk })
+    res.on('end', () => resolve({ status: res.statusCode, text }))
+  })
+  req.on('error', reject)
+  req.end(body ?? undefined)
+})
+// a fetch that only wants the status (and drains the body so the socket is reused)
+const fetchStatus = async (url) => { const res = await fetch(url); await res.arrayBuffer(); return res.status }
 
 // NEW: a small static server for E4 — /<prefix>/<rest> → <rootDir>/<rest>,
 // 404 for anything else (so an ABSOLUTE /data/… from the engine would die
@@ -391,6 +445,13 @@ const DINO = {
   }
 }
 DINO.deleted = [DINO.rows.subGroup, DINO.types.subGroup, DINO.things.subGroupA, DINO.things.subGroupB]
+
+// NEW: the real games/ and dist/ as they are BEFORE anything below runs — M9
+// hashes them again at the very end. Every server this file starts is pointed
+// at a scratch root, every export at a scratch folder; this is the proof.
+const realGames = treeHash(join(DINO_DIR, 'games'))
+const realDistDir = join(DINO_DIR, 'dist')
+const realDist = existsSync(realDistDir) ? treeHash(realDistDir) : null
 
 for (const game of games) {
   console.log(`\n${game}`)
@@ -678,14 +739,18 @@ for (const game of games) {
   ok(`S1 games/${game}, the migration, the climb and the restructure all fit; crossChecks = G1's 8 faults by path; two bad kinds postpone the cross pass (D6)`)
 
   // ── S2 the route refuses and writes nothing ──
-  const srvDir = copyGame(workingTreeDir, join(WORK, 'srv', game))
-  const { origin, stop } = await startServer(srvDir)
+  // CHANGED: the server is started over a scratch games ROOT and this game is
+  // one folder under it (the second game of a run joins the first one there);
+  // srvDir is still this game's folder, so every line below reads as before.
+  const srvRoot = join(WORK, 'srv')
+  const srvDir = copyGame(workingTreeDir, join(srvRoot, game))
+  const { origin, stop } = await startServer(srvRoot, join(WORK, 'srv-dist'))
   try {
     const before = readGameText(srvDir)
     const E = readGameSet(srvDir)
     const dataFile = (name) => join(srvDir, 'data', `${name}.json`)
     const unchanged = (label) => assert.deepEqual(readGameText(srvDir), before, `${label}: the disk is unchanged`)
-    const old = await post(origin, 'content', { ...E.content, version: 3 })
+    const old = await post(origin, game, 'content', { ...E.content, version: 3 })
     assert.equal(old.status, 400)
     assert.equal(old.body.ok, false)
     assert.equal(old.body.error, 'content.json does not fit the schema')
@@ -693,35 +758,38 @@ for (const game of games) {
     assert.equal(old.body.problems[0].path, 'content.version')
     assert.match(old.body.problems[0].message, /must be 4 \(found 3\) — open the game in the editor and Save/)
     unchanged('an old version')
-    assert.deepEqual(await post(origin, 'content', '{'), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.deepEqual(await post(origin, game, 'content', '{'), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
     unchanged('a body that is not JSON')
     const brokenTypes = structuredClone(E.types)
     brokenTypes.types[0].fields.push({ ...brokenTypes.types[0].fields[0], id: 'f-dup' })   // a second field under the first one's key
-    const dup = await post(origin, 'types', brokenTypes)
+    const dup = await post(origin, game, 'types', brokenTypes)
     assert.equal(dup.status, 400)
     assert.deepEqual(dup.body.problems, validateFile('types', brokenTypes), 'the wire carries the module\'s own list')
     assert.equal(dup.body.problems[0].path, 'types.types[0].fields[2].key')
     unchanged('a duplicate field key')
-    assert.deepEqual(await post(origin, 'nope', {}), { status: 404, body: { ok: false, error: 'Unknown save target' } })
+    assert.deepEqual(await post(origin, game, 'nope', {}), { status: 404, body: { ok: false, error: 'Unknown save target' } })
     // a target named like an inherited property is unknown too — the whitelist reads own keys only
-    assert.deepEqual(await post(origin, 'constructor', { version: 4 }), { status: 404, body: { ok: false, error: 'Unknown save target' } })
+    assert.deepEqual(await post(origin, game, 'constructor', { version: 4 }), { status: 404, body: { ok: false, error: 'Unknown save target' } })
     // a save that fails ON DISK is a 500 receipt, never the end of the process: the
     // committed rules land fine right after (the server is still up)
     chmodSync(dataFile('rules'), 0o444)
     try {
-      const denied = await post(origin, 'rules', E.rules)
+      const denied = await post(origin, game, 'rules', E.rules)
       assert.equal(denied.status, 500)
       assert.match(denied.body.error, /^rules\.json was not written \(EACCES\)$/)
       unchanged('a write the disk refused')
     } finally {
       chmodSync(dataFile('rules'), 0o644)
     }
-    assert.deepEqual(await post(origin, 'rules', E.rules), SAVED)
+    assert.deepEqual(await post(origin, game, 'rules', E.rules), SAVED)
     assert.equal(readFileSync(dataFile('rules'), 'utf8'), serialize(E.rules), 'the server writes the exact on-disk format')
-    ok('S2 route: version 3 → 400 at content.version; not-JSON → 400; duplicate field key → 400 at types.types[0].fields[2].key; nothing written; unknown and prototype-named targets → 404; a disk refusal → 500 and the server lives; the committed rules → 200')
+    // NEW: the route carries the game — a game the root does not hold is a 404 receipt, and the old game-less route is gone
+    assert.deepEqual(await post(origin, 'nope', 'rules', E.rules), { status: 404, body: { ok: false, error: 'Unknown CYOA "nope"' } })
+    assert.equal((await api(origin, '/api/save/rules', { method: 'POST', body: E.rules })).status, 404, 'the old route is dead')
+    ok('S2 route: version 3 → 400 at content.version; not-JSON → 400; duplicate field key → 400 at types.types[0].fields[2].key; nothing written; unknown and prototype-named targets → 404; a disk refusal → 500 and the server lives; the committed rules → 200; unknown game → 404; /api/save/ dead')
 
     // ── S3 the editor's order end-to-end: add-type-first-save, removal, and the negative ──
-    assert.deepEqual(await editorSave(origin, E), Array(5).fill(SAVED), 'the committed set lands: five 200s')
+    assert.deepEqual(await editorSave(origin, game, E), Array(5).fill(SAVED), 'the committed set lands: five 200s')
     assert.deepEqual(readGameText(srvDir), readGameText(workingTreeDir), `byte-identical to games/${game}/data`)
     // the editor's way to add a type: the type, its bucket with a thing, a row
     // asking for the type with a condition on its field, and a rules slot
@@ -734,12 +802,12 @@ for (const game of games) {
     E2.rules.groupRules[rowId] = { min: 1 }
     assert.deepEqual(validateSet(E2), [], 'the pre-flight passes the new set')
     // negative first: content alone, before its type has landed, is refused against the disk
-    const early = await post(origin, 'content', E2.content)
+    const early = await post(origin, game, 'content', E2.content)
     assert.equal(early.status, 400)
     assert.equal(early.body.problems[0].path, `content.groups[${E2.content.groups.length - 1}].query.type`)
     assert.match(early.body.problems[0].message, /shows a type that does not exist/)
     assert.equal(readFileSync(dataFile('content'), 'utf8'), serialize(E.content), 'content.json unchanged')
-    assert.deepEqual(await editorSave(origin, E2), Array(5).fill(SAVED), 'in the editor\'s order the same set lands: five 200s')
+    assert.deepEqual(await editorSave(origin, game, E2), Array(5).fill(SAVED), 'in the editor\'s order the same set lands: five 200s')
     assert.deepEqual(readGameSet(srvDir), JSON.parse(JSON.stringify(E2)), 'the disk holds E2 exactly')
     // removal the editor's way (REMOVE_HOOKS.type): forget each thing, drop the bucket, forget the type, splice it
     const E3 = structuredClone(E2)
@@ -747,7 +815,7 @@ for (const game of games) {
     delete E3.things.things[typeId]
     forgetType(E3.content.groups, typeId)
     E3.types.types.splice(E3.types.types.findIndex(type => type.id === typeId), 1)
-    assert.deepEqual(await editorSave(origin, E3), Array(5).fill(SAVED), 'the removal lands: five 200s')
+    assert.deepEqual(await editorSave(origin, game, E3), Array(5).fill(SAVED), 'the removal lands: five 200s')
     const afterRemoval = readGameSet(srvDir)
     assert.deepEqual(danglingReferences(afterRemoval), [], 'nothing dangles on disk')
     assert.deepEqual(afterRemoval.content.groups.at(-1).query, { type: '', where: null }, 'the Pets row shows nothing now')
@@ -759,18 +827,18 @@ for (const game of games) {
     const handBroken = readGameSet(srvDir).types
     handBroken.types[0].fields[0].key = 'name'                       // a hand-edit the editor would have warned about
     writeFileSync(dataFile('types'), serialize(handBroken))
-    const reserved = await post(origin, 'content', content)
+    const reserved = await post(origin, game, 'content', content)
     assert.equal(reserved.status, 400)
     assert.match(reserved.body.problems[0].path, /^types\.types\[0\]\.fields\[0\]\.key$/)
     assert.equal(readFileSync(dataFile('content'), 'utf8'), atS4.content, 'content.json unchanged')
     writeFileSync(dataFile('types'), atS4.types)
     writeFileSync(dataFile('types'), '{')
-    const unparsable = await post(origin, 'content', content)
+    const unparsable = await post(origin, game, 'content', content)
     assert.equal(unparsable.status, 400)
     assert.match(unparsable.body.problems.find(problem => problem.path === 'types').message, /types\.json on disk cannot be read \(/)
     writeFileSync(dataFile('types'), atS4.types)
     rmSync(dataFile('things'))
-    const missing = await post(origin, 'content', content)
+    const missing = await post(origin, game, 'content', content)
     assert.equal(missing.status, 400)
     assert.match(missing.body.problems.find(problem => problem.path === 'things').message, /cannot be read \(ENOENT\)/)
     assert.equal(readFileSync(dataFile('content'), 'utf8'), atS4.content, 'content.json unchanged')
@@ -1003,6 +1071,311 @@ for (const game of games) {
   ok('E9 CLI: exit 0 prints the tree and writes E1\'s bytes; no args → 1 (usage); unmarked folder, v3 data, unknown game → 2, nothing written')
 }
 
+// ═════════════════════ the manager: M1–M7 ═════════════════════
+// NEW: ONE server over a root that holds EVERY game of this run, plus three
+// folders planted to be listed loudly or skipped. Nothing here reads the real
+// games/ or dist/: ROOT is a scratch copy and DIST does not even exist yet —
+// the export route has to make it. Every game name travels in the URL.
+{
+  const ROOT = join(WORK, 'manager'), DIST = join(WORK, 'manager-dist')   // DIST does not exist yet: the route must make it
+  games.forEach(g => copyGame(join(DINO_DIR, 'games', g), join(ROOT, g)))
+  mkdirSync(join(ROOT, 'Bad Name', 'data'), { recursive: true })          // a folder the rule refuses
+  mkdirSync(join(ROOT, 'hollow'))                                          // a folder with no data
+  mkdirSync(join(ROOT, '.hidden'))                                         // a dot-folder: skipped
+  writeFileSync(join(ROOT, 'README.txt'), 'not a folder\n')                // a file: skipped
+  const engineIndex = readFileSync(join(v4EngineDir, 'index.html'), 'utf8')
+  const { origin, stop } = await startServer(ROOT, DIST)
+  try {
+    const at = (path) => get(`${origin}${path}`)                            // a GET of one path on THIS server
+    const call = (path, init) => api(origin, path, init)                    // one API call on THIS server
+    const FACT_KEYS = ['name', 'title', 'version', 'rows', 'types', 'things', 'exported']
+    // the facts the list must show for a game folder, read from that folder
+    const factsOf = (name, dir) => {
+      const set = readGameSet(dir)
+      return { name, title: set.content.meta.pageTitle, version: SCHEMA_VERSION, rows: countGroups(set.content.groups), types: set.types.types.length, things: Object.values(set.things.things).flat().length, exported: false }
+    }
+    const listed = async () => { const r = await call('/api/games'); assert.equal(r.status, 200); return r.body.games }
+    const cardOf = (list, name) => list.find(g => g.name === name)
+
+    // ── M1 the list: every folder, read fresh; a bad name and a hollow folder are listed with their problem ──
+    const list1 = await call('/api/games')
+    assert.equal(list1.status, 200)
+    assert.deepEqual(Object.keys(list1.body), ['ok', 'games'])
+    assert.equal(list1.body.ok, true)
+    assert.deepEqual(list1.body.games.map(g => g.name), ['Bad Name', ...games, 'hollow'].sort(), 'every folder, sorted; the dot-folder and the file absent')
+    games.forEach(g => {
+      const facts = cardOf(list1.body.games, g)
+      assert.deepEqual(Object.keys(facts), FACT_KEYS, `${g}: the Facts keys, in order`)
+      assert.deepEqual(facts, factsOf(g, join(ROOT, g)), `${g}: the facts on disk`)
+    })
+    const badName = cardOf(list1.body.games, 'Bad Name')
+    assert.deepEqual(Object.keys(badName), ['name', 'error'])
+    assert.match(badName.error, /rename the folder/)
+    assert.match(cardOf(list1.body.games, 'hollow').error, /data\/content\.json cannot be read \(ENOENT\)/)
+    // a content.json that is not JSON is listed with its problem too — and the list is read fresh, so it shows at once
+    mkdirSync(join(ROOT, 'broken', 'data'), { recursive: true })
+    writeFileSync(join(ROOT, 'broken', 'data', 'content.json'), '{')
+    assert.match(cardOf(await listed(), 'broken').error, /cannot be read \(/)
+    rmSync(join(ROOT, 'broken'), { recursive: true })
+    assert.equal(cardOf(await listed(), 'broken'), undefined, 'gone from the list once the folder is gone')
+    ok(`M1 GET /api/games: ${list1.body.games.length} folders listed, sorted; ${games.join(' and ')} with title, version ${SCHEMA_VERSION}, counts, exported false; "Bad Name" → rename the folder; hollow → ENOENT; a "{" content.json → cannot be read; dot-folder and file skipped`)
+
+    // ── M2 addresses: the manager is the door, the engine plays under /games/<name>/ page-relative, the old absolute paths are dead ──
+    const root = await at('/')
+    assert.deepEqual([root.status, root.location], [302, '/dinoEdit/'], '/ → the editor')
+    const bare = await at('/dinoEdit')
+    assert.deepEqual([bare.status, bare.location], [302, '/dinoEdit/'])
+    assert.equal((await at('/dinoEdit/')).text, readFileSync(join(DINO_DIR, 'dinoEdit', 'index.html'), 'utf8'), '/dinoEdit/ is the editor page')
+    assert.equal((await at('/config/validate.js')).status, 200, 'the editor\'s absolute /config/*.js imports still answer')
+    assert.equal((await at('/data/content.json')).status, 404, 'the old absolute /data/ is dead')
+    assert.equal((await at('/assets/heroBG.jpg')).status, 404, 'the old absolute /assets/ is dead')
+    assert.equal((await at('/games/')).status, 404)
+    const engineModules = listFiles(v4EngineDir).filter(notDot).filter(path => path.endsWith('.js'))
+    for (const g of games) {
+      const noSlash = await at(`/games/${g}`)
+      assert.deepEqual([noSlash.status, noSlash.location], [302, `/games/${g}/`], `/games/${g} → the slash form (page-relative paths need it)`)
+      assert.equal((await at(`/games/${g}/`)).text, engineIndex, `/games/${g}/ is engine/index.html`)
+      const base = `${origin}/games/${g}/index.html`
+      // what a browser does next: every href/src in the page, every static import in every engine module
+      for (const [, attr] of engineIndex.matchAll(/(?:href|src)="([^"]+)"/g)) assert.equal(await fetchStatus(new URL(attr, base)), 200, `${attr} from index.html under /games/${g}/`)
+      for (const rel of engineModules) {
+        const moduleURL = new URL(rel, base)
+        for (const [, spec] of readFileSync(join(v4EngineDir, rel), 'utf8').matchAll(/from\s+['"]([^'"]+)['"]/g)) assert.equal(await fetchStatus(new URL(spec, moduleURL)), 200, `${spec} from ${rel} under /games/${g}/`)
+      }
+      // the engine hydrates over HTTP, page-relative, exactly as it does over the folder
+      const http = await hydrateHTTP(v4EngineDir, base)
+      assert.deepEqual(http.warnings, [], `${g}: no warnings over HTTP`)
+      assert.deepEqual(http.groups, hydrate(v4EngineDir, join(ROOT, g)).groups, `${g}: over HTTP the game plays like the folder`)
+      assert.ok(http.fetched.every(url => url.startsWith('data/')), `page-relative fetches: ${http.fetched.join(' ')}`)
+      assert.equal((await at(`/games/${g}/data/content.json`)).text, readFileSync(join(ROOT, g, 'data', 'content.json'), 'utf8'), `${g}: data/content.json is the bytes on disk`)
+      for (const rel of [...new Set(imagesOf(http.groups)), http.heroImage].filter(Boolean)) {
+        const res = await at(`/games/${g}/${rel}`)
+        assert.equal(res.status, 200, `${g}: ${rel}`)
+        assert.equal(Number(res.headers.get('content-length')), statSync(join(ROOT, g, rel)).size, `${g}: ${rel} whole file`)
+      }
+    }
+    ok(`M2 addresses: / and /dinoEdit → /dinoEdit/; /config/ alive, /data/ and /assets/ dead; /games/<g> → 302; /games/<g>/ = engine/index.html, every link and import 200, hydrates over HTTP page-relative with every image whole (${games.join(', ')})`)
+
+    // ── M3 create: a newborn from the sheets, byte for byte; it fits, migrates to itself, hydrates clean, saves byte-identically, and grows a type ──
+    const born = await call('/api/games', { method: 'POST', body: { title: 'Space Pirates!' } })
+    assert.deepEqual(born, { status: 201, body: { ok: true, name: 'space-pirates', title: 'Space Pirates!' } })
+    const newborn = 'space-pirates', dir = join(ROOT, newborn)
+    assert.deepEqual(listFiles(dir), FILES.map(name => `data/${name}.json`).sort(), 'five data files, nothing else')
+    assert.ok(statSync(join(dir, 'assets')).isDirectory(), 'an assets/ folder')
+    assert.equal(readdirSync(join(dir, 'assets')).length, 0, 'an EMPTY assets/ folder')
+    assert.deepEqual(readGameText(dir), Object.fromEntries(FILES.map(name => [name, serialize(seedSet('Space Pirates!')[name])])), 'the files are games.js\'s seed in the server\'s on-disk format')
+    const newSet = readGameSet(dir)
+    assert.deepEqual(validateSet(newSet), [], 'the newborn fits')
+    assert.equal(migrateSet(newSet), newSet, 'the newborn is already at SCHEMA_VERSION — the same object comes back')
+    assert.equal(keysOf(newSet.content), 'version,meta,groups')
+    assert.equal(keysOf(newSet.rules), 'version,totalBudget,groupRules')
+    assert.equal(keysOf(newSet.themes), 'version,page,groupThemes')
+    assert.equal(keysOf(newSet.types), 'version,types')
+    assert.equal(keysOf(newSet.things), 'version,things')
+    const bornLocal = hydrate(v4EngineDir, dir)
+    assert.deepEqual([bornLocal.warnings, bornLocal.groups], [[], []], 'the engine hydrates the newborn over the folder: no warnings, no rows')
+    const bornHTTP = await hydrateHTTP(v4EngineDir, `${origin}/games/${newborn}/index.html`)
+    assert.deepEqual([bornHTTP.warnings, bornHTTP.groups], [[], []], 'and over HTTP')
+    assert.deepEqual(cardOf(await listed(), newborn), { name: newborn, title: 'Space Pirates!', version: 4, rows: 0, types: 0, things: 0, exported: false }, 'the list shows the newborn')
+    assert.deepEqual(await editorSave(origin, newborn, newSet), Array(5).fill(SAVED), 'a no-edit save: five 200s')
+    assert.deepEqual(readGameText(dir), Object.fromEntries(FILES.map(name => [name, serialize(seedSet('Space Pirates!')[name])])), 'a no-edit save of a newborn is byte-identical')
+    // S3's add-a-type recipe on a newborn: no first thing exists to gate on, so the row is always shown
+    const grown = structuredClone(newSet)
+    const typeId = randomUUID(), fieldId = randomUUID(), thingId = randomUUID(), rowId = randomUUID()
+    grown.types.types.push({ id: typeId, label: 'Pet', fields: [{ id: fieldId, key: 'colour', caption: 'Colour', type: 'text' }] })
+    grown.things.things[typeId] = [{ id: thingId, name: 'Rex', cost: 1, imageURL: '', colour: 'green' }]
+    grown.content.groups.push({ id: rowId, label: 'Pets', query: { type: typeId, where: { field: fieldId, op: 'is', value: 'green' } }, showWhen: { kind: 'always' }, children: [] })
+    grown.rules.groupRules[rowId] = { min: 1 }
+    assert.deepEqual(validateSet(grown), [], 'the pre-flight passes the grown set')
+    assert.deepEqual(await editorSave(origin, newborn, grown), Array(5).fill(SAVED), 'the first type lands: five 200s')
+    const grownResult = hydrate(v4EngineDir, dir)
+    assert.deepEqual(grownResult.warnings, [])
+    assert.equal(countGroups(grownResult.groups), 1, 'one row')
+    assert.equal(countItems(grownResult.groups), 1, 'one thing')
+    ok(`M3 POST /api/games "Space Pirates!" → 201 ${newborn}: five seed files byte-equal to games.js's seed, empty assets/; fits; migrateSet is identity; canonical key orders; hydrates clean over the folder and HTTP; listed 0/0/0; no-edit save byte-identical; a type + thing + row + slot lands (1 row, 1 item)`)
+
+    // ── M4 create refusals: every bad title is a 400 at "title", a repeat is a 409, and nothing is written ──
+    const before = listFiles(ROOT)
+    const newbornHash = treeHash(dir)
+    const refusals = [
+      [{ title: 'Space Pirates!' },  409, /already exists/],
+      [{ title: 'space   pirates' }, 409, /already exists/],           // the same slug
+      [{ title: games[0] },          409, /already exists/],
+      [{ title: '' },                400, null],
+      [{ title: '   ' },             400, null],
+      [{ title: '!!!' },             400, /needs a letter/],
+      [{ title: '..' },              400, null],
+      [{ title: 'home' },            400, /keeps for itself/],
+      [{ title: 'HOME' },            400, /keeps for itself/],
+      [{ title: 'x'.repeat(41) },    400, /longer than 40/],
+      [{},                           400, null],
+      [{ title: 42 },                400, null],
+      [{ title: null },              400, null]
+    ]
+    for (const [body, status, pattern] of refusals) {
+      const r = await call('/api/games', { method: 'POST', body })
+      assert.equal(r.status, status, `${JSON.stringify(body)} → ${status}`)
+      assert.equal(r.body.ok, false)
+      if (status === 400) {
+        assert.equal(r.body.error, 'title does not make a game name', JSON.stringify(body))
+        assert.equal(r.body.problems[0].path, 'title', JSON.stringify(body))
+        if (pattern) assert.match(r.body.problems[0].message, pattern, JSON.stringify(body))
+      } else {
+        assert.match(r.body.error, pattern, JSON.stringify(body))
+      }
+    }
+    assert.deepEqual(await call('/api/games', { method: 'POST', body: '{' }), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.notEqual((await call('/api/games', { method: 'PUT', body: { title: 'Nope' } })).status, 201, 'PUT does not create')
+    assert.deepEqual(await call('/api/nope'), { status: 404, body: { ok: false, error: 'Unknown route' } })
+    assert.deepEqual(listFiles(ROOT), before, 'no refusal wrote a file')
+    assert.equal(treeHash(dir), newbornHash, 'the 409s left the existing newborn untouched')
+    // and the slug rule over the wire (N2 pins it in memory): accents stripped, the title trimmed
+    assert.deepEqual(await call('/api/games', { method: 'POST', body: { title: ' Ünïcode Café ' } }), { status: 201, body: { ok: true, name: 'unicode-cafe', title: 'Ünïcode Café' } })
+    ok(`M4 create refusals: ${refusals.length} bad bodies → 409 (repeat, same slug, ${games[0]}) or 400 at "title"; "{" → 400 Body is not valid JSON; PUT → not 201; /api/nope → 404 Unknown route; nothing written; " Ünïcode Café " → 201 unicode-cafe`)
+
+    // ── M5 two games, one server: each saves in the editor's order, in isolation; the border reads the NAMED game's siblings; an unknown game is 404 on every route ──
+    for (const g of games) {
+      assert.deepEqual(await editorSave(origin, g, readGameSet(join(ROOT, g))), Array(5).fill(SAVED), `${g}: the committed set lands`)
+      assert.deepEqual(readGameText(join(ROOT, g)), readGameText(join(DINO_DIR, 'games', g)), `${g}: byte-identical to games/${g}/data`)
+    }
+    let crossed = ''
+    if (games.length >= 2) {
+      const [a, b] = games
+      const bBefore = readGameText(join(ROOT, b))
+      const aSet = readGameSet(join(ROOT, a))
+      const A2 = structuredClone(aSet)
+      A2.rules.totalBudget += 1
+      assert.deepEqual(await editorSave(origin, a, A2), Array(5).fill(SAVED), `${a}: an edit lands`)
+      assert.equal(readFileSync(join(ROOT, a, 'data', 'rules.json'), 'utf8'), serialize(A2.rules), `${a}: the edit is on disk`)
+      assert.deepEqual(readGameText(join(ROOT, b)), bBefore, `a save to ${a} never touches ${b}`)
+      assert.deepEqual(await editorSave(origin, a, aSet), Array(5).fill(SAVED), `${a}: put back`)
+      assert.deepEqual(readGameText(join(ROOT, a)), readGameText(join(DINO_DIR, 'games', a)), `${a}: back to the committed bytes`)
+      // the cross-post: a's content at b's route is checked against B's siblings — a's types are not there
+      const wrongGame = await post(origin, b, 'content', aSet.content)
+      assert.equal(wrongGame.status, 400)
+      assert.match(wrongGame.body.problems[0].path, /^content\.groups\[0\]\.query\.type$/)
+      assert.match(wrongGame.body.problems[0].message, /shows a type that does not exist/)
+      assert.deepEqual(readGameText(join(ROOT, b)), bBefore, `${b} unchanged by the refused cross-post`)
+      crossed = `; ${a}'s content at ${b} → 400 (${b}'s siblings were read); a save to ${a} leaves ${b} untouched`
+    }
+    const foldersBefore = readdirSync(ROOT).sort()
+    const unknown = ['nope', 'Dino', 'hollow', 'Bad%20Name', 'home', 'space-pirates-']
+    for (const name of unknown) {
+      const receipt = { status: 404, body: { ok: false, error: `Unknown CYOA "${name}"` } }
+      assert.deepEqual(await call(`/api/games/${name}/save/content`, { method: 'POST', body: {} }), receipt, `${name}: save`)
+      assert.deepEqual(await call(`/api/games/${name}/export`, { method: 'POST' }), receipt, `${name}: export`)
+      assert.equal((await at(`/games/${name}/`)).status, 404, `${name}: play`)
+      assert.equal((await at(`/dist/${name}/`)).status, 404, `${name}: preview`)
+    }
+    const [first] = games
+    assert.deepEqual(await call(`/api/games/${first}/save/nope`, { method: 'POST', body: {} }), { status: 404, body: { ok: false, error: 'Unknown save target' } })
+    assert.deepEqual(await call(`/api/games/${first}/nope`, { method: 'POST', body: {} }), { status: 404, body: { ok: false, error: 'Unknown route' } })
+    assert.deepEqual(await call(`/api/games/${first}/save/content`), { status: 404, body: { ok: false, error: 'Unknown route' } }, 'GET on the save route')
+    assert.deepEqual(readdirSync(ROOT).sort(), foldersBefore, 'no unknown name made a folder')
+    ok(`M5 two games, one server: ${games.join(' and ')} save in the editor's order, byte-identical${crossed}; ${unknown.length} unknown names → 404 on save, export, play and preview; bad target / bad route / GET → 404; nothing written`)
+
+    // ── M6 export over HTTP + preview: the route writes exactly exportGame's bytes, /dist/<name>/ plays from the folder alone, a refusal keeps the old export ──
+    assert.equal((await at(`/dist/${first}/`)).status, 404, 'nothing published yet — DIST does not exist')
+    const exportedGames = [...games, newborn]
+    for (const g of exportedGames) {
+      const r = await call(`/api/games/${g}/export`, { method: 'POST' })
+      assert.equal(r.status, 200, `${g}: ${JSON.stringify(r.body)}`)
+      assert.deepEqual(Object.keys(r.body), ['ok', 'name', 'outDir', 'preview', 'files', 'rows', 'items'], 'the receipt\'s keys, in order')
+      assert.equal(r.body.name, g)
+      assert.equal(r.body.outDir, join(DIST, g))
+      assert.equal(r.body.preview, `/dist/${g}/`)
+      // the reference: the same tool, in-process, from the same source — its own folder, so nothing here leans on E1's
+      const reference = exportGame({ game: g, sourceDir: join(ROOT, g), outDir: join(WORK, 'manager-ref', g) })
+      assert.equal(treeHash(join(DIST, g)), treeHash(reference.outDir), `${g}: the route wrote exactly exportGame's bytes, manifest included`)
+      assert.deepEqual({ rows: r.body.rows, items: r.body.items, files: r.body.files }, { rows: reference.manifest.rows, items: reference.manifest.items, files: Object.keys(reference.manifest.files).length }, `${g}: the receipt's counts`)
+      const noSlash = await at(`/dist/${g}`)
+      assert.deepEqual([noSlash.status, noSlash.location], [302, `/dist/${g}/`])
+      assert.equal((await at(`/dist/${g}/`)).text, readFileSync(join(DIST, g, 'index.html'), 'utf8'), `${g}: /dist/${g}/ is the folder's own index.html`)
+      const http = await hydrateHTTP(join(DIST, g), `${origin}/dist/${g}/index.html`)
+      assert.deepEqual(http.warnings, [], `${g}: the published folder hydrates clean`)
+      assert.deepEqual(http.groups, hydrate(v4EngineDir, join(ROOT, g)).groups, `${g}: and plays like the game folder`)
+      assert.ok(http.fetched.every(url => url.startsWith('data/')), `page-relative fetches: ${http.fetched.join(' ')}`)
+      for (const rel of [...new Set(imagesOf(http.groups)), http.heroImage].filter(Boolean)) {
+        const res = await at(`/dist/${g}/${rel}`)
+        assert.equal(res.status, 200, `${g}: ${rel} under /dist/`)
+        assert.equal(Number(res.headers.get('content-length')), statSync(join(DIST, g, rel)).size, `${g}: ${rel} whole file`)
+      }
+      // no engine fallback under /dist/: the folder's own files answer, a file the folder lacks is 404
+      assert.equal((await at(`/dist/${g}/app.js`)).status, 200, `${g}: the folder's own app.js`)
+      assert.equal((await at(`/dist/${g}/nope.js`)).status, 404, `${g}: a file the folder lacks`)
+      assert.equal((await at(`/dist/${g}/config/gameConfig.js`)).text, readFileSync(join(DIST, g, 'config', 'gameConfig.js'), 'utf8'), `${g}: config/gameConfig.js is the folder's copy`)
+    }
+    const afterExport = await listed()
+    exportedGames.forEach(g => assert.equal(cardOf(afterExport, g).exported, true, `${g}: the list says exported`))
+    assert.equal(cardOf(afterExport, 'unicode-cafe').exported, false, 'a game never exported still says so')
+    // a refusal: the source is refused before dist/ is touched, so the previous export survives
+    const h = treeHash(join(DIST, first))
+    const firstContentText = readFileSync(join(ROOT, first, 'data', 'content.json'), 'utf8')
+    const dangling = JSON.parse(firstContentText)
+    dangling.groups[0].showWhen = { kind: 'anyInRow', row: 'no-such-row' }
+    writeFileSync(join(ROOT, first, 'data', 'content.json'), serialize(dangling))
+    const refused = await call(`/api/games/${first}/export`, { method: 'POST' })
+    assert.equal(refused.status, 400)
+    assert.equal(refused.body.ok, false)
+    assert.match(refused.body.error, /does not fit the schema \(1 problem/)
+    assert.deepEqual(refused.body.problems, [{ path: 'content.groups[0].showWhen', message: 'show-when names a row that does not exist (no-such-row)' }])
+    assert.equal(treeHash(join(DIST, first)), h, 'the previous export survives the refusal')
+    writeFileSync(join(ROOT, first, 'data', 'content.json'), firstContentText)
+    // the newborn, grown in M3, publishes too
+    const bornExport = await call(`/api/games/${newborn}/export`, { method: 'POST' })
+    assert.deepEqual([bornExport.status, bornExport.body.rows, bornExport.body.items], [200, 1, 1], 'the newborn exports with its one row and one thing')
+    ok(`M6 export + /dist/: ${exportedGames.join(', ')} → 200 with exportGame's exact bytes and counts; /dist/<g> → 302; /dist/<g>/ hydrates from the folder alone, every image whole, no engine fallback; the list says exported; a dangling gate → 400 at content.groups[0].showWhen and the old export survives; the newborn exports 1 row, 1 thing`)
+
+    // ── M7 traversal and case: literal "..", %2e%2e, an uppercase name, an encoded slash — never a server file, never another game's data, nothing written ──
+    const filesBefore = listFiles(ROOT)
+    const probes = [
+      `/games/../server/server.js`,
+      `/games/%2e%2e/server/server.js`,
+      `/games/${first}/../../server/server.js`,
+      `/games/${first}/data/../../../server/server.js`,
+      // climbing from one game's data into ANOTHER game's — only a probe when a second game is on the root
+      // (with one game the path lands back on its own content.json, and a 200 there is the right answer)
+      ...(games.length >= 2 ? [`/games/${first}/data/../../${games[1]}/data/content.json`] : []),
+      `/dist/../games/${first}/data/content.json`,
+      `/dist/${first}/../../server/server.js`,
+      `/dinoEdit/../server/server.js`,
+      `/games/Dino/`,
+      `/games/dino%2F..%2F/`,
+      `/games/${first}/assets/../data/content.json`
+    ]
+    for (const path of probes) {
+      const { status, text } = await raw(origin, path)
+      assert.ok([403, 404].includes(status), `${path} → ${status}`)
+      assert.ok(!text.includes('createServer') && !text.includes('"version"'), `${path}: never a server file, never a game's data`)
+      // a probe whose NAME segment the grammar refuses must be refused BY THE GRAMMAR
+      // ("No such CYOA"), not by the scratch layout happening to hold no such file —
+      // a server that skipped isGameName on /dist/ would answer "File not found" here
+      if (/^\/(games|dist)\/(\.\.|%2e%2e|Dino|dino%2F\.\.%2F)\//.test(path)) assert.equal(text, 'No such CYOA', `${path}: refused by the name grammar, not by a missing file`)
+    }
+    // exact codes where the trace is unambiguous
+    assert.equal((await raw(origin, '/games/../server/server.js')).status, 404, '".." is not a game name')
+    assert.equal((await raw(origin, '/dinoEdit/../server/server.js')).status, 403, 'the editor\'s guard')
+    assert.equal((await raw(origin, `/games/${first}/data/../../../server/server.js`)).status, 403, 'the game folder\'s guard')
+    const posts = [
+      `/api/games/../x/save/rules`,
+      `/api/games/Dino/save/rules`,
+      `/api/games/${first}/save/../../x`,
+      `/api/games/%2e%2e/export`,
+      `/api/games/${first}/export/../x`
+    ]
+    for (const path of posts) {
+      const { status, text } = await raw(origin, path, 'POST', '{}')
+      assert.ok([403, 404].includes(status), `POST ${path} → ${status}`)
+      assert.ok(!text.includes('createServer'), `POST ${path}: never a server file`)
+    }
+    assert.deepEqual(listFiles(ROOT), filesBefore, 'no probe wrote a file')
+    assert.equal(existsSync(join(DIST, 'server')), false, 'no probe made a folder under dist/')
+    ok(`M7 traversal and case: ${probes.length} literal GET probes and ${posts.length} POST probes over http.request → 403/404, never a server file or another game's data; nothing written`)
+  } finally {
+    stop()
+  }
+}
+
 // ── E10 ignore rules (once): Feature 2(c) landed in a5e5f7b; this pins it so it cannot quietly come undone ──
 {
   const lines = readFileSync(join(GIT_ROOT, '.gitignore'), 'utf8').split('\n').map(line => line.trim())
@@ -1013,6 +1386,29 @@ for (const game of games) {
   assert.ok(ignored(`${DINO_IN_REPO}/games/dino/assets/.DS_Store`), 'a Finder file under assets/ is ignored')
   assert.ok(!execFileSync('git', ['ls-files'], { cwd: GIT_ROOT, encoding: 'utf8' }).includes('.DS_Store'), 'no .DS_Store is tracked')
   ok('E10 .gitignore: .DS_Store and dist/ listed; git ignores dist/dino/index.html and assets/.DS_Store; no .DS_Store tracked')
+}
+
+// ── M8 launch.json (once): ONE "cyoa" entry starts the server with no game on the command line ──
+// NEW: the server takes no game argument any more, so a launch entry that still
+// passes one would start a server that serves it wrongly; this pins the file.
+{
+  const launch = JSON.parse(readFileSync(join(GIT_ROOT, '.claude', 'launch.json'), 'utf8'))
+  const names = launch.configurations.map(c => c.name)
+  assert.ok(names.includes('cyoa'), 'a "cyoa" entry')
+  assert.ok(names.includes('dist'), 'the "dist" entry is kept — it proves the folder under a foreign static server')
+  assert.ok(!names.includes('dino') && !names.includes('vampire'), 'the per-game entries are gone')
+  const cyoa = launch.configurations.find(c => c.name === 'cyoa')
+  assert.deepEqual([cyoa.runtimeExecutable, cyoa.runtimeArgs, cyoa.port], ['node', ['cyoa/DinoCYOA/server/server.js'], 3000], 'node server.js, no game name, port 3000')
+  ok('M8 launch.json: one "cyoa" entry = node cyoa/DinoCYOA/server/server.js on 3000, no game argument; "dist" kept; no dino/vampire entries')
+}
+
+// ── M9 scratch only (once, after every server has been stopped): the real tree is untouched ──
+// NEW: every server above ran over a scratch root and every export went to a
+// scratch folder — the hashes taken before the first check say so.
+{
+  assert.equal(treeHash(join(DINO_DIR, 'games')), realGames, 'games/ is byte-identical to before the run')
+  assert.equal(existsSync(realDistDir) ? treeHash(realDistDir) : null, realDist, 'dist/ is byte-identical to before the run')
+  ok('M9 the real games/ and dist/ are untouched — every write went to the scratch roots')
 }
 
 console.log(`\nall ${checks} checks passed (work dir: ${WORK})`)
