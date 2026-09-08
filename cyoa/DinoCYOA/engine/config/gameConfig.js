@@ -15,7 +15,19 @@ import { flattenGroups } from "../helpers.js"                   // NEW: every ro
    3) each group also gets its look glued on: background from themes.json, or null
       if that group has no custom look
    4) authors write bare filenames in things.json ("dino.jpg"); the border turns
-      them into real URLs ("/assets/dino.jpg") so the view never has to build paths
+      them into real URLs ("assets/dino.jpg") so the view never has to build paths.
+      CHANGED: the URL is PAGE-RELATIVE — one rule for every path the engine
+      makes, and index.html already follows it for styles.css and app.js. Three
+      places consume these strings, and all three resolve against the same
+      folder: fetch("data/x.json") inside a module resolves against the
+      DOCUMENT's base URL (the page, not the module) — index.html at / asks
+      for /data/x.json, at /repo/dino/ for /repo/dino/data/x.json; an
+      <img src="assets/x.jpg"> resolves against the document too; and the
+      hero, url("assets/heroBG.jpg"), is written into an INLINE style on
+      <html> (view.js), so it resolves against the document URL — or, if a
+      browser resolves it where the var() is consumed (styles.css), against
+      styles.css, which sits beside index.html: the same folder either way.
+      That is why a published folder plays from any subpath with no rewrite.
    5) CHANGED: a row no longer POINTS at a type (displayType); it carries a QUERY
       ({ type, where }) and the border ANSWERS it: fetch the type's bucket from
       things.json, hydrate every thing, keep only the ones the condition
@@ -52,7 +64,7 @@ const resolveFromSheet = (sheet, source) => {
 const typeOf = (row) => types.types.find(type => type.id === row.query.type)
 
 // CHANGED: "which things does this row offer?" is now the row's QUERY, answered
-// against the hydrated bucket: hydrate first (defaults, /assets/ prefix), then
+// against the hydrated bucket: hydrate first (defaults, assets/ prefix), then
 // filter, so a thing missing a field is compared on the default the card shows.
 // Every hydrated thing is a FRESH object (the spread), so two rows showing the
 // same type get separate copies — state.js compares by reference within one
@@ -72,7 +84,7 @@ const resolveItems = (row) => {
   const bucket = (things.things[type.id] ?? []).map(thing => ({
     ...thing,
     ...resolveFromSheet(sheet, thing),     // a missing custom field → its kind's default
-    imageURL: thing.imageURL ? `/assets/${thing.imageURL}` : ""
+    imageURL: thing.imageURL ? `assets/${thing.imageURL}` : ""   // CHANGED: page-relative (see 4 above)
   }))
   const problem = checkWhere(row.query.where, type)
   if (problem) {
@@ -116,7 +128,7 @@ export const totalBudget = rules.totalBudget
 // heroImage arrives as a bare filename and leaves as a real URL
 export const pageTheme = {
   ...themes.page,
-  heroImage: themes.page.heroImage ? `/assets/${themes.page.heroImage}` : ""
+  heroImage: themes.page.heroImage ? `assets/${themes.page.heroImage}` : ""   // CHANGED: page-relative (see 4 above)
 }
 
 export const groups = hydrateGroups(content, rules, themes)

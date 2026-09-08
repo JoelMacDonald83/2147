@@ -25,6 +25,8 @@ export const applyPageTheme = (pageTheme) => {
   const root = document.documentElement
   root.style.setProperty('--body-background', pageTheme.bodyBackground)
   root.style.setProperty('--font-family', pageTheme.fontFamily)
+  // the value is page-relative (url("assets/…")) on an INLINE style, so it
+  // resolves against the document URL — the same base every other engine path uses
   root.style.setProperty('--hero-image', pageTheme.heroImage ? `url("${pageTheme.heroImage}")` : 'none')
   root.style.setProperty('--status-background', pageTheme.statusBackground)
   root.style.setProperty('--status-color', pageTheme.statusColor)
@@ -114,7 +116,7 @@ const buildGroupSection = (group, actions) => {
     const imgEl = document.createElement('img')
     imgEl.className = 'card-image'
     if (item.imageURL) {
-      imgEl.src = item.imageURL // already a real URL: the border prefixed /assets/
+      imgEl.src = item.imageURL // already a real URL: the border prefixed assets/
     }
     imgEl.alt = item.name
 
