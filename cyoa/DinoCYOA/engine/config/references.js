@@ -9,7 +9,11 @@ import { checkShowWhen, idsBelow } from "./visibility.js"
 // runs them in a plan; the oracle proves they leave nothing dangling.
 
 // NEW: visit every row at every depth, this level first, then its children.
-export const eachRow = (rows, visit) => rows.forEach(row => { visit(row); eachRow(row.children, visit) })
+// CHANGED: the visitor also receives the row's PATH (content.groups[2].children[0]).
+// The validator reports problems by path; every caller that wants only the row
+// ignores the second argument.
+export const eachRow = (rows, visit, path = "content.groups") =>
+  rows.forEach((row, i) => { visit(row, `${path}[${i}]`); eachRow(row.children, visit, `${path}[${i}].children`) })
 export const rowsIn  = (rows) => { const out = []; eachRow(rows, row => out.push(row)); return out }
 
 // NEW: the four repairs. Each edits rows IN PLACE (the editor's collection
@@ -56,19 +60,23 @@ export const forgetRow = (rows, rowId) => {          // gates on the row → alw
   return changed
 }
 
-// NEW: the audit. Every reference in content that points nowhere, as
-// [{ row, what }]. Empty means the files are closed. The oracle proves the
-// four repairs above keep it empty; the restructure script asserts it.
+// NEW: the audit. Every reference in content that points nowhere. Empty means
+// the files are closed. The oracle proves the four repairs above keep it
+// empty; the restructure script asserts it.
+// CHANGED: each entry is { row, path, pointer, what } — pointer is which of the
+// row's three pointers dangles ("query.type" | "query.where" | "showWhen"), so
+// validate.js can attach the message to the exact key. The editor's `say` and
+// the restructure script keep reading row and what.
 export const danglingReferences = ({ content, types, things }) => {
   const rowIds   = new Set(rowsIn(content.groups).map(row => row.id))
   const thingIds = new Set(Object.values(things.things).flat().map(thing => thing.id))
   const found = []
-  eachRow(content.groups, row => {
+  eachRow(content.groups, (row, path) => {
     const type = types.types.find(type => type.id === row.query.type)
-    if (row.query.type !== "" && !type) found.push({ row, what: `shows a type that does not exist (${row.query.type})` })
-    if (type) { const problem = checkWhere(row.query.where, type); if (problem) found.push({ row, what: `filter ${problem}` }) }
+    if (row.query.type !== "" && !type) found.push({ row, path, pointer: "query.type", what: `shows a type that does not exist (${row.query.type})` })
+    if (type) { const problem = checkWhere(row.query.where, type); if (problem) found.push({ row, path, pointer: "query.where", what: `filter ${problem}` }) }
     const gate = checkShowWhen(row, rowIds, thingIds)
-    if (gate) found.push({ row, what: `show-when ${gate}` })
+    if (gate) found.push({ row, path, pointer: "showWhen", what: `show-when ${gate}` })
   })
   return found
 }

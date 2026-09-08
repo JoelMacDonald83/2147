@@ -194,7 +194,8 @@ export const groupRulesSchema = [
 
 
 // CHANGED: SHEETS is the phonebook — every sheet an `of` can name. It now
-// sits LAST in the file, on purpose: a `const` does not exist until its own
+// sits at the END of the file, on purpose (only FILE_SHEETS, which points at
+// the same sheets, comes after it): a `const` does not exist until its own
 // line has run, and this table points at sheets defined all through the file
 // (groupRulesSchema is just above). Left in its old spot it throws
 // "Cannot access 'groupRulesSchema' before initialization" the moment the file
@@ -208,7 +209,29 @@ export const SHEETS = {
   groupRules: groupRulesSchema,   // NEW: reachable by name from attachment entries
   groupTheme: groupThemeSchema,   // NEW
   type:       typeSchema,         // NEW: types.json's cards
-  fieldDef:   fieldDefSchema      // NEW: a type's field definitions ("+ Add field")
+  fieldDef:   fieldDefSchema,     // NEW: a type's field definitions ("+ Add field")
+  meta:       metaSchema,         // NEW: named so FILE_SHEETS below can point at them. The editor's Page
+  pageTheme:  pageThemeSchema     // NEW: card still draws these two by hand; nothing looks them up but validate.js
   // CHANGED: no `item` row — a thing's sheet is built per TYPE and filed under
   // the type's id, see buildSheets in dinoEdit/state.js
+}
+
+// NEW: the TOP of each data file, as a sheet — the map validate.js walks. The
+// sheet is the contract, and this is the part of it that was only ever implied
+// by the loaders. Three structural types appear here and nowhere else:
+//   "form"    → one object drawn from a sheet, at a fixed key (content.meta, themes.page)
+//   "cabinet" → an object keyed by element id, each slot drawn from a sheet — the
+//               storage side of an attachment entry (rules.groupRules, themes.groupThemes)
+//   "buckets" → things.json's object keyed by type id, each an ARRAY of things whose
+//               shared fields are coreThingSchema
+// The EDITOR never walks this table: the Page card draws meta and page by hand,
+// and cabinets are reached through attachment entries — putting meta on
+// contentSchema would paint it twice. `version` is not an entry: it belongs to
+// the border (migrations.js) and validate.js checks it by hand.
+export const FILE_SHEETS = {
+  content: [{ key: "meta", type: "form", of: "meta" }, ...contentSchema],
+  rules:   [...totalBudgetSchema, { key: "groupRules", type: "cabinet", of: "groupRules" }],
+  themes:  [{ key: "page", type: "form", of: "pageTheme" }, { key: "groupThemes", type: "cabinet", of: "groupTheme" }],
+  types:   typesSchema,
+  things:  [{ key: "things", type: "buckets" }]
 }

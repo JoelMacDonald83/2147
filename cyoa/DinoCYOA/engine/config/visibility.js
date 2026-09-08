@@ -7,10 +7,12 @@
 // holds = what the engine runs. `never` is border-only: what a gate becomes
 // when its thing or row no longer exists — the interior never sees a
 // dangling id, it sees never. The editor's dropdown skips it (borderOnly).
+// NEW: names = the key holding the id this gate points at. The validator reads
+// it to know which keys a gate may carry; always and never name nothing.
 export const GATES = {
   always:      { label: "Always",                       holds: () => true },
-  thingPicked: { label: "A thing is picked…",           holds: (gate, picks) => picks.thingPicked(gate.thing) },
-  anyInRow:    { label: "Anything in a row is picked…", holds: (gate, picks) => picks.anyInRow(gate.row) },
+  thingPicked: { label: "A thing is picked…",           names: "thing", holds: (gate, picks) => picks.thingPicked(gate.thing) },   // NEW names
+  anyInRow:    { label: "Anything in a row is picked…", names: "row",   holds: (gate, picks) => picks.anyInRow(gate.row) },        // NEW names
   never:       { label: "(never — broken reference)",   holds: () => false, borderOnly: true }
 }
 // the kinds an author may choose, as dropdown options
