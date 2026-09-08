@@ -2,18 +2,22 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Dino CYOA Editor</title>
+  <title>CYOA Editor</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- NEW: a static header. The tab strip is painted by render(); the status
-       line and the Save button are shared by every tab, so they live here and
-       survive every repaint (Save is wired ONCE in main.js). -->
+  <!-- CHANGED: the title is the way home; the open game's name sits beside it.
+       The tab strip and the toolbar start hidden — main.js shows them once a
+       game is open (paintChrome). Save and Save & export are wired ONCE in main.js. -->
   <header class="topbar">
-    <h1>CYOA Editor</h1>
-    <nav id="tabs"></nav>
-    <div class="toolbar">
+    <h1><a href="#home" class="home-link">CYOA Editor</a></h1>
+    <span id="game-name" class="game-name"></span>
+    <nav id="tabs" hidden></nav>
+    <div class="toolbar" hidden>
       <span id="status"></span>
+      <a id="play" class="link-button" target="_blank">Play ↗</a>
+      <a id="preview" class="link-button" target="_blank" hidden>Preview ↗</a>
+      <button id="export" class="link-button" title="Saves all five files, then publishes them to dist/">Save &amp; export</button>
       <button id="save" class="save-button">Save all</button>
     </div>
   </header>

@@ -495,7 +495,7 @@ const renderTypesTab = () => {
 // the spot because its `of` (the type's sheet) is only known now. The target
 // is the buckets object itself, so the collection builder owns the REAL
 // array in state: "+ Add Lair" pushes a newborn into the bucket, Remove
-// splices it. A stale selected type (removed, or from the other game's hash)
+// splices it. A stale selected type (removed by hand)
 // falls back to the first type at paint — the URL is not rewritten.
 const renderThingsTab = () => {
   const types = editorState.types.types
@@ -510,7 +510,7 @@ const renderThingsTab = () => {
   if (!shownType) {
     const hintEl = document.createElement('p')
     hintEl.className = 'wall-hint'
-    hintEl.innerHTML = 'No types yet — <a href="#types">add one in Types</a>.'
+    hintEl.innerHTML = `No types yet — <a href="${hashFor('types')}">add one in Types</a>.`   // CHANGED: the link carries the game (a bare #types would name a GAME called "types")
     paneEl.appendChild(hintEl)
   } else {
     const headingEl = document.createElement('h2')

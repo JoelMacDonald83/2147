@@ -1,26 +1,42 @@
 // NEW: everything about the SCREEN that is not data. render() wipes the DOM
 // on every structural edit, so anything the DOM would have remembered —
-// which tab is open, which type the rail selected, which cards are open —
+// which game, which tab, which type the rail selected, which cards are open —
 // must live here or be lost at the next paint. Nothing here is ever saved.
 export const TABS = [['types', 'Types'], ['things', 'Things'], ['rows', 'Rows']]
 export const uiState = {
-  tab: 'types',            // 'types' | 'things' | 'rows'   — mirrored in the URL hash
+  game: '',                // NEW: the CYOA the hash names — '' on the home screen. Mirrored in the hash.
+  tab: 'rows',             // CHANGED: default Rows (Open lands on the story); 'types' | 'things' | 'rows'
   selectedType: '',        // the Things rail's highlighted type id — mirrored in the hash
-  expanded: new Set()      // ids of open cards (types, things, rows, and the literal "page") — NOT in the hash
+  expanded: new Set()      // ids of open cards — NOT in the hash (session memory on purpose)
 }
-// expanded stays session memory on purpose: a hash of twenty uuids would be
-// unreadable and would break what the back button means. A reload lands on
-// the right tab and type with every card folded — stated, accepted.
+export const HOME_HASH = '#home'
 
-// #types | #things/<typeId> | #rows — the hash IS the address of the screen,
-// so a reload lands where you were. Unknown tab → types. Read, never written:
-// tabs and rail lines are plain <a href="#…"> links, the browser changes the
-// hash, and main.js repaints on hashchange — one path from navigation to paint.
-// (A stale #things/<removed id> is resolved AT PAINT to the first type; the
-// URL is left alone — rendering writes neither data nor the address.)
-export const readHash = () => {
-  const [tab = 'types', selectedType = ''] = location.hash.slice(1).split('/')
-  uiState.tab = TABS.some(([id]) => id === tab) ? tab : 'types'
-  if (uiState.tab === 'things') uiState.selectedType = selectedType
+// NEW: the grammar, pure — a hash string in, the screen's address out, so the
+// oracles can table it (N1):
+//   #, #home                → home
+//   #<game>                 → game, Rows
+//   #<game>/types | #<game>/things/<typeId> | #<game>/rows   (unknown tab → Rows)
+// The editor does NOT judge the game name: the server is the border, and a
+// name it does not know is a 404 that becomes the "Could not open" screen.
+export const parseHash = (hash) => {
+  const [first = '', tab = 'rows', selectedType = ''] = hash.replace(/^#/, '').split('/')
+  if (first === '' || first === 'home') return { game: '', tab: 'rows', selectedType: '' }
+  const known = TABS.some(([id]) => id === tab) ? tab : 'rows'
+  return { game: first, tab: known, selectedType: known === 'things' ? selectedType : '' }
 }
-export const hashFor = (tab, typeId = '') => typeId ? `#${tab}/${typeId}` : `#${tab}`
+// CHANGED: reads through parseHash. selectedType is only overwritten on the
+// Things tab, as before — leaving Things and coming back remembers the type.
+// readHash only READS the hash. Tabs and rail lines are plain <a href="#…">
+// links; the two places that set location.hash by hand are Create (home.js
+// lands the newborn on its Types tab) and a refused leave (main.js restores
+// the address the page last agreed with).
+export const readHash = () => {
+  const { game, tab, selectedType } = parseHash(location.hash)
+  uiState.game = game
+  uiState.tab = tab
+  if (tab === 'things') uiState.selectedType = selectedType
+}
+// CHANGED: every address carries the game. view.js's four callers are unchanged.
+export const hashFor = (tab, typeId = '') => '#' + [uiState.game, tab, typeId].filter(Boolean).join('/')
+// NEW: where the home screen's Open lands, and where a newborn lands (Types: it has none yet)
+export const hashForGame = (game, tab = 'rows') => `#${game}/${tab}`
