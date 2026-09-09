@@ -1,0 +1,73 @@
+{
+  "version": 5,
+  "totalBudget": 10,
+  "groups": [
+    {
+      "id": "dinosaur-age:row-companions",
+      "label": "Companions",
+      "query": {
+        "type": "basic:character",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
+      "children": []
+    },
+    {
+      "id": "dinosaur-age:row-gear",
+      "label": "Gear",
+      "query": {
+        "type": "basic:item",
+        "where": null
+      },
+      "showWhen": {
+        "kind": "always"
+      },
+      "children": []
+    },
+    {
+      "id": "dinosaur-age:row-lairs",
+      "label": "Lairs",
+      "query": {
+        "type": "basic:place",
+        "where": {
+          "field": "dinosaur-age:kind",
+          "op": "is",
+          "value": "lair"
+        }
+      },
+      "showWhen": {
+        "kind": "always"
+      },
+      "children": []
+    },
+    {
+      "id": "dinosaur-age:row-locations",
+      "label": "Locations",
+      "query": {
+        "type": "basic:place",
+        "where": {
+          "field": "dinosaur-age:kind",
+          "op": "is",
+          "value": "location"
+        }
+      },
+      "showWhen": {
+        "kind": "anyInRow",
+        "row": "dinosaur-age:row-lairs"
+      },
+      "children": []
+    }
+  ],
+  "groupRules": {
+    "dinosaur-age:row-companions": {
+      "min": 1,
+      "max": 1
+    },
+    "dinosaur-age:row-lairs": {
+      "min": 1,
+      "max": 3
+    }
+  }
+}

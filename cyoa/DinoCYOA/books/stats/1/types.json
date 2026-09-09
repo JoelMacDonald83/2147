@@ -1,0 +1,51 @@
+{
+  "version": 5,
+  "types": [],
+  "sectionsFor": {},
+  "fieldsFor": {
+    "basic:character.attributes": [
+      {
+        "id": "stats:strength",
+        "key": "strength",
+        "caption": "Strength",
+        "type": "number",
+        "default": 10
+      },
+      {
+        "id": "stats:dexterity",
+        "key": "dexterity",
+        "caption": "Dexterity",
+        "type": "number",
+        "default": 10
+      },
+      {
+        "id": "stats:intelligence",
+        "key": "intelligence",
+        "caption": "Intelligence",
+        "type": "number",
+        "default": 10
+      },
+      {
+        "id": "stats:health",
+        "key": "health",
+        "caption": "Health",
+        "type": "number",
+        "default": 10
+      }
+    ],
+    "basic:skill.identity": [
+      {
+        "id": "stats:based-on",
+        "key": "basedOn",
+        "caption": "Based on",
+        "type": "choice",
+        "options": [
+          "Strength",
+          "Dexterity",
+          "Intelligence",
+          "Health"
+        ]
+      }
+    ]
+  }
+}

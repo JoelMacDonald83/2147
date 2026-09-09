@@ -1,0 +1,15 @@
+{
+  "name": "dinosaur-age",
+  "title": "Dinosaur Age",
+  "edition": 2,
+  "requires": [
+    {
+      "name": "basic",
+      "edition": 1
+    },
+    {
+      "name": "stats",
+      "edition": 1
+    }
+  ]
+}

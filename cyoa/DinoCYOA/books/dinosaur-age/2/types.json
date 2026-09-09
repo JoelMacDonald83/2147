@@ -1,0 +1,57 @@
+{
+  "version": 5,
+  "types": [],
+  "sectionsFor": {},
+  "fieldsFor": {
+    "basic:origin.identity": [
+      {
+        "id": "dinosaur-age:diet",
+        "key": "diet",
+        "caption": "Diet",
+        "type": "choice",
+        "options": [
+          "herbivore",
+          "carnivore",
+          "omnivore"
+        ]
+      },
+      {
+        "id": "dinosaur-age:era",
+        "key": "era",
+        "caption": "Era",
+        "type": "choice",
+        "options": [
+          "Triassic",
+          "Jurassic",
+          "Cretaceous"
+        ]
+      }
+    ],
+    "basic:character.identity": [
+      {
+        "id": "dinosaur-age:size",
+        "key": "size",
+        "caption": "Size",
+        "type": "choice",
+        "options": [
+          "tiny",
+          "small",
+          "big",
+          "biggie"
+        ]
+      }
+    ],
+    "basic:place.identity": [
+      {
+        "id": "dinosaur-age:kind",
+        "key": "kind",
+        "caption": "Kind",
+        "type": "choice",
+        "options": [
+          "lair",
+          "location"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,229 @@
+{
+  "version": 5,
+  "things": {
+    "basic:origin": [
+      {
+        "id": "dinosaur-age:tyrannosaurus",
+        "name": "Tyrannosaurus",
+        "cost": 0,
+        "imageURL": "",
+        "description": "The biggest bite in the Cretaceous.",
+        "diet": "carnivore",
+        "era": "Cretaceous"
+      },
+      {
+        "id": "dinosaur-age:triceratops",
+        "name": "Triceratops",
+        "cost": 0,
+        "imageURL": "",
+        "description": "Three horns, one frill, zero patience.",
+        "diet": "herbivore",
+        "era": "Cretaceous"
+      },
+      {
+        "id": "dinosaur-age:velociraptor",
+        "name": "Velociraptor",
+        "cost": 0,
+        "imageURL": "",
+        "description": "Small, feathered, and faster than you.",
+        "diet": "carnivore",
+        "era": "Cretaceous"
+      },
+      {
+        "id": "dinosaur-age:ankylosaurus",
+        "name": "Ankylosaurus",
+        "cost": 0,
+        "imageURL": "",
+        "description": "A tank with a tail club.",
+        "diet": "herbivore",
+        "era": "Cretaceous"
+      },
+      {
+        "id": "dinosaur-age:stegosaurus",
+        "name": "Stegosaurus",
+        "cost": 0,
+        "imageURL": "",
+        "description": "Plates up top, spikes at the back.",
+        "diet": "herbivore",
+        "era": "Jurassic"
+      },
+      {
+        "id": "dinosaur-age:pterosaur",
+        "name": "Pterosaur",
+        "cost": 0,
+        "imageURL": "",
+        "description": "Not a dinosaur, technically. Flies anyway.",
+        "diet": "carnivore",
+        "era": "Jurassic"
+      }
+    ],
+    "basic:trait": [
+      {
+        "id": "dinosaur-age:thick-hide",
+        "name": "Thick Hide",
+        "cost": 2,
+        "imageURL": "",
+        "description": "Scratches bounce off."
+      },
+      {
+        "id": "dinosaur-age:keen-nose",
+        "name": "Keen Nose",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Smells snacks three valleys away."
+      },
+      {
+        "id": "dinosaur-age:wings",
+        "name": "Wings",
+        "cost": 3,
+        "imageURL": "",
+        "description": "The ground is optional."
+      },
+      {
+        "id": "dinosaur-age:tiny-arms",
+        "name": "Tiny Arms",
+        "cost": -1,
+        "imageURL": "",
+        "description": "Cannot reach. Anything."
+      },
+      {
+        "id": "dinosaur-age:loud",
+        "name": "Loud",
+        "cost": -1,
+        "imageURL": "",
+        "description": "Every roar is an outdoor voice."
+      },
+      {
+        "id": "dinosaur-age:always-hungry",
+        "name": "Always Hungry",
+        "cost": -2,
+        "imageURL": "",
+        "description": "The snack drawer is never safe."
+      }
+    ],
+    "basic:skill": [
+      {
+        "id": "dinosaur-age:stomp",
+        "name": "Stomp",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Make the ground remember you.",
+        "basedOn": "Strength"
+      },
+      {
+        "id": "dinosaur-age:fetch",
+        "name": "Fetch",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Bring it back. Most of it.",
+        "basedOn": "Dexterity"
+      },
+      {
+        "id": "dinosaur-age:roar",
+        "name": "Roar",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Clear the room.",
+        "basedOn": "Health"
+      },
+      {
+        "id": "dinosaur-age:beg",
+        "name": "Beg",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Those eyes. Those big eyes.",
+        "basedOn": "Intelligence"
+      }
+    ],
+    "basic:item": [
+      {
+        "id": "dinosaur-age:water-gun",
+        "name": "Water Gun",
+        "cost": 1,
+        "imageURL": "cannon.jpg",
+        "description": "Strong enough to hit outer space",
+        "tags": [
+          "its really fun",
+          "can even hit meteors",
+          "no one cares because meteors can't get mad"
+        ]
+      },
+      {
+        "id": "dinosaur-age:dino-skates",
+        "name": "Dino Skates",
+        "cost": 1,
+        "imageURL": "skates.jpg",
+        "description": "What's cooler than a dinosaur on roller skates??",
+        "tags": [
+          "Goes wheeeeeeee",
+          "Good for enrichment",
+          "Helps get them to dino school on time"
+        ]
+      },
+      {
+        "id": "dinosaur-age:the-banana",
+        "name": "THE BANANA",
+        "cost": 2,
+        "imageURL": "banana.png",
+        "description": "Ohhhhh banana!",
+        "tags": [
+          "Grind for banana",
+          "Earn banana",
+          "Cherish banana"
+        ]
+      },
+      {
+        "id": "dinosaur-age:cute-rock",
+        "name": "Cute rock",
+        "cost": 0,
+        "imageURL": "rock.jpeg",
+        "description": "It means no harm, I prommy~",
+        "tags": [
+          "Give your pet a pet rock",
+          "Super fast",
+          "Nice and warm"
+        ]
+      }
+    ],
+    "basic:place": [
+      {
+        "id": "dinosaur-age:lava-pit",
+        "name": "Lava Pit",
+        "cost": 3,
+        "imageURL": "",
+        "description": "So warm! Too warm!!!",
+        "kind": "lair",
+        "features": [
+          "Like dino nuggies?",
+          "Literally a lava pit. With convenient breading and seasoning.",
+          "What is wrong with you? Why are you playing this?"
+        ]
+      },
+      {
+        "id": "dinosaur-age:play-pen",
+        "name": "Play pen",
+        "cost": 2,
+        "imageURL": "",
+        "description": "Baby dino safe place",
+        "kind": "lair",
+        "features": [
+          "Wheeeeeee!",
+          "Lossa toys!",
+          "Invite friend over!"
+        ]
+      },
+      {
+        "id": "dinosaur-age:volcano-rim",
+        "name": "Volcano Rim",
+        "cost": 1,
+        "imageURL": "",
+        "description": "Toasty!",
+        "kind": "location",
+        "features": [
+          "Great views",
+          "Slight lava smell"
+        ]
+      }
+    ]
+  }
+}

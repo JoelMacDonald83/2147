@@ -1,0 +1,314 @@
+{
+  "version": 5,
+  "types": [
+    {
+      "id": "basic:character",
+      "label": "Character",
+      "sections": [
+        {
+          "id": "basic:character.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:character.identity.concept",
+              "key": "concept",
+              "caption": "Concept",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "basic:character.attributes",
+          "key": "attributes",
+          "caption": "Attributes",
+          "kind": "fields",
+          "fields": []
+        },
+        {
+          "id": "basic:character.origin",
+          "key": "origin",
+          "caption": "Origin",
+          "kind": "list",
+          "of": "basic:origin",
+          "placement": []
+        },
+        {
+          "id": "basic:character.advantages",
+          "key": "advantages",
+          "caption": "Advantages",
+          "kind": "list",
+          "of": "basic:trait",
+          "placement": []
+        },
+        {
+          "id": "basic:character.disadvantages",
+          "key": "disadvantages",
+          "caption": "Disadvantages",
+          "kind": "list",
+          "of": "basic:trait",
+          "placement": []
+        },
+        {
+          "id": "basic:character.skills",
+          "key": "skills",
+          "caption": "Skills",
+          "kind": "list",
+          "of": "basic:skill",
+          "placement": [
+            {
+              "id": "basic:character.skills.level",
+              "key": "level",
+              "caption": "Level",
+              "type": "number",
+              "default": 1
+            }
+          ]
+        },
+        {
+          "id": "basic:character.gear",
+          "key": "gear",
+          "caption": "Gear",
+          "kind": "list",
+          "of": "basic:item",
+          "placement": [
+            {
+              "id": "basic:character.gear.quantity",
+              "key": "quantity",
+              "caption": "Quantity",
+              "type": "number",
+              "default": 1
+            }
+          ]
+        },
+        {
+          "id": "basic:character.companions",
+          "key": "companions",
+          "caption": "Companions",
+          "kind": "list",
+          "of": "basic:character",
+          "placement": []
+        },
+        {
+          "id": "basic:character.places",
+          "key": "places",
+          "caption": "Places",
+          "kind": "list",
+          "of": "basic:place",
+          "placement": []
+        },
+        {
+          "id": "basic:character.ties",
+          "key": "ties",
+          "caption": "Ties",
+          "kind": "list",
+          "of": "basic:faction",
+          "placement": []
+        },
+        {
+          "id": "basic:character.notes",
+          "key": "notes",
+          "caption": "Notes",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:character.notes.notes",
+              "key": "notes",
+              "caption": "Notes (one per line)",
+              "type": "lines"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic:item",
+      "label": "Item",
+      "sections": [
+        {
+          "id": "basic:item.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:item.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "basic:item.tags",
+          "key": "tags",
+          "caption": "Tags",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:item.tags.tags",
+              "key": "tags",
+              "caption": "Tags (one per line)",
+              "type": "lines"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic:place",
+      "label": "Place",
+      "sections": [
+        {
+          "id": "basic:place.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:place.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "basic:place.features",
+          "key": "features",
+          "caption": "Features",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:place.features.features",
+              "key": "features",
+              "caption": "Features (one per line)",
+              "type": "lines"
+            }
+          ]
+        },
+        {
+          "id": "basic:place.within",
+          "key": "within",
+          "caption": "Within",
+          "kind": "list",
+          "of": "basic:place",
+          "placement": []
+        }
+      ]
+    },
+    {
+      "id": "basic:faction",
+      "label": "Faction",
+      "sections": [
+        {
+          "id": "basic:faction.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:faction.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        },
+        {
+          "id": "basic:faction.structure",
+          "key": "structure",
+          "caption": "Structure",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:faction.structure.structure",
+              "key": "structure",
+              "caption": "Structure (one per line)",
+              "type": "lines"
+            }
+          ]
+        },
+        {
+          "id": "basic:faction.members",
+          "key": "members",
+          "caption": "Notable members",
+          "kind": "list",
+          "of": "basic:character",
+          "placement": []
+        },
+        {
+          "id": "basic:faction.holdings",
+          "key": "holdings",
+          "caption": "Holdings",
+          "kind": "list",
+          "of": "basic:place",
+          "placement": []
+        }
+      ]
+    },
+    {
+      "id": "basic:origin",
+      "label": "Origin",
+      "sections": [
+        {
+          "id": "basic:origin.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:origin.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic:trait",
+      "label": "Trait",
+      "sections": [
+        {
+          "id": "basic:trait.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:trait.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basic:skill",
+      "label": "Skill",
+      "sections": [
+        {
+          "id": "basic:skill.identity",
+          "key": "identity",
+          "caption": "Identity",
+          "kind": "fields",
+          "fields": [
+            {
+              "id": "basic:skill.identity.description",
+              "key": "description",
+              "caption": "Description",
+              "type": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sectionsFor": {},
+  "fieldsFor": {}
+}

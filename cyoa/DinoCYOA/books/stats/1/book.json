@@ -1,0 +1,11 @@
+{
+  "name": "stats",
+  "title": "Stats",
+  "edition": 1,
+  "requires": [
+    {
+      "name": "basic",
+      "edition": 1
+    }
+  ]
+}
