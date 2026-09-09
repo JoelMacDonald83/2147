@@ -111,10 +111,37 @@ const migrateSetV3toV4 = (set) => {
   }
 }
 
+// ── step 4: v4 → v5 ──
+// A type's flat field list becomes ONE field section, "Identity" — the section every sheet
+// has; books add more beside it. Its id is DERIVED from the type's (type.id + ".identity"),
+// never minted, so migrating twice is byte-identical and no uuid appears or disappears.
+// content gains the empty shelf pins (a v4 game knew no books) and the empty house rules;
+// types gains the two empty addition cabinets; rules, themes and things are stamped — a
+// written budget is the game's own and stays so; thing values stay flat by key.
+// FROZEN HISTORY: "identity"/"Identity" and the section shape are spelled out here and
+// never imported from schema.js — schema.js describes TODAY, a migration describes the past.
+const migrateSetV4toV5 = (set) => ({
+  content: { version: 5, meta: set.content.meta, books: [], groups: set.content.groups, rowOverrides: {} },
+  rules:   stamp(set.rules, 5),
+  themes:  stamp(set.themes, 5),
+  types:   set.types === null ? null : {
+    version: 5,
+    types: set.types.types.map(type => ({
+      id: type.id,
+      label: type.label,
+      sections: [{ id: `${type.id}.identity`, key: "identity", caption: "Identity", kind: "fields", fields: type.fields }]
+    })),
+    sectionsFor: {},
+    fieldsFor: {}
+  },
+  things:  stamp(set.things, 5)
+})
+
 const MIGRATIONS = {
   1: migrateSetV1toV2,
   2: migrateSetV2toV3,
-  3: migrateSetV3toV4   // NEW
+  3: migrateSetV3toV4,
+  4: migrateSetV4toV5   // NEW
 }
 
 const setVersion = (set) => set.content.version
@@ -132,10 +159,13 @@ const runMigrations = (set) => {
 }
 
 // CHANGED: one doorway instead of migrateContent/migrateRules/migrateThemes.
-// The border's promise — nothing leaves here missing. A game at version 3
-// or 4 whose types.json was deleted by hand is an error that NAMES the
-// file, not a null that blows up later inside hydration. (Step 3 keeps that
-// promise by carrying a null through untouched — see stamp above.)
+// The border's promise — nothing leaves here missing. A game at version 3,
+// 4 or 5 whose types.json was deleted by hand is an error that NAMES the
+// file, not a null that blows up later inside hydration. (Steps 3 and 4 keep
+// that promise by carrying a null through untouched — see stamp above.)
+// A set already at SCHEMA_VERSION comes back as the SAME object, untouched:
+// the export's version gate relies on that identity, and it is what makes
+// "migrate twice" trivially equal "migrate once".
 export const migrateSet = (set) => {
   const migrated = runMigrations(set)
   const missing = Object.keys(migrated).filter(name => migrated[name] === null)

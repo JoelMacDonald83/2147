@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION, SHEETS, FILE_SHEETS, coreThingSchema } from "./schema.js"
+import { SCHEMA_VERSION, SHEETS, FILE_SHEETS, BOOK_FILE_SHEETS, coreThingSchema, asOption, isBookName, isEdition } from "./schema.js"
 import { OPERATORS, WHERE_VALUE_TYPE } from "./query.js"
 import { GATES } from "./visibility.js"
 import { danglingReferences } from "./references.js"
@@ -8,11 +8,14 @@ import { danglingReferences } from "./references.js"
 // checked against what the sheet says — one sentence per fault, with the path.
 // DOM-free, fetch-free, no work at import time: node runs it (the server, the
 // oracles, the export) and the browser runs it (the editor's pre-flight).
+// CHANGED: a BOOK's files are checked here too (validateBookFile), by the same
+// walk over BOOK_FILE_SHEETS. What this file no longer does is judge a whole
+// SET: validateSet moved to merge.js (see the note at the bottom).
 
 export const FILE_NAMES = Object.keys(FILE_SHEETS)
 export const problemText = ({ path, message }) => `${path}: ${message}`
 
-const ALL_OPS      = Object.values(OPERATORS).flat().map(op => op.value)                       // every operator of every kind
+const ALL_OPS      = [...new Set(Object.values(OPERATORS).flat().map(op => op.value))]           // every operator of every kind, ONCE: choice and text share one table (query.js)
 const VALUE_TYPES  = [...new Set(Object.values(WHERE_VALUE_TYPE))]                              // ["string", "number"]
 const AUTHOR_KINDS = Object.keys(GATES).filter(kind => !GATES[kind].borderOnly)                 // never is the border's own
 const RESERVED_THING_KEYS = ["id", ...coreThingSchema.map(entry => entry.key)]                  // id, name, cost, imageURL
@@ -45,8 +48,9 @@ const CHECKERS = {
   optionalText:   (entry, v, path, out) => { if (v !== undefined && typeof v !== "string") problem(out, path, `must be a string or absent (found ${describe(v)})`) },
   choice:         (entry, v, path, out) => {
     if (!expectType(out, v, path, "string")) return
-    if (entry.options && !entry.options.some(option => option.value === v))              // optionsFrom = editor data, not checkable here
-      problem(out, path, `${JSON.stringify(v)} is not one of ${entry.options.map(option => option.value).join(", ")}`)
+    const options = entry.options?.map(asOption)                                              // CHANGED: sheet options are { value, label }; a field's are bare strings
+    if (options && !options.some(option => option.value === v))                               // optionsFrom = editor data, not checkable here
+      problem(out, path, `${JSON.stringify(v)} is not one of ${options.map(option => option.value).join(", ")}`)
   },
   query:          (entry, v, path, out) => checkQuery(v, path, out),
   showWhen:       (entry, v, path, out) => checkGate(v, path, out),
@@ -57,18 +61,86 @@ const CHECKERS = {
     if (!expectType(out, v, path, "object")) return
     Object.entries(v).forEach(([id, slot]) => checkSheet(SHEETS[entry.of], slot, path + quoteKey(id), out, ctx, []))   // own keys only: JSON.parse makes "__proto__" an own property
   },
+  // CHANGED: with `of`, each slot holds ELEMENTS of that sheet (the addition
+  // cabinets of types.json — their ids join that sheet's id space, so a field
+  // added twice in one file is a duplicate like any other); without, things.
   buckets:        (entry, v, path, out, ctx) => {
     if (!expectType(out, v, path, "object")) return
-    Object.entries(v).forEach(([typeId, bucket]) => {
-      const bucketPath = path + quoteKey(typeId)
-      if (expectType(out, bucket, bucketPath, "array")) bucket.forEach((thing, i) => checkThing(thing, `${bucketPath}[${i}]`, out, ctx))
+    Object.entries(v).forEach(([id, bucket]) => {
+      const bucketPath = path + quoteKey(id)
+      if (!expectType(out, bucket, bucketPath, "array")) return
+      bucket.forEach((element, i) => entry.of === undefined
+        ? checkThing(element, `${bucketPath}[${i}]`, out, ctx)
+        : checkElement(entry.of, element, `${bucketPath}[${i}]`, out, ctx))
     })
-  }
+  },
+  // NEW: the pins of a game (content.books) and the requires of a book (book.requires):
+  // an array of exactly { name, edition }, names by the shelf's grammar and distinct —
+  // one book is pinned once; which EDITION is the pin's whole point.
+  pins:           (entry, v, path, out) => {
+    if (!expectType(out, v, path, "array")) return
+    const seen = new Map()
+    v.forEach((pin, i) => {
+      const pinPath = `${path}[${i}]`
+      if (!expectType(out, pin, pinPath, "object")) return
+      if (expectType(out, pin.name, `${pinPath}.name`, "string")) {
+        if (!isBookName(pin.name)) problem(out, `${pinPath}.name`, `${JSON.stringify(pin.name)} is not a book name (lowercase letters, digits and single dashes)`)
+        else if (seen.has(pin.name)) problem(out, pinPath, `${JSON.stringify(pin.name)} appears twice — also at ${seen.get(pin.name)}`)
+        else seen.set(pin.name, pinPath)
+      }
+      if (!isEdition(pin.edition)) problem(out, `${pinPath}.edition`, `must be a positive integer (found ${describe(pin.edition)})`)
+      Object.keys(pin).forEach(key => { if (key !== "name" && key !== "edition") problem(out, at(pinPath, key), `unexpected key ${JSON.stringify(key)}`) })
+    })
+  },
+  // NEW: a key whose only value is true. `false` is never written — absence
+  // says it — so a false here is a hand-edit that means the opposite of what it looks like.
+  flag:           (entry, v, path, out) => { if (v !== undefined && v !== true) problem(out, path, `must be true or absent (found ${describe(v)})`) },
+  // NEW: a field's own default: a string or a number. Whether it FITS the field's
+  // kind is RULES.fieldDef's sentence — that needs the sibling `type`, which a
+  // checker never sees. null is refused on purpose: "no default" is the key's absence.
+  fieldDefault:   (entry, v, path, out) => { if (!(typeof v === "string" || isFiniteNumber(v))) problem(out, path, `must be a string or a number (found ${describe(v)})`) },
+  // NEW: things.order — per sheet id, the ids that come first. Each id once:
+  // "first, then first again" has no meaning. Whether an id is on that shelf is
+  // the merge's question (F15: the shelf is only known once the books are in).
+  idLists:        (entry, v, path, out) => {
+    if (!expectType(out, v, path, "object")) return
+    Object.entries(v).forEach(([sheetId, list]) => {
+      const listPath = path + quoteKey(sheetId)
+      if (!expectType(out, list, listPath, "array")) return
+      const seen = new Map()
+      list.forEach((id, i) => {
+        const idPath = `${listPath}[${i}]`
+        if (typeof id !== "string" || id === "") { problem(out, idPath, `must be a non-empty string (found ${describe(id)})`); return }
+        if (seen.has(id)) problem(out, idPath, `${JSON.stringify(id)} is listed twice — also at ${seen.get(id)}`)
+        else seen.set(id, idPath)
+      })
+    })
+  },
+  // NEW: a thing's entries under a list section. Never reached through a sheet
+  // walk — things are not sheet-walked (checkThing reads the core fields only),
+  // and whether a placed thing EXISTS needs the whole set, so the shape sentences
+  // and the existence sentence both live in references.js's placement audit,
+  // reached through crossChecks. Listed here so CHECKED_TYPES names every kind a
+  // sheet can produce (sheetOfType makes one of these per list section; oracle V1).
+  placements:     () => {}
 }
 export const CHECKED_TYPES = Object.keys(CHECKERS)
 
 // one sheet-shaped object: every entry through its checker, then every own key
-// the sheet (or extraKeys: "version" on a file top, "id" on an element) does not name
+// the sheet (or extraKeys: "version" on a file top, "id" on an element) does not name.
+// NEW: two props of an entry are honoured before its checker runs —
+//   showIf: the entry exists only while its sibling matches. Not matching, the key
+//           must be ABSENT (a `fields` list on a list section is a leftover with
+//           nothing to hold it) — and it is still a KNOWN key, so the walk below
+//           does not report it a second time as merely unexpected. When the
+//           sibling itself holds a value its choice does not offer (kind: "table"),
+//           it decides nothing: that wrong value is the one problem, and the keys
+//           it governs are left alone — checkGate's rule, applied here.
+//   optional: absence is fine; a present value is checked as usual.
+const decides = (sheet, key, holder) => {                                                    // does the sibling hold a value its own entry offers?
+  const options = sheet.find(entry => entry.key === key)?.options?.map(asOption)
+  return !options || options.some(option => option.value === holder[key])
+}
 const checkSheet = (sheet, holder, path, out, ctx, extraKeys) => {
   if (!expectType(out, holder, path, "object")) return
   const known = new Set(extraKeys)
@@ -77,7 +149,17 @@ const checkSheet = (sheet, holder, path, out, ctx, extraKeys) => {
     known.add(entry.key)
     const checker = CHECKERS[entry.type]
     if (!checker) throw new Error(`No checker for sheet type "${entry.type}" (key: ${entry.key})`)   // loud: the sheet grew a type this table does not know
-    checker(entry, holder[entry.key], `${path}.${entry.key}`, out, ctx)
+    const v = holder[entry.key]
+    const entryPath = `${path}.${entry.key}`
+    if (entry.showIf) {
+      const shown = holder[entry.showIf.key] === entry.showIf.value
+      if (!shown) {
+        if (v !== undefined && decides(sheet, entry.showIf.key, holder)) problem(out, entryPath, `unexpected key ${JSON.stringify(entry.key)} (only when ${entry.showIf.key} is ${JSON.stringify(entry.showIf.value)})`)
+        return                                                                               // still marked known
+      }
+    }
+    if (entry.optional && v === undefined) return
+    checker(entry, v, entryPath, out, ctx)
   })
   Object.keys(holder).forEach(key => { if (!known.has(key)) problem(out, at(path, key), `unexpected key ${JSON.stringify(key)}`) })
 }
@@ -106,6 +188,7 @@ const checkId = (space, element, path, out, ctx) => {
 // its id, and NOTHING about the author's fields: a field whose kind changed or
 // whose key was renamed legitimately leaves the old shape / the old key behind
 // (schema.js, fieldDefSchema's comment; query.js readAs is the border for those).
+// Its placements are the audit's (crossChecks): they point at other things.
 const checkThing = (thing, path, out, ctx) => {
   if (!expectType(out, thing, path, "object")) return
   coreThingSchema.forEach(entry => CHECKERS[entry.type](entry, thing[entry.key], `${path}.${entry.key}`, out, ctx))
@@ -147,40 +230,110 @@ const checkGate = (gate, path, out) => {
   Object.keys(gate).forEach(key => { if (key !== "kind" && key !== names) problem(out, at(path, key), `unexpected key ${JSON.stringify(key)}`) })
 }
 
+// the keys a list of field-like things claims, each once and none reserved —
+// shared by RULES.type (a sheet's storage keys) and RULES.section (a placement's)
+const claimKeys = (out, seen, key, keyPath, holderPath, reserved, reservedWhat) => {
+  if (reserved.includes(key)) problem(out, keyPath, reservedWhat(key))
+  else if (seen.has(key)) problem(out, keyPath, `duplicate key ${JSON.stringify(key)} — also at ${seen.get(key)}`)
+  else seen.set(key, holderPath)
+}
+
 // RULES: the few sentences a sheet cannot say, per element sheet, run after the walk.
 const RULES = {
+  // CHANGED: walks sections. The keys a thing of this type may hold — thingKeys in
+  // schema.js — are the FIELD keys of its fields sections and the KEY of each list
+  // section (that is where the placements live); a fields section's own key is
+  // addressing only and claims nothing. Unique, and never one of the core four.
   type: (type, path, out) => {                                                               // dinoEdit/state.js warnDuplicateKeys, made binding
-    if (!Array.isArray(type.fields)) return                                                  // already reported by the walk
+    if (!Array.isArray(type.sections)) return                                                // already reported by the walk
     const seen = new Map()
-    type.fields.forEach((field, i) => {
-      if (!isPlainObject(field) || typeof field.key !== "string") return                     // already reported
-      const keyPath = `${path}.fields[${i}].key`
-      if (RESERVED_THING_KEYS.includes(field.key)) problem(out, keyPath, `${JSON.stringify(field.key)} is a key every thing already has (${RESERVED_THING_KEYS.join(", ")})`)
-      else if (seen.has(field.key)) problem(out, keyPath, `duplicate key ${JSON.stringify(field.key)} — also at ${seen.get(field.key)}`)
-      else seen.set(field.key, `${path}.fields[${i}]`)
+    const reservedWhat = (key) => `${JSON.stringify(key)} is a key every thing already has (${RESERVED_THING_KEYS.join(", ")})`
+    type.sections.forEach((section, j) => {
+      if (!isPlainObject(section)) return                                                    // already reported
+      const sectionPath = `${path}.sections[${j}]`
+      if (section.kind === "list") {
+        if (typeof section.key === "string") claimKeys(out, seen, section.key, `${sectionPath}.key`, sectionPath, RESERVED_THING_KEYS, reservedWhat)
+      } else if (section.kind === "fields" && Array.isArray(section.fields)) {
+        section.fields.forEach((field, i) => {
+          if (!isPlainObject(field) || typeof field.key !== "string") return                 // already reported
+          claimKeys(out, seen, field.key, `${sectionPath}.fields[${i}].key`, `${sectionPath}.fields[${i}]`, RESERVED_THING_KEYS, reservedWhat)
+        })
+      }
     })
   },
-  fieldDef: (field, path, out) => { if (field.key === "") problem(out, `${path}.key`, `must be a non-empty string (found "")`) }
+  // NEW: a section's key names its slot in every thing (a list section) or its
+  // card (a fields section) — never blank. A list section must say which shelf
+  // it draws from, and its placement fields claim keys the way a type's do:
+  // unique, and never `thing` — the key every placement already holds.
+  section: (section, path, out) => {
+    if (section.key === "") problem(out, `${path}.key`, `must be a non-empty string (found "")`)
+    if (section.kind !== "list") return
+    if (section.of === "") problem(out, `${path}.of`, `must be a non-empty string (found "")`)
+    if (!Array.isArray(section.placement)) return                                            // already reported by the walk
+    const seen = new Map()
+    section.placement.forEach((field, i) => {
+      if (!isPlainObject(field) || typeof field.key !== "string") return                     // already reported
+      claimKeys(out, seen, field.key, `${path}.placement[${i}].key`, `${path}.placement[${i}]`, ["thing"], () => `"thing" is the key every placement already has`)
+    })
+  },
+  // CHANGED: a choice needs options (at least one, all distinct — value = label, so
+  // two alike would be one option twice); a `default` must fit the field's kind.
+  fieldDef: (field, path, out) => {
+    if (field.key === "") problem(out, `${path}.key`, `must be a non-empty string (found "")`)
+    if (field.type === "choice" && Array.isArray(field.options)) {
+      if (field.options.length === 0) problem(out, `${path}.options`, `a choice needs at least one option`)
+      const seen = new Set()
+      field.options.forEach((option, i) => {
+        if (typeof option !== "string") return                                               // already reported by the lines checker
+        if (seen.has(option)) problem(out, `${path}.options[${i}]`, `duplicate option ${JSON.stringify(option)}`)
+        else seen.add(option)
+      })
+    }
+    const value = field.default
+    if (value === undefined || !(typeof value === "string" || isFiniteNumber(value))) return   // absent, or already refused by the fieldDefault checker
+    const defaultPath = `${path}.default`
+    if (field.type === "number") { if (typeof value !== "number") problem(out, defaultPath, `default must be a number (found ${describe(value)})`) }
+    else if (field.type === "text") { if (typeof value !== "string") problem(out, defaultPath, `default must be a string (found ${describe(value)})`) }
+    else if (field.type === "lines") problem(out, defaultPath, `a lines field cannot carry a default`)
+    else if (field.type === "choice" && Array.isArray(field.options) && field.options.length > 0 && !field.options.includes(value))
+      problem(out, defaultPath, `default ${JSON.stringify(value)} is not one of ${field.options.join(", ")}`)
+  }
+}
+
+// one file top: the version gate first (an old file has dozens of consequent
+// shape problems; the version line is the one that matters), then the walk.
+// `gate` is what the version line says to do about it; a manifest has no
+// version at all (book.json is not a data file), so no gate and no "version" key.
+const checkFile = (sheet, name, file, gate) => {
+  const out = []
+  if (!expectType(out, file, name, "object")) return out
+  if (gate && file.version !== SCHEMA_VERSION) return [{ path: `${name}.version`, message: `must be ${SCHEMA_VERSION} (found ${describe(file.version)}) — ${gate}` }]
+  checkSheet(sheet, file, name, out, { ids: {} }, gate ? ["version"] : [])
+  return out
 }
 
 export const validateFile = (name, file) => {
   const sheet = FILE_SHEETS[name]
   if (!sheet) throw new Error(`No such data file: ${name}`)
-  const out = []
-  if (!expectType(out, file, name, "object")) return out
-  // an old file has dozens of consequent shape problems; the version line is the one that matters
-  if (file.version !== SCHEMA_VERSION) return [{ path: `${name}.version`, message: `must be ${SCHEMA_VERSION} (found ${describe(file.version)}) — open the game in the editor and Save to migrate it` }]
-  checkSheet(sheet, file, name, out, { ids: {} }, ["version"])
-  return out
+  return checkFile(sheet, name, file, "open the game in the editor and Save to migrate it")
+}
+
+// NEW: a book's file, by the same walk over BOOK_FILE_SHEETS. Books are born at
+// SCHEMA_VERSION and never migrated (the shelf ships new editions instead), so
+// the version line's advice is different: this file was written for another version.
+export const validateBookFile = (name, file) => {
+  const sheet = BOOK_FILE_SHEETS[name]
+  if (!sheet) throw new Error(`No such book file: ${name}`)
+  return checkFile(sheet, name, file, name === "book" ? null : "this book was written for another version")
 }
 
 // the reference half: exactly references.js's audit, attached to the pointer that dangles
+// (a row's three pointers, and now a thing's placements — the same walk carries both)
 export const crossChecks = (set) =>
   danglingReferences(set).map(({ path, pointer, what }) => ({ path: `${path}.${pointer}`, message: what }))
 
-export const validateSet = (set) => {
-  const out = FILE_NAMES.flatMap(name => set[name] === null || set[name] === undefined
-    ? [{ path: name, message: "missing" }]
-    : validateFile(name, set[name]))
-  return out.length > 0 ? out : crossChecks(set)                                             // cross checks assume shapes
-}
+// CHANGED: validateSet used to live here — the five shapes, then crossChecks. It
+// MOVED to merge.js: a set is only whole once its pinned books are merged in (a
+// row may show basic:character), so judging one is the merge's job — and merge.js
+// imports this file, so this file cannot import it back. There:
+//   validateSet(set) = validateGame({ own: set, books: [] })   — the bookless case
