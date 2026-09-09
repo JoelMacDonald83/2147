@@ -13,5 +13,13 @@ const postJSON = (url, body) => receipt(url, { method: "POST", headers: { "Conte
 export const save = async (game, name, data) => ({ name, ...(await postJSON(`/api/games/${game}/save/${name}`, data)) })
 // NEW: the manager's three
 export const listGames  = () => receipt('/api/games')
-export const createGame = (title) => postJSON('/api/games', { title })
+// CHANGED: a newborn may be built on books. `books` is a list of pins the
+// server judges like any other data ({ name, edition }); undefined would let the
+// server pick its own default, so the home screen always sends a list — the
+// checkbox's answer, [] or [{ name: "basic", edition: N }].
+export const createGame = (title, books) => postJSON('/api/games', { title, books })
 export const exportGame = (game) => receipt(`/api/games/${game}/export`, { method: 'POST' })
+// NEW: the shelf, as the server sees it — every folder under books/, its
+// editions, their facts and their problems (§8.4). The Library paints from it;
+// the Books tab reads it for what to offer and what to upgrade to.
+export const listBooks  = () => receipt('/api/books')

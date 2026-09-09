@@ -1,26 +1,65 @@
-import { editorState, markSaved, hasUnsavedEdits, gameTitle } from './state.js'
+import { editorState, markSaved, hasUnsavedEdits, gameTitle, ownFiles } from './state.js'
 import { render, renderSaveStatus } from './view.js'
 import { renderHome, renderLoadFailure, exportText } from './home.js'   // NEW
-import { loadGame } from './loadData.js'                                 // CHANGED: a function, called when a game opens
-import { save, exportGame } from './saveData.js'
+import { loadGame, loadBooks } from './loadData.js'                     // CHANGED: a function, called when a game opens
+import { save, exportGame, listBooks } from './saveData.js'
 import { uiState, readHash } from './uiState.js'
-import { validateSet } from '/config/validate.js'   // the same contract the server enforces
+// CHANGED: validateSet moved to merge.js and grew a twin. validateGame judges a
+// game AND the books under it: the shapes of the five files first, then the
+// merge's own faults, then every reference over the MERGED set. It is the same
+// function the server runs on content.json and the export runs before it copies.
+import { validateGame } from '/config/merge.js'
+import { rowsIn } from '/config/references.js'          // the row-tree walk, for naming a row in a refusal
+// the words for a book — the Books tab owns them (it is the tab that reads the shelf)
+import { pinTitle, shelfRequires } from './books.js'
 
 const count = (problems) => `${problems.length} problem${problems.length === 1 ? '' : 's'}`
+
+// NEW: the four sentences a refused save may need beyond the generic one. A
+// merge fault is not a typo: it is two books disagreeing, or a pin that points
+// nowhere, and the author cannot act on "3 problems (see console)" for those.
+// Each reads the fault by its PATH — the coordinates the merge promises — and
+// names the tab where the fix lives.
+const F14 = 'rules.totalBudget'
+const F13 = /^rules\.groupRules\["(.+)"\]\.(min|max)$/
+const saveRefusal = (problems) => {
+  if (problems.some(problem => problem.path === F14)) {
+    return "Not saved — books conflict on the budget; set this game's budget (Rows › Page)"
+  }
+  const conflicted = problems.find(problem => F13.test(problem.path) && problem.message.includes('propose different values'))
+  if (conflicted) {
+    const [, rowId, key] = conflicted.path.match(F13)
+    return `Not saved — books conflict on ${key} of row "${rowLabel(rowId)}"; set this game's value (Rows)`
+  }
+  const [first] = problems
+  if (first.path.startsWith('content.books')) return `Not saved — ${first.message} (Books tab)`
+  return `Not saved — ${count(problems)} (see console)`
+}
+// the label the author sees for a row id: the merged one (this game's override
+// if it wrote one, else the book's proposal), then the raw proposal — a row that
+// is HIDDEN is not in the merged tree, and its conflict is still worth naming —
+// then, if all else fails, the id.
+const rowLabel = (rowId) => {
+  const named = (rows) => rowsIn(rows).find(row => row.id === rowId)?.label
+  return named(editorState.merged?.content.groups ?? [])
+    ?? named((editorState.proposed?.rows ?? []).map(entry => entry.row))
+    ?? rowId
+}
 
 const actions = {
   // CHANGED: returns true when all five landed — saveAndExport waits for that answer.
   // The game is the one the PAGE holds (editorState.game), bound here, not read
   // from the address bar.
   async save() {
-    // the whole set is checked HERE first, all five files at once. The server checks
-    // again (curl, a hand-edit under us) — but a refusal seen before the network means the
-    // four files never land while content.json is refused, so the disk never holds half a
-    // save. Number.isFinite in the checker is what makes that true: Number("1e400") is
-    // Infinity in memory and null on the wire; both are refused, here, before any post.
-    const problems = validateSet(editorState)
+    // the whole set is checked HERE first, all five files at once, WITH the books
+    // under it. The server checks again (curl, a hand-edit under us) — but a refusal
+    // seen before the network means the four files never land while content.json is
+    // refused, so the disk never holds half a save. Number.isFinite in the checker is
+    // what makes that true: Number("1e400") is Infinity in memory and null on the
+    // wire; both are refused, here, before any post.
+    const problems = validateGame({ own: ownFiles(), books: editorState.books })
     if (problems.length > 0) {
-      renderSaveStatus(`Not saved — ${count(problems)} (see console)`)
+      renderSaveStatus(saveRefusal(problems))
       console.warn('Not saved — the set does not fit the schema:')
       console.table(problems)                                   // two columns: path, message
       return false
@@ -30,6 +69,8 @@ const actions = {
     // content.json goes LAST, on its own (its version stamp is the SET's version and
     // it carries every cross-reference — see the v4 note): the other four first, so a
     // partial save leaves content.json at its old version and the next load migrates again.
+    // It carries the PINS too, which is the second reason it goes last: the four
+    // files are already on disk when the server judges them against the shelf.
     const receipts = await Promise.all([
       save(game, 'types', editorState.types),
       save(game, 'things', editorState.things),
@@ -74,8 +115,74 @@ const actions = {
     const receipt = await actions.exportGame(editorState.game)
     renderSaveStatus(`Saved ✓ · ${exportText(receipt)}`)
     if (receipt.ok) { previewEl.href = receipt.preview; previewEl.hidden = false }
+  },
+
+  // ───────── the Books tab's four ─────────
+  // A pin is an edit to content.json like any other — the unsaved-edits guard
+  // covers it and Save posts it last. What is NOT like any other edit is that
+  // the LAYERS have to be re-read from the shelf afterwards: the merge reads
+  // layers, not pins. That is the one async edit in the editor, and it says so
+  // in the status line while it happens.
+
+  // NEW: the shelf, once per page. `shelf` is set to the receipt either way, so
+  // a server that could not read books/ is asked once and then reported.
+  async readShelf() {
+    if (shelfPending) return
+    shelfPending = true
+    editorState.shelf = await listBooks()
+    shelfPending = false
+    if (!editorState.shelf.ok) console.warn(`GET /api/books: ${editorState.shelf.error}`)
+    paint()
+  },
+
+  async reloadBooks() {
+    editorState.books = await loadBooks(editorState.content.books)
+    paint()                                   // render() remerges first thing, so the whole screen follows
+  },
+
+  // adding a book adds what it REQUIRES too: a book whose foundation is missing
+  // is skipped whole by the merge, so pinning it alone would pin a fault.
+  async pinBook(name, edition) {
+    const pinned = new Set(editorState.content.books.map(pin => pin.name))
+    const brought = shelfRequires(name, edition).filter(pin => !pinned.has(pin.name))
+    brought.forEach(pin => editorState.content.books.push({ name: pin.name, edition: pin.edition }))
+    editorState.content.books.push({ name, edition })
+    renderSaveStatus(`loading ${pinTitle(name, edition)}…`)
+    await actions.reloadBooks()
+    renderSaveStatus(brought.length === 0
+      ? `added ${pinTitle(name, edition)}`
+      : `added ${pinTitle(name, edition)} (and ${brought.map(pin => pinTitle(pin.name, pin.edition)).join(', ')} — it requires them)`)
+  },
+
+  // Removing is loud and reversible: rows that showed its sheets warn, placements
+  // into its shelves show ⟨missing⟩, its overrides become orphan notices — and
+  // nothing is written to disk until Save.
+  async unpinBook(name) {
+    const at = editorState.content.books.findIndex(pin => pin.name === name)
+    if (at === -1) return
+    const [pin] = editorState.content.books.splice(at, 1)
+    await actions.reloadBooks()
+    renderSaveStatus(`removed ${pinTitle(pin.name, pin.edition)}`)
+  },
+
+  // THE migration ceremony: lazy, explicit, visible in the diff, reversible
+  // until Save. An edition is a copy plus more, so an upgrade usually changes
+  // nothing that was there — and when it does not fit (a newer edition wants a
+  // newer Stats) the merge says exactly that and the fix is one card away.
+  async setEdition(name, edition) {
+    const pin = editorState.content.books.find(each => each.name === name)
+    if (!pin) return
+    const was = pin.edition
+    pin.edition = edition
+    renderSaveStatus(`loading ${pinTitle(name, edition)}…`)
+    await actions.reloadBooks()
+    renderSaveStatus(`pinned ${pinTitle(name, edition)} (was ${was})`)
   }
 }
+
+// NEW: one shelf read at a time. renderBooksTab asks for it while painting, and
+// a paint that asks again before the first answer arrives would loop.
+let shelfPending = false
 
 // NEW: the static header has two faces. On the home screen the tab strip and
 // the toolbar are hidden (nothing to save); with a game open they show, the
@@ -123,7 +230,7 @@ const start = async () => {
     return
   }
   if (uiState.game !== game) return                     // the hash moved on while we loaded
-  Object.assign(editorState, { game, ...files })        // the ONE place the five drawers are filled
+  Object.assign(editorState, { game, ...files })        // the ONE place the five drawers — and the books — are filled
   paintChrome()
   render(actions)
   markSaved()   // after the first paint: repairBuckets' one write is not an edit

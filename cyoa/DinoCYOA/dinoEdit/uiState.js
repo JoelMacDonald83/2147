@@ -2,10 +2,14 @@
 // on every structural edit, so anything the DOM would have remembered —
 // which game, which tab, which type the rail selected, which cards are open —
 // must live here or be lost at the next paint. Nothing here is ever saved.
-export const TABS = [['types', 'Types'], ['things', 'Things'], ['rows', 'Rows']]
+// CHANGED: four tabs, Books FIRST. It is first because it is the question that
+// comes before every other one — which books is this game built on? — and
+// because everything the other three tabs show is a merge of those books with
+// the game's own stuff. The DEFAULT is still Rows: Open lands on the story.
+export const TABS = [['books', 'Books'], ['types', 'Types'], ['things', 'Things'], ['rows', 'Rows']]
 export const uiState = {
   game: '',                // NEW: the CYOA the hash names — '' on the home screen. Mirrored in the hash.
-  tab: 'rows',             // CHANGED: default Rows (Open lands on the story); 'types' | 'things' | 'rows'
+  tab: 'rows',             // CHANGED: default Rows (Open lands on the story); 'books' | 'types' | 'things' | 'rows'
   selectedType: '',        // the Things rail's highlighted type id — mirrored in the hash
   expanded: new Set()      // ids of open cards — NOT in the hash (session memory on purpose)
 }
@@ -15,7 +19,9 @@ export const HOME_HASH = '#home'
 // oracles can table it (N1):
 //   #, #home                → home
 //   #<game>                 → game, Rows
-//   #<game>/types | #<game>/things/<typeId> | #<game>/rows   (unknown tab → Rows)
+//   #<game>/books | #<game>/types | #<game>/things/<typeId> | #<game>/rows   (unknown tab → Rows)
+// The tab names are read from TABS, so adding a tab there is the whole change —
+// #<game>/books works because 'books' is in the table, not because of a line here.
 // The editor does NOT judge the game name: the server is the border, and a
 // name it does not know is a 404 that becomes the "Could not open" screen.
 export const parseHash = (hash) => {
