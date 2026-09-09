@@ -1,58 +1,36 @@
 {
-  "version": 4,
+  "version": 5,
   "meta": {
     "pageTitle": "Adopt a Dino! CYOA",
     "heroTitle": "dw"
   },
-  "groups": [
+  "books": [
     {
-      "id": "dc59d633-7a9d-441b-a8c5-e9224d16eec8",
-      "label": "Choose your Dino pet uWu",
-      "query": {
-        "type": "4043b853-f2e2-43bd-9a59-a1df426f55e7",
-        "where": null
-      },
-      "showWhen": {
-        "kind": "always"
-      },
-      "children": []
+      "name": "basic",
+      "edition": 1
     },
     {
-      "id": "2f388c57-809e-49c0-b03d-216b9bd894f7",
-      "label": "Now give your Dino stuffables!",
-      "query": {
-        "type": "126a2b60-f165-4974-b5d5-b19e1a7043ab",
-        "where": null
-      },
-      "showWhen": {
-        "kind": "always"
-      },
-      "children": []
+      "name": "stats",
+      "edition": 1
     },
     {
-      "id": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e",
-      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!",
-      "query": {
-        "type": "8f600498-8359-4ca2-aef8-c2a80a23ed5a",
-        "where": null
-      },
-      "showWhen": {
-        "kind": "always"
-      },
-      "children": []
-    },
-    {
-      "id": "cd9dd080-40ca-4ae9-9487-d67242cf7265",
-      "label": "Lair Location",
-      "query": {
-        "type": "9a439978-8907-4c37-a19d-fcc29faf472b",
-        "where": null
-      },
-      "showWhen": {
-        "kind": "anyInRow",
-        "row": "bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e"
-      },
-      "children": []
+      "name": "dinosaur-age",
+      "edition": 1
     }
-  ]
+  ],
+  "groups": [],
+  "rowOverrides": {
+    "dinosaur-age:row-companions": {
+      "label": "Choose your Dino pet uWu"
+    },
+    "dinosaur-age:row-gear": {
+      "label": "Now give your Dino stuffables!"
+    },
+    "dinosaur-age:row-lairs": {
+      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!"
+    },
+    "dinosaur-age:row-locations": {
+      "label": "Lair Location"
+    }
+  }
 }

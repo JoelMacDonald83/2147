@@ -1,14 +1,20 @@
 {
-  "version": 4,
+  "version": 5,
   "things": {
-    "4043b853-f2e2-43bd-9a59-a1df426f55e7": [
+    "basic:character": [
       {
         "id": "a8d09a0f-f269-4a04-a173-d694dc36b105",
         "name": "Tali",
         "cost": 1,
         "imageURL": "dino.jpg",
-        "label": "A biggie dino!",
-        "traits": [
+        "concept": "A biggie dino!",
+        "size": "biggie",
+        "origin": [
+          {
+            "thing": "dinosaur-age:tyrannosaurus"
+          }
+        ],
+        "notes": [
           "likes making stompies",
           "enjoys peanut butter",
           "very sad peanut butter not invented yet"
@@ -19,8 +25,14 @@
         "name": "Miku",
         "cost": 2,
         "imageURL": "flyer.jpg",
-        "label": "The great winged one!",
-        "traits": [
+        "concept": "The great winged one!",
+        "size": "big",
+        "origin": [
+          {
+            "thing": "dinosaur-age:pterosaur"
+          }
+        ],
+        "notes": [
           "Will give rides",
           "Loves the water",
           "Loves long flights above the beach"
@@ -31,8 +43,14 @@
         "name": "Speedy Gonzales",
         "cost": 2,
         "imageURL": "velo.png",
-        "label": "Soft boy, pleased with facial feather growth",
-        "traits": [
+        "concept": "Soft boy, pleased with facial feather growth",
+        "size": "small",
+        "origin": [
+          {
+            "thing": "dinosaur-age:velociraptor"
+          }
+        ],
+        "notes": [
           "Wants uppies",
           "404 gender not found",
           "Squirrel! Has never seen one, but needs to chase one"
@@ -43,8 +61,14 @@
         "name": "The King",
         "cost": 3,
         "imageURL": "trex.jpg",
-        "label": "Gayer than Dino Jesus",
-        "traits": [
+        "concept": "Gayer than Dino Jesus",
+        "size": "biggie",
+        "origin": [
+          {
+            "thing": "dinosaur-age:tyrannosaurus"
+          }
+        ],
+        "notes": [
           "Excellent cook",
           "Trans rights or gives bites",
           "Bowsette's bestie"
@@ -55,8 +79,14 @@
         "name": "Dino Jesus",
         "cost": 1,
         "imageURL": "trex.jpg",
-        "label": "Less gay than the King",
-        "traits": [
+        "concept": "Less gay than the King",
+        "size": "big",
+        "origin": [
+          {
+            "thing": "dinosaur-age:tyrannosaurus"
+          }
+        ],
+        "notes": [
           "Openly Libertarian",
           "Confuses librarian with libertarian",
           "Ao3 writer"
@@ -67,8 +97,14 @@
         "name": "Jeff",
         "cost": 2,
         "imageURL": "anky.jpg",
-        "label": "He looks like a Jeff",
-        "traits": [
+        "concept": "He looks like a Jeff",
+        "size": "big",
+        "origin": [
+          {
+            "thing": "dinosaur-age:ankylosaurus"
+          }
+        ],
+        "notes": [
           "Cursed to play bongos",
           "Sensual kisser",
           "Needs scritches"
@@ -79,8 +115,14 @@
         "name": "Dino Sandra Bullock",
         "cost": 4,
         "imageURL": "stag.jpg",
-        "label": "From a distance, she looks like Jeff... I swear",
-        "traits": [
+        "concept": "From a distance, she looks like Jeff... I swear",
+        "size": "big",
+        "origin": [
+          {
+            "thing": "dinosaur-age:stegosaurus"
+          }
+        ],
+        "notes": [
           "My partner dies inside every time I say her name",
           "Star of Miss Scaliality",
           "Can lick her elbow"
@@ -91,99 +133,32 @@
         "name": "Cery",
         "cost": 4,
         "imageURL": "tri.png",
-        "label": "'My first love' -- Chuck Tingle",
-        "traits": [
+        "concept": "'My first love' -- Chuck Tingle",
+        "size": "big",
+        "origin": [
+          {
+            "thing": "dinosaur-age:triceratops"
+          }
+        ],
+        "notes": [
           "Chuck Tingle's personal muse",
           "Rootinest tootinest",
           "Read the whole dictionary. Insists is not autistic."
         ]
       }
     ],
-    "126a2b60-f165-4974-b5d5-b19e1a7043ab": [
-      {
-        "id": "0a18ac24-52b5-4403-8b12-cda899a86c7b",
-        "name": "Water Gun",
-        "cost": 1,
-        "imageURL": "cannon.jpg",
-        "label": "Strong enough to hit outer space",
-        "traits": [
-          "its really fun",
-          "can even hit meteors",
-          "no one cares because meteors can't get mad"
-        ]
-      },
-      {
-        "id": "275d5a26-03b1-49af-9a4f-a359418269bd",
-        "name": "Dino Skates",
-        "cost": 1,
-        "imageURL": "skates.jpg",
-        "label": "What's cooler than a dinosaur on roller skates??",
-        "traits": [
-          "Goes wheeeeeeee",
-          "Good for enrichment",
-          "Helps get them to dino school on time"
-        ]
-      },
-      {
-        "id": "b9655bf4-9665-477e-bcac-77059cc21d93",
-        "name": "THE BANANA",
-        "cost": 2,
-        "imageURL": "banana.png",
-        "label": "Ohhhhh banana!",
-        "traits": [
-          "Grind for banana",
-          "Earn banana",
-          "Cherish banana"
-        ]
-      },
-      {
-        "id": "4d836958-7630-4c5a-a130-08b44101820f",
-        "name": "Cute rock",
-        "cost": 0,
-        "imageURL": "rock.jpeg",
-        "label": "It means no harm, I prommy~",
-        "traits": [
-          "Give your pet a pet rock",
-          "Super fast",
-          "Nice and warm"
-        ]
-      }
-    ],
-    "8f600498-8359-4ca2-aef8-c2a80a23ed5a": [
+    "basic:place": [
       {
         "id": "6ff555af-d3b4-404f-99f6-d84e66ed54c0",
         "name": "The Scritches Dimension",
         "cost": 0,
         "imageURL": "",
-        "label": " Makes dino make happi noisees!",
-        "traits": [
+        "description": " Makes dino make happi noisees!",
+        "kind": "lair",
+        "features": [
           "Happi dino noisees!",
           "PhD in Scritch Studies",
           "Comes out refreshed :)"
-        ]
-      },
-      {
-        "id": "6df9e5c4-c5c9-4bb1-898b-4982df7e4722",
-        "name": "Lava Pit",
-        "cost": 3,
-        "imageURL": "",
-        "label": "So warm! Too warm!!!",
-        "traits": [
-          "Like dino nuggies?",
-          "Literally a lava pit. With convenient breading and seasoning.",
-          "What is wrong with you? Why are you playing this?"
-        ]
-      },
-      {
-        "id": "c31ea05e-63d5-4ddc-89f8-e8fcf7f482bf",
-        "name": "Play pen",
-        "cost": 2,
-        "imageURL": "",
-        "label": "Baby dino safe place",
-        "traits": [
-          "Wheeeeeee!",
-          "Lossa toys!",
-          "Invite friend over!"
         ]
       },
       {
@@ -191,26 +166,22 @@
         "name": "King of Burger!!",
         "cost": 2,
         "imageURL": "",
-        "label": "Burgie for good dino!",
-        "traits": [
+        "description": "Burgie for good dino!",
+        "kind": "lair",
+        "features": [
           "Om yom yom!!!",
           "Good for hungie dino!",
           "All dinos paid living wage! #UnionStrong"
         ]
       }
-    ],
-    "9a439978-8907-4c37-a19d-fcc29faf472b": [
-      {
-        "id": "0568ef76-cce6-4fa6-be85-0c4f56592e72",
-        "name": "Volcano Rim",
-        "cost": 1,
-        "imageURL": "",
-        "label": "Toasty!",
-        "traits": [
-          "Great views",
-          "Slight lava smell"
-        ]
-      }
+    ]
+  },
+  "order": {
+    "basic:place": [
+      "6ff555af-d3b4-404f-99f6-d84e66ed54c0",
+      "dinosaur-age:lava-pit",
+      "dinosaur-age:play-pen",
+      "b0e6c387-5297-4cd6-9a4a-a61fb51990c7"
     ]
   }
 }
