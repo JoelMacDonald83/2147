@@ -1,5 +1,7 @@
 import { content, rules, themes, types, things } from "./loadData.js"   // one doorway in, five files out
-import { groupRulesSchema, groupThemeSchema, sheetOfType } from "./schema.js"
+// CHANGED: + placementSheet (the form one PLACEMENT carries) and totalBudgetSchema
+// (the budget is optional now, so its default lives on the sheet like every other)
+import { groupRulesSchema, groupThemeSchema, sheetOfType, placementSheet, totalBudgetSchema } from "./schema.js"
 import { checkWhere, filterThings } from "./query.js"          // NEW: the row's filter — checked, then run
 import { checkShowWhen } from "./visibility.js"                 // NEW: the row's gate — checked here, evaluated by state.js
 import { flattenGroups } from "../helpers.js"                   // NEW: every row at every depth, for the id sets below
@@ -35,9 +37,12 @@ import { flattenGroups } from "../helpers.js"                   // NEW: every ro
       "" (or no longer exists), or whose condition cannot run, gets an empty
       list — never a wider one. `query` itself rides through untouched, and
       state.js / view.js never read it: they read `items`.
-   6) the row also gets `fields` — its type's own field list — so the view
-      knows which extras to draw on each card, and every thing gets any field
-      it is missing filled with that kind's default.
+   6) the row also gets `fields` — its type's SHEET (CHANGED: a type is sections
+      now, and sheetOfType flattens them into the one flat list the view has
+      always walked: a fields section contributes its fields, a LIST section
+      contributes a single "placements" entry under the section's key) — so the
+      view knows which extras to draw on each card, and every thing gets any
+      field it is missing filled with that field's default.
    7) NEW: the row's gate (`showWhen`) is CHECKED here. One that names a thing
       or row that does not exist, waits for itself, or has a kind nobody knows
       is replaced by { kind: "never" }. It is EVALUATED later, by state.js,
@@ -63,6 +68,40 @@ const resolveFromSheet = (sheet, source) => {
 // CHANGED: the type a row shows is now inside its query — or undefined when it shows nothing
 const typeOf = (row) => types.types.find(type => type.id === row.query.type)
 
+// NEW: one thing, ready for a card. Two halves, and the order matters: the raw
+// thing first (so a stale key nobody asks for rides along harmlessly), then the
+// sheet's answer for every entry the type declares — a thing born before a field
+// existed gets that field's default rather than `undefined` on its card.
+// imageURL is the one core field the border rewrites: authors write a bare
+// filename, the view wants a URL (page-relative — see 4 above).
+const hydrateThing = (thing, sheet) => {
+  const hydrated = { ...thing, ...resolveFromSheet(sheet, thing), imageURL: thing.imageURL ? `assets/${thing.imageURL}` : "" }
+  // A "placements" entry cannot be resolved by resolveFromSheet: its value is not
+  // a stored value but a list of POINTERS that have to be followed. So the sheet
+  // is walked once more for exactly those entries.
+  sheet.filter(entry => entry.type === "placements").forEach(entry => {
+    hydrated[entry.key] = resolvePlacements(thing, entry)
+  })
+  return hydrated
+}
+
+// NEW: a placement becomes { thing, name, …the placement fields with their
+// defaults } — the pointer kept (state.js and the view never need it, but the
+// id is what the data means) plus the one thing a card wants to print: the
+// placed thing's NAME, fetched from the shelf the section lists (`section.of`).
+// A placement naming a thing that is not on that shelf is a hand-edit or a
+// half-removed thing: say so once, by name, and drop THAT entry — the rest of
+// the list still draws. Fail closed: a dangling pointer never becomes a blank
+// or a guess on the card.
+const resolvePlacements = (thing, entry) => (Array.isArray(thing[entry.key]) ? thing[entry.key] : []).flatMap(placement => {
+  const target = (things.things[entry.section.of] ?? []).find(each => each.id === placement.thing)
+  if (!target) {
+    console.warn(`Thing "${thing.name}" places a thing that does not exist (${placement.thing}) in ${entry.caption}; it is skipped`)
+    return []
+  }
+  return [{ ...resolveFromSheet(placementSheet(entry.section), placement), thing: placement.thing, name: target.name }]
+})
+
 // CHANGED: "which things does this row offer?" is now the row's QUERY, answered
 // against the hydrated bucket: hydrate first (defaults, assets/ prefix), then
 // filter, so a thing missing a field is compared on the default the card shows.
@@ -80,18 +119,16 @@ const resolveItems = (row) => {
     if (row.query.type !== "") console.warn(`Row "${row.label}" shows a type that does not exist (${row.query.type})`)
     return { fields: [], items: [] }
   }
+  // CHANGED: the sheet, not the type's old flat `fields` list — and hydration
+  // moved into hydrateThing, because a thing is more than its fixed slots now.
   const sheet = sheetOfType(type)
-  const bucket = (things.things[type.id] ?? []).map(thing => ({
-    ...thing,
-    ...resolveFromSheet(sheet, thing),     // a missing custom field → its kind's default
-    imageURL: thing.imageURL ? `assets/${thing.imageURL}` : ""   // CHANGED: page-relative (see 4 above)
-  }))
+  const bucket = (things.things[type.id] ?? []).map(thing => hydrateThing(thing, sheet))
   const problem = checkWhere(row.query.where, type)
   if (problem) {
     console.warn(`Row "${row.label}" cannot run its filter — ${problem}; it shows nothing`)
-    return { fields: type.fields, items: [] }
+    return { fields: sheet, items: [] }
   }
-  return { fields: type.fields, items: filterThings(bucket, type, row.query.where) }
+  return { fields: sheet, items: filterThings(bucket, type, row.query.where) }
 }
 
 // NEW: the gate, checked. A gate that names a missing thing or row, waits for
@@ -122,7 +159,12 @@ const hydrateGroups = (content, rules, themes) =>
 
 
 export const meta = content.meta
-export const totalBudget = rules.totalBudget
+// CHANGED: the budget is OPTIONAL in the file now — a game that writes none lets
+// a pinned book's proposal show through (the merge has already applied that), and
+// when nothing proposes one either, the sheet's own default (10) applies. Read
+// through the sheet like every other absent value, so the number lives in exactly
+// one place: totalBudgetSchema.
+export const totalBudget = resolveFromSheet(totalBudgetSchema, rules).totalBudget
 
 // pageTheme gets the same border treatment as the things:
 // heroImage arrives as a bare filename and leaves as a real URL

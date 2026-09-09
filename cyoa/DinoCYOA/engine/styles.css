@@ -134,8 +134,10 @@ body {
   margin: 12px 0 4px;
 }
 
-.card-text {           /* CHANGED: was .card-label — every "text" field looks the way the label did */
-  font-size: 1.4rem;
+.card-text,
+.card-placements {     /* CHANGED: was .card-label — every "text" field looks the way the label did */
+  font-size: 1.4rem;   /* NEW: .card-placements — a list section's line ("Origin: Tyrannosaurus")
+                          reads as prose about the thing, so it shares the text look */
   font-style: italic;
   color: #555;
   margin: 0 0 8px;
@@ -149,7 +151,11 @@ body {
   flex-grow: 1;           /* lines absorb spare height... */
 }
 
-.card-number {         /* NEW: a "number" field — "Caption: value" on one small line */
+.card-number,
+.card-choice {         /* NEW: a "number" field — "Caption: value" on one small line.
+                          NEW: .card-choice — a chosen option ("Size: biggie") is the same
+                          "Caption: value" line, so one rule serves both rather than two
+                          that drift apart */
   margin: 0 0 8px;
   font-size: 1.1rem;
   color: #444;

@@ -1,4 +1,5 @@
 import { groups } from './config/gameConfig.js'
+import { placementSheet } from './config/schema.js'   // NEW: the placement fields of a list section, for the line below
 import { gameState } from './state.js'
 // Same relationship as the old game: the view reads config (what exists) and
 // state (what the player has done) and paints the page from both.
@@ -32,17 +33,22 @@ export const applyPageTheme = (pageTheme) => {
   root.style.setProperty('--status-color', pageTheme.statusColor)
 }
 
+// CHANGED: four of the five builders below make the same thing — one <p> with a
+// class and a line of text — so that shape is written once, here, and each
+// builder says only what is different about it.
+const p = (className, text) => {
+  const el = document.createElement('p')
+  el.className = className
+  el.textContent = text
+  return el
+}
+
 // NEW: how each KIND of author-defined field is drawn on a card. The twin of
 // the editor's FIELD_BUILDERS: the editor decides how a kind is EDITED, this
 // table decides how it is SHOWN. Core fields (image, name, cost) are not
 // here — they are drawn by hand below, exactly as before.
 const DISPLAY_BUILDERS = {
-  text: (field, value) => {
-    const el = document.createElement('p')
-    el.className = 'card-text'
-    el.textContent = value
-    return el
-  },
+  text: (field, value) => p('card-text', value),
   lines: (field, value) => {
     const el = document.createElement('ul')
     el.className = 'card-lines'
@@ -54,12 +60,22 @@ const DISPLAY_BUILDERS = {
     })
     return el
   },
-  number: (field, value) => {
-    const el = document.createElement('p')
-    el.className = 'card-number'
-    el.textContent = `${field.caption}: ${value}`
-    return el
-  }
+  number: (field, value) => p('card-number', `${field.caption}: ${value}`),
+  // NEW: a "choice" field. The stored value IS the label (options are bare
+  // strings), so it reads exactly like a number does: "Size: biggie".
+  choice: (field, value) => p('card-choice', `${field.caption}: ${value}`),
+  // NEW: a LIST section's entries — the one builder whose value is not a stored
+  // value but a resolved list, each entry { thing, name, …the placement fields }
+  // (the border followed the pointers; see resolvePlacements in gameConfig.js).
+  // One line: the caption, then each entry as its name followed by its placement
+  // values — "Skills: Stomp Level 2, Roar Level 1", "Origin: Tyrannosaurus" when
+  // the section has no placement fields at all. An EMPTY list draws nothing: a
+  // character with no gear should have no Gear line, not an empty one.
+  placements: (field, value) => value.length === 0
+    ? document.createTextNode('')
+    : p('card-placements', `${field.caption}: ${value.map(each =>
+        [each.name, ...placementSheet(field.section).map(placementField => `${placementField.caption} ${each[placementField.key]}`)].join(' ')
+      ).join(', ')}`)
 }
 
 // NEW: the mirror of the editor's renderField — look the kind up, warn (and
