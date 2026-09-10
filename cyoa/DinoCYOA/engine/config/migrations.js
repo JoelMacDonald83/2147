@@ -166,12 +166,33 @@ const migrateSetV5toV6 = (set) => {
   }
 }
 
+// ── step 6: v6 → v7 ──
+// NEW. An entry may now DEMAND something of the player's sheet. The `demands` key is
+// RESERVED and OPTIONAL and born ABSENT: "this entry demands nothing" is spelled by the
+// key not being there, which is what every thing on the shelf and in both games already
+// means. So there is nothing to write into any file, and this step HAS NO BODY.
+//
+// It is written anyway, and it MUST be. Without it a v6 engine would read a v7 file,
+// ignore a `demands` key in silence, and sell what the rules forbid — and a prerequisite
+// nobody can see is worse than one that refuses the click. The version line is what turns
+// that silence into one useful sentence ("must be 6 (found 7)") instead of a dozen
+// ("unexpected key").
+//
+// Pure, deterministic, mint-free, set-level, generic — and byte-identical run twice by
+// HAVING NO BODY, rather than by care. `stamp` (above) is reused for all five files so a
+// null keeps being a null and migrateSet can still NAME the file that is missing.
+const migrateSetV6toV7 = (set) => ({
+  content: stamp(set.content, 7), rules: stamp(set.rules, 7), themes: stamp(set.themes, 7),
+  types:   stamp(set.types,   7), things: stamp(set.things, 7)
+})
+
 const MIGRATIONS = {
   1: migrateSetV1toV2,
   2: migrateSetV2toV3,
   3: migrateSetV3toV4,
   4: migrateSetV4toV5,
-  5: migrateSetV5toV6   // NEW
+  5: migrateSetV5toV6,
+  6: migrateSetV6toV7   // NEW
 }
 
 const setVersion = (set) => set.content.version
