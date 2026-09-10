@@ -75,6 +75,22 @@ import { validateGame, flattenGame, orderBooks } from '../engine/config/merge.js
 // published folder is: no shelf on disk, and (because its data is flattened)
 // nothing that asks for one. Parent and child agree on that by construction —
 // the source child is given the shelf, the dist child never is.
+//
+// CHANGED: the snapshot now also reports what the hydrated game BINDS, not only
+// what it OFFERS — `playerSheet` (the type the player fills in) and, per row,
+// `fills` (the section that row's picks land in). Both are ids, both `null` when
+// there is none. Nothing new is asserted here: the parent already deep-equals the
+// dist snapshot against the source one, so widening the snapshot widens that ONE
+// existing check from "the folder shows the same items" to "the folder shows the
+// same items AND records them in the same places". That matters because the two
+// children read different data — the source child merges the shelf live, the dist
+// child reads the flattened files — and `sheet`/`fills` are exactly the keys the
+// flattening has to carry through (merge.js steps 10 and 11). If flattening ever
+// dropped them, the folder would still LOOK right and every published sheet would
+// come out empty; now the export refuses instead.
+// `?.id ?? null`, not `.id`: a row that fills nothing has `fills: null` (every v5
+// row, every vampire row), and an engine older than v6 has no `playerSheet` export
+// at all, so undefined must land on the same `null` the new engine prints.
 if (process.argv[2] === '--verify') {
   const [engineDir, gameDir, booksDir] = process.argv.slice(3)
   const warnings = []
@@ -91,15 +107,15 @@ if (process.argv[2] === '--verify') {
     }
     catch { return { ok: false, status: 404, json: async () => { throw new Error(`404 ${url}`) } } }
   }
-  const { groups, pageTheme } = await import(pathToFileURL(join(engineDir, 'config', 'gameConfig.js')).href)
-  const skeleton = (rows) => rows.map(row => ({ id: row.id, items: row.items.map(item => item.id), children: skeleton(row.children) }))
+  const { groups, pageTheme, playerSheet } = await import(pathToFileURL(join(engineDir, 'config', 'gameConfig.js')).href)
+  const skeleton = (rows) => rows.map(row => ({ id: row.id, fills: row.fills?.id ?? null, items: row.items.map(item => item.id), children: skeleton(row.children) }))
   const flat = (rows) => rows.flatMap(row => [row, ...flat(row.children)])
   const countGroups = (rows) => rows.reduce((n, row) => n + 1 + countGroups(row.children), 0)
   const countItems = (rows) => rows.reduce((n, row) => n + row.items.length + countItems(row.children), 0)
   const images = [...new Set(flat(groups).flatMap(row => row.items.map(item => item.imageURL)).filter(Boolean))].sort()
   // writeSync, not process.stdout.write: on macOS a write to a pipe is asynchronous,
   // and process.exit right after it would drop everything past the 64 KB pipe buffer
-  writeSync(process.stdout.fd, JSON.stringify({ warnings, fetched, heroImage: pageTheme.heroImage, skeleton: skeleton(groups), rows: countGroups(groups), items: countItems(groups), images }))
+  writeSync(process.stdout.fd, JSON.stringify({ warnings, fetched, heroImage: pageTheme.heroImage, playerSheet: playerSheet?.id ?? null, skeleton: skeleton(groups), rows: countGroups(groups), items: countItems(groups), images }))
   process.exit(0)
 }
 
@@ -358,6 +374,10 @@ const copyGame = (outDir, texts, merged, assets) => {
 //    merged game); the DIST child is given none. So the skeletons matching is
 //    the claim this whole file makes, checked rather than asserted: the
 //    flattened folder plays exactly what the merge plays.
+//    CHANGED: "plays" now includes "records". The skeleton carries each row's
+//    `fills`, so the existing comparison covers the bindings too; the sheet the
+//    game declares gets its own line, because it is one value for the whole game
+//    rather than one per row and deserves its own sentence when it goes wrong.
 const runVerify = (engineDir, gameDir, booksDir) =>
   JSON.parse(execFileSync(process.execPath, [THIS_FILE, '--verify', engineDir, gameDir, ...(booksDir === undefined ? [] : [booksDir])], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }))   // a big game's skeleton is big
 const verifyExport = (outDir, sourceDir, booksDir, label) => {
@@ -366,7 +386,8 @@ const verifyExport = (outDir, sourceDir, booksDir, label) => {
     const dist = runVerify(outDir, outDir)   // engine AND data from the folder itself, and no shelf anywhere
     assert.deepEqual(src.warnings, [], `${label} hydrates with warnings: ${src.warnings.join('; ')}`)
     assert.deepEqual(dist.warnings, [], `the folder hydrates with warnings: ${dist.warnings.join('; ')}`)
-    assert.deepEqual(dist.skeleton, src.skeleton, 'the folder does not play like the working tree (rows or items differ)')
+    assert.equal(dist.playerSheet, src.playerSheet, `the folder builds a different sheet: ${dist.playerSheet} rather than ${src.playerSheet}`)
+    assert.deepEqual(dist.skeleton, src.skeleton, 'the folder does not play like the working tree (rows, items or bindings differ)')
     dist.fetched.forEach(url => assert.ok(url.startsWith('data/'), `the engine asked for ${url} — not page-relative, or the folder still wants the shelf`))
     const files = new Set(listFiles(outDir))   // exact names, as a host would match them
     ;[...dist.images, dist.heroImage].filter(Boolean).forEach(rel => assert.ok(files.has(rel), `image file missing from the folder: ${rel}`))
