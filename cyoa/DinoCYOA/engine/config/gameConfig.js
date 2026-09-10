@@ -1,9 +1,14 @@
 import { content, rules, themes, types, things } from "./loadData.js"   // one doorway in, five files out
 // CHANGED: + placementSheet (the form one PLACEMENT carries) and totalBudgetSchema
 // (the budget is optional now, so its default lives on the sheet like every other)
-import { groupRulesSchema, groupThemeSchema, sheetOfType, placementSheet, totalBudgetSchema } from "./schema.js"
+// CHANGED: + listSectionsOf, for the one-per-section quantity warning below
+import { groupRulesSchema, groupThemeSchema, sheetOfType, placementSheet, listSectionsOf, totalBudgetSchema } from "./schema.js"
 import { checkWhere, filterThings } from "./query.js"          // NEW: the row's filter — checked, then run
 import { checkShowWhen } from "./visibility.js"                 // NEW: the row's gate — checked here, evaluated by state.js
+// NEW: the player's sheet, as vocabulary — checkFills is the row's BINDING check,
+// the twin of checkWhere and checkShowWhen above; the other three are what the
+// border hands the interior once the check has passed.
+import { checkFills, sectionById, quantityFieldOf, playerFields, QUANTITY_KEY } from "./sheet.js"
 import { flattenGroups } from "../helpers.js"                   // NEW: every row at every depth, for the id sets below
 
 // helper functions
@@ -47,8 +52,14 @@ import { flattenGroups } from "../helpers.js"                   // NEW: every ro
       or row that does not exist, waits for itself, or has a kind nobody knows
       is replaced by { kind: "never" }. It is EVALUATED later, by state.js,
       after every click — the border only makes sure it can be.
+   8) NEW: the row's BINDING (`fills`) is checked here and evaluated nowhere
+      else. In the file it is a SECTION ID; state.js and view.js are handed the
+      SECTION OBJECT itself (or null), exactly the way they are handed `items`
+      rather than a query. The row also gets `quantityField` — the one placement
+      field that multiplies its cost, or null — so nobody downstream has to know
+      the naming convention.
    The hydrated row that state.js and view.js trust looks like this:
-     { id, label, query, showWhen, min, max, background, fields, items, children }
+     { id, label, query, fills, quantityField, showWhen, min, max, background, fields, items, children }
 */
 
 // NEW: every id the gates may name, for the reference check in resolveShowWhen.
@@ -144,14 +155,71 @@ const resolveShowWhen = (row) => {
   return row.showWhen
 }
 
-const hydrateGroup = (group, rules, themes) => ({
-  ...group,                                                        // id, label, query (raw), showWhen (replaced below), children (replaced below)
-  ...resolveFromSheet(groupRulesSchema, rules.groupRules[group.id]),
-  ...resolveFromSheet(groupThemeSchema, themes.groupThemes[group.id]),
-  showWhen: resolveShowWhen(group),                                // NEW: the gate, checked
-  ...resolveItems(group),                                          // CHANGED: the query, answered — fields + items
-  children: group.children.map(child => hydrateGroup(child, rules, themes))
-})
+// NEW: the sheet the PLAYER builds, resolved ONCE, at import time.
+//   null           this game builds no sheet ("" — every v5 game, and vampire)
+//   null, LOUDLY   it names a type that is not there (a hand-edit, or a book
+//                  un-pinned): say so once, then play the v5 way.
+// Fail closed — a missing sheet never becomes a guessed one. Not "the first type",
+// not basic:character: either would be a guess, and "this game is a menu, not a
+// sheet" has to stay sayable.
+// `fields` is the flat list of what the player TYPES (Name first); `sections` is
+// the tree, because the panel is drawn section by section.
+const resolvePlayerSheet = () => {
+  const id = content.sheet ?? ""
+  if (id === "") return null
+  const type = types.types.find(type => type.id === id)
+  if (!type) { console.warn(`This game builds a sheet that does not exist (${id}); no sheet is shown`); return null }
+  // NEW: the quantity convention, said out loud where a book half-kept it. A
+  // placement field keyed `quantity` MULTIPLIES its entry's cost, but only when it
+  // is a NUMBER — validate.js refuses any other kind on SAVE, so this catches only
+  // a book written before that rule existed. One sentence per section beats a
+  // silent ×1 on every pick in it.
+  listSectionsOf(type).forEach(section => {
+    const named = placementSheet(section).find(field => field.key === QUANTITY_KEY)
+    if (named && named.type !== "number")
+      console.warn(`Section "${section.caption}" has a "quantity" field that is not a number; its picks are not multiplied`)
+  })
+  return { id, label: type.label, type, fields: playerFields(type), sections: type.sections }
+}
+export const playerSheet = resolvePlayerSheet()
+// the game asked for a sheet and did not get one: every bound row below is broken,
+// for the ONE reason resolvePlayerSheet has already named
+const sheetDangles = (content.sheet ?? "") !== "" && playerSheet === null
+
+// NEW: the row's binding, checked. Note the ORDER inside: checkFills is asked about
+// the RAW row, while `fills` is still an ID — get that backwards and every message
+// reads "[object Object]". Only then is the id replaced by the section it named.
+// A row that cannot fill what it names offers NOTHING (`broken`). The alternative —
+// keep offering the picks, they simply never reach the sheet — hides less from the
+// player, and loses anyway: a pick that cannot land still COSTS POINTS, so the
+// player would pay for an entry that appears nowhere on their document. Paying for
+// nothing is silently wrong; an empty row is visibly wrong, and the author fixes it
+// in seconds.
+const resolveFills = (row) => {
+  // The sheet itself dangled: every bound row is broken for one cause, and saying
+  // so once per row would be five sentences for one mistake. Stay quiet, still fail
+  // closed — resolvePlayerSheet already said the only thing worth saying.
+  if (sheetDangles) return { fills: null, broken: (row.fills ?? "") !== "" }
+  const problem = checkFills(row, playerSheet?.type ?? null)
+  if (problem) { console.warn(`Row "${row.label}" ${problem}; it shows nothing`); return { fills: null, broken: true } }
+  return { fills: (row.fills ?? "") === "" ? null : sectionById(playerSheet.type, row.fills), broken: false }
+}
+
+const hydrateGroup = (group, rules, themes) => {
+  const bound  = resolveFills(group)                               // NEW: checked while `fills` is still an id
+  const answer = resolveItems(group)                               // CHANGED: held, because a broken binding overrules its items
+  return {
+    ...group,                                                      // id, label, query (raw), fills (an id — replaced below), showWhen (replaced below), children (replaced below)
+    ...resolveFromSheet(groupRulesSchema, rules.groupRules[group.id]),
+    ...resolveFromSheet(groupThemeSchema, themes.groupThemes[group.id]),
+    showWhen: resolveShowWhen(group),                              // NEW: the gate, checked
+    ...answer,                                                     // CHANGED: the query, answered — fields + items
+    fills: bound.fills,                                            // NEW: the SECTION object, or null
+    quantityField: quantityFieldOf(bound.fills),                   // NEW: the number field that multiplies, or null
+    items: bound.broken ? [] : answer.items,                       // NEW: fail closed — a pick that cannot land is not offered
+    children: group.children.map(child => hydrateGroup(child, rules, themes))
+  }
+}
 
 const hydrateGroups = (content, rules, themes) =>
   content.groups.map(group => hydrateGroup(group, rules, themes))
