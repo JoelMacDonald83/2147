@@ -8,18 +8,30 @@ import { editorState, buildSheets, remerge } from './state.js'
 // NEW: rowOverrideSchema (the game's house rules on a proposed row), the two
 // cabinet sheets drawn beside a proposal, asOption/placementSheet/listSectionsOf
 // (the placements builder) and fieldDefault's reader.
+// NEW: FILE_SHEETS, for the ONE entry on it the Page card draws — `content.sheet`,
+// the type the PLAYER builds. It is on FILE_SHEETS and not on contentSchema for the
+// same reason `books` is: contentSchema is what renderRowsTab walks card by card,
+// and the sheet declaration belongs in the Page card beside the title and the budget.
 import {
   contentSchema, typesSchema, metaSchema, pageThemeSchema, totalBudgetSchema,
-  rowOverrideSchema, groupRulesSchema, groupThemeSchema,
+  rowOverrideSchema, groupRulesSchema, groupThemeSchema, FILE_SHEETS,
   queryableFields, fieldById, asOption, placementSheet, listSectionsOf
 } from '/config/schema.js'
+// NEW: the player's sheet, as vocabulary — the leaf the engine, the validator and
+// this screen all read. Same discipline as query.js and visibility.js above: the
+// question "why can this row not fill what it names?" is answered by ONE function
+// (checkFills), so the badge this screen draws is the sentence the player's console
+// warns with and the sentence the server refuses the save with. Never write it twice.
+import { fillableSections, sectionById, checkFills, quantityFieldOf } from '/config/sheet.js'
 // NEW: the shared logic under engine/config/ — the same functions the game
 // runs, so what the author reads here is what the player gets there.
 // query.js answers a row's question; visibility.js says when a row shows;
 // references.js walks the row tree and repairs it when something is removed.
 import { OPERATORS, operatorOf, WHERE_VALUE_DEFAULT, checkWhere, filterThings, valuesOf } from '/config/query.js'
 import { SHOW_WHEN_KINDS, checkShowWhen, deadRows, idsBelow } from '/config/visibility.js'
-import { rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements } from '/config/references.js'
+// NEW on this line: forgetFills and forgetPlayerSheet — the two repairs a removed
+// section and a removed TYPE now owe the player's sheet (see REMOVE_HOOKS).
+import { rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet } from '/config/references.js'
 // NEW: the merge's two names the screen speaks — which layer is "the game" and
 // how a book layer is labelled ("basic 1") — plus the sentence maker for a fault.
 import { GAME_LAYER, bookLabel } from '/config/merge.js'
@@ -272,7 +284,11 @@ choice: (entry, target) => {
   captionEl.textContent = entry.caption
 
   const selectEl = document.createElement('select')
-  const options = (entry.options ?? OPTION_SOURCES[entry.optionsFrom]()).map(asOption)
+  // CHANGED: the source is handed the TARGET. Every source that existed takes no
+  // argument and ignores an extra one, so nothing else moves — but the new
+  // `fillableSections` source needs it: WHICH sections fit depends on the row being
+  // drawn (a row showing Items may only fill a section that lists Items).
+  const options = (entry.options ?? OPTION_SOURCES[entry.optionsFrom](target)).map(asOption)
   options.forEach(option => {
     const optionEl = document.createElement('option')
     optionEl.value = option.value
@@ -395,6 +411,15 @@ placements: (entry, target) => {
   const section = entry.section
   const placed  = target[entry.key] ?? []
   const shelf   = OPTION_SOURCES.thingsOf(section.of)
+  // NEW: the one placement key the ENGINE reads by name. A NUMBER field keyed
+  // `quantity` MULTIPLIES its entry's cost when a player picks it (three Cute Rocks
+  // cost three times one rock); every other placement field — a Skill's Level — is
+  // just a value. So the author is told which box does that, where the box is.
+  // Asked of quantityFieldOf and never of the key itself, so the day this becomes a
+  // real `multiplies: true` flag on the field, that one function changes and this
+  // line does not. (placementSheet dresses a fresh object per call, so the two are
+  // compared by KEY, not by identity.)
+  const multiplies = quantityFieldOf(section)?.key
 
   const bagEl = document.createDocumentFragment()
   bagEl.appendChild(captionSpan(entry.caption))
@@ -404,7 +429,10 @@ placements: (entry, target) => {
       placement.thing = value
       rerender()
     }))
-    placementSheet(section).forEach(field => lineEl.appendChild(renderField(field, placement)))
+    placementSheet(section).forEach(field => {
+      lineEl.appendChild(renderField(field, placement))
+      if (field.key === multiplies) lineEl.appendChild(el('span', 'field-note', '· multiplies cost'))
+    })
     const removeBtn = el('button', 'remove-button', 'Remove')
     removeBtn.addEventListener('click', () => {
       const at = placed.indexOf(placement)
@@ -480,6 +508,9 @@ attachment: (entry, target) => {
   SHEETS[entry.of].forEach(inner => {
     bagEl.appendChild(renderField(inner, slot))
   })
+  // NEW: one sentence a whole cabinet needs, said where the cabinet is drawn — see
+  // SHEET_NOTES. Today that is min/max on a row: they count PICKS, never quantities.
+  if (SHEET_NOTES[entry.of]) bagEl.appendChild(el('p', 'field-note', SHEET_NOTES[entry.of]))
   return bagEl
 }
 
@@ -544,7 +575,29 @@ const OPTION_SOURCES = {
   // a row may wait on any row but itself and its descendants: those can never
   // hold a pick while this row is hidden, so offering them would mint dead
   // rows. Ancestors are offered — "pick a Lair, then choose a Location inside it".
-  rows:         (self)        => { const below = new Set(idsBelow(self)); return rowsIn(editorState.merged.content.groups).filter(row => !below.has(row.id)).map(row => ({ value: row.id, label: row.label })) }
+  rows:         (self)        => { const below = new Set(idsBelow(self)); return rowsIn(editorState.merged.content.groups).filter(row => !below.has(row.id)).map(row => ({ value: row.id, label: row.label })) },
+  // NEW: what a GAME may declare as the sheet the PLAYER builds — every merged type,
+  // plus the honest "none" first. "" is a real answer and the default one: a game that
+  // builds no sheet is a menu of plain pickers, which is what every v5 game is.
+  // (its target is content.json's top, so it can name a sheet the library lost.)
+  playerSheets: (content)     => withCurrent([{ value: '', label: '— nothing (a plain picker) —' }, ...OPTION_SOURCES.sheets()], content?.sheet ?? '', 'no longer exists'),
+  // NEW: where a ROW's picks land — only the sections that FIT, which is the LIST
+  // sections of the declared player sheet whose `of` is this row's query type. A
+  // binding built from this dropdown can never mismatch, the same discipline the query
+  // builder keeps by only offering fields that exist. (Measured: on today's dino every
+  // row has exactly ONE fitting section, so binding a row is one click.)
+  // Two notes for the reader. The `fillableSections(...)` INSIDE is the import from
+  // sheet.js: a property name creates no binding, so nothing is shadowed — one name,
+  // one idea. And withCurrent, for the reason every other select here has it: a
+  // hand-written binding that does NOT fit is SHOWN, labelled, never silently swapped
+  // for the first option; the row's header carries checkFills' sentence beside it.
+  fillableSections: (row)     => {
+    const type = typeById(editorState.merged.content.sheet ?? '')
+    if (!type) return [{ value: '', label: '— this game builds no sheet —' }]
+    const fits = fillableSections(type, row?.query?.type ?? '')
+      .map(section => ({ value: section.id, label: `${section.caption} — ${sheetLabel(section.of)} entries` }))
+    return withCurrent([{ value: '', label: '— nothing —' }, ...fits], row?.fills ?? '', 'does not fit this row')
+  }
 }
 
 // what to call an element of a sheet on a button. Most sheets are named by
@@ -552,8 +605,25 @@ const OPTION_SOURCES = {
 // oddly — CHANGED: a group is a "row" on screen; a type's sheet is filed
 // under the type's id, so its label is shown instead.
 const NOUNS = { fieldDef: 'field', group: 'row', section: 'section' }
+
+// NEW: one sentence a whole SHEET needs, drawn under it. Today there is exactly
+// one, and it exists because `fills` gave min/max a neighbour they can be confused
+// with: three Cute Rocks are ONE entry on the player's sheet and ONE pick in the
+// row — a quantity multiplies the PRICE and never the COUNT, so `max: 3` still
+// means three different things. A table rather than a line in the builder, for the
+// reason NOUNS is one: the next such sentence should be an entry, not an edit.
+const SHEET_NOTES = { groupRules: 'min and max count picks — a quantity does not count twice' }
 const sheetLabel = (sheetName) =>
   NOUNS[sheetName] ?? typeById(sheetName)?.label ?? sheetName
+
+// NEW: one SECTION of the player's sheet, by id, as the author's own caption
+// ("Gear"). Total on purpose — it falls back to the bare id, because it is drawn on
+// cards that must paint whatever the file says, including a binding to a section a
+// book upgrade took away. The ⚠ beside it is checkFills' job, never this one's.
+const sectionCaption = (sectionId) => {
+  const type = typeById(editorState.merged.content.sheet ?? '')
+  return (type ? sectionById(type, sectionId) : undefined)?.caption ?? sectionId
+}
 
 // CHANGED: an entry may only EXIST while a sibling says so (`showIf`). A
 // section's `fields` while its kind is "fields", its `of` and `placement` while
@@ -832,6 +902,10 @@ const renderRowsTab = () => {
   const mergedRows = rowsIn(editorState.merged.content.groups)
   const offered = {}
   mergedRows.forEach(row => { offered[row.id] = offeredBy(row) })
+  // NEW: the player's sheet, resolved ONCE for the whole paint — every row's `fills`
+  // is judged against this one type.
+  const sheetId   = editorState.merged.content.sheet ?? ''
+  const sheetType = typeById(sheetId)
   rowsContext = {
     rowIds:   new Set(mergedRows.map(row => row.id)),
     thingIds: new Set(Object.values(editorState.merged.things.things).flat().map(thing => thing.id)),
@@ -839,7 +913,14 @@ const renderRowsTab = () => {
     // NEW: the proposed rows this game has hidden. They are gone from the merged
     // tree, so a row still waiting on one would otherwise read "names a row that
     // does not exist" — true, but not the sentence that helps.
-    hiddenRows: new Set(proposedFlat().filter(row => overrideOf(row.id)?.hidden === true).map(row => row.id))
+    hiddenRows: new Set(proposedFlat().filter(row => overrideOf(row.id)?.hidden === true).map(row => row.id)),
+    sheetType,
+    // NEW: the audit's own ONE-CAUSE rule (references.js), applied where it belongs.
+    // When the declared TYPE is gone, every bound row would ALSO report "fills a
+    // section but this game builds no sheet" — one cause, five sentences. The Page
+    // card carries the single sentence that matters; the rows stay quiet until the
+    // declaration is fixed.
+    sheetDangles: sheetId !== '' && sheetType === undefined
   }
   renderPageCard()
   editorState.proposed.rows.forEach(entry => editorEl.appendChild(buildProposedRowCard(entry)))
@@ -867,10 +948,21 @@ const TAB_PAINTERS = {
 // CHANGED: the budget shown is the MERGED one — this game's number if it wrote
 // one, else the first proposal, else the sheet's 10. That is the number the
 // player will spend, so it is the number the summary says.
-const pageSummary = () => ({
-  text: `Page · "${editorState.content.meta.pageTitle}" · budget ${editorState.merged.rules.totalBudget ?? 10}`,
-  warnings: editorState.proposed.totalBudget?.conflict ? ['books conflict on the budget'] : []
-})
+// CHANGED: it also says what the PLAYER builds, because that is now the biggest
+// thing about a page — a game with a sheet is a character builder, a game without
+// one is a menu, and the folded card should say which. A declaration naming a type
+// the library no longer holds gets the validator's own sentence as a ⚠: nothing
+// else on this screen would say it until the save was refused.
+const pageSummary = () => {
+  const sheetId  = editorState.content.sheet ?? ''
+  const type     = typeById(sheetId)
+  const warnings = editorState.proposed.totalBudget?.conflict ? ['books conflict on the budget'] : []
+  if (sheetId !== '' && type === undefined) warnings.push(`builds a sheet that does not exist (${sheetId})`)
+  return {
+    text: `Page · "${editorState.content.meta.pageTitle}" · budget ${editorState.merged.rules.totalBudget ?? 10} · ${sheetId === '' ? 'no player sheet' : `builds ${type?.label ?? sheetId}`}`,
+    warnings
+  }
+}
 
 const renderPageCard = () => {
   const cardEl = document.createElement('section')
@@ -882,6 +974,7 @@ const renderPageCard = () => {
     metaSchema.forEach(entry => {
       cardEl.appendChild(renderField(entry, editorState.content.meta))
     })
+    cardEl.appendChild(renderSheetLine())     // NEW: above the budget — what the player builds, then what they may spend on it
     cardEl.appendChild(renderBudgetLine())
     // ── page theme values (themes.json → applied as CSS custom properties by the game) ──
     pageThemeSchema.forEach(entry => {
@@ -889,6 +982,32 @@ const renderPageCard = () => {
     })
   }
   editorEl.appendChild(cardEl)
+}
+
+// NEW: the ONE line that says what the PLAYER builds — a type from the MERGED
+// library whose shape the player fills in, or "" (this game is a menu of plain
+// pickers, which is what every v5 game is). It is the whole of Stage 2 in one
+// dropdown: choose a sheet here, and every row card below gains a "Fills" box.
+//
+// The note under it is that choice's arithmetic, read from the merged library and
+// nowhere else — what the player TYPES (Name, then every FIELDS section by name)
+// and how many LIST sections the rows may fill. On today's dino it reads
+// "the player fills Name, Identity, Attributes, Notes · 8 sections rows may fill",
+// and no line of that came from this game: three books put it there.
+//
+// `afterChange` is written HERE rather than read off the sheet entry, for now. The
+// consequence of changing this dropdown — every row bound to the old sheet loses its
+// binding — is a CHANGE_HOOKS job, and that table lives in this file.
+const renderSheetLine = () => {
+  const entry  = FILE_SHEETS.content.find(item => item.key === 'sheet')
+  const lineEl = el('div', 'override-line')
+  lineEl.appendChild(renderField({ ...entry, afterChange: 'playerSheetChanged' }, editorState.content))
+  const type = typeById(editorState.content.sheet ?? '')
+  if (type) {
+    const typedIn = ['Name', ...type.sections.filter(section => section.kind === 'fields').map(section => section.caption)]
+    lineEl.appendChild(el('span', 'field-note', `the player fills ${typedIn.join(', ')} · ${plural(listSectionsOf(type).length, 'section')} rows may fill`))
+  }
+  return lineEl
 }
 
 // NEW: the budget, in four states — because `rules.totalBudget` is optional now
@@ -1004,6 +1123,10 @@ const buildProposedRowCard = ({ row, from }) => {
     // min and max: the optionalNumber on rules.groupRules[id] IS the override,
     // so the only new thing here is the proposal beside it.
     groupRulesSchema.forEach(entry => cardEl.appendChild(ruleLine(entry, row.id)))
+    // NEW: the same sentence an own row's rules cabinet carries (SHEET_NOTES), said
+    // here too — every binding dino writes is on a PROPOSED row, so this is the card
+    // the owner is actually looking at when the question comes up.
+    cardEl.appendChild(el('p', 'field-note', SHEET_NOTES.groupRules))
     // and the look, which no book proposes — this game's alone
     cardEl.appendChild(themeLine(row.id))
     if (row.children.length > 0) {
@@ -1032,9 +1155,14 @@ const proposedSummary = (row, from, merged) => {
 // has one, sits under it and the proposal is struck through. [override] copies
 // the proposal into this game's slot so the author edits from where the book
 // left off; [reset] deletes the key and lets the proposal show through again.
-// Stage 1 offers [override] for the label only: re-aiming and re-gating a book's
-// row is a bigger idea than relabelling it, and a hand-written override is still
-// shown here — with its [reset] — so nothing is hidden.
+// CHANGED: Stage 2 offers [override] for the label AND for `fills`. Binding a
+// FROZEN book's row to a section of the player's sheet is the whole reason `fills`
+// is on rowOverrideSchema at all: dino's four bindings are overrides of rows that
+// dinosaur-age 1 proposed, and no new edition of that book was cut to get them.
+// Re-aiming (`query`) and re-gating (`showWhen`) a book's row are still bigger ideas
+// than this screen offers; a hand-written override of either is still drawn here,
+// with its [reset], so nothing is hidden.
+const OVERRIDABLE = new Set(['label', 'fills'])
 const overridable = (entry, row, from, slot) => {
   const mine       = slot.peek()?.[entry.key]
   const overridden = mine !== undefined
@@ -1046,13 +1174,24 @@ const overridable = (entry, row, from, slot) => {
 
   const actionsEl = el('span', 'override-actions')
   if (overridden) actionsEl.appendChild(smallButton('reset', () => { dropOverride(row.id, entry.key); rerender() }))
-  else if (entry.key === 'label') actionsEl.appendChild(smallButton('override', () => { slot.ensure()[entry.key] = structuredClone(row[entry.key]); rerender() }))
+  // CHANGED: `?? ''` — the frozen books were written before v6, so a proposal row
+  // carries no `fills` key at all. Overriding one therefore starts from the empty
+  // binding, which is the honest starting point: "" IS "fills nothing".
+  else if (OVERRIDABLE.has(entry.key)) actionsEl.appendChild(smallButton('override', () => { slot.ensure()[entry.key] = structuredClone(row[entry.key] ?? ''); rerender() }))
   lineEl.appendChild(actionsEl)
   bagEl.appendChild(lineEl)
 
   // the real builder, on the real override object — which exists, because the
   // only way to get here is to have written a key into it.
-  if (overridden && entry.key === 'label') bagEl.appendChild(renderField({ ...entry, caption: 'this game', default: '' }, slot.peek()))
+  // NEW for `fills`: its options are resolved HERE and handed in. An override SLOT
+  // is a bare { label, fills } with no id, so the choice builder would pass THAT to
+  // the source — and the source needs the ROW, to know which sections fit its query
+  // type. The row handed over is the MERGED one, so if this game also overrode the
+  // query, the sections offered fit what the player will actually see.
+  if (overridden && OVERRIDABLE.has(entry.key)) {
+    const fitting = entry.key === 'fills' ? { options: OPTION_SOURCES.fillableSections(mergedRowById(row.id) ?? row) } : {}
+    bagEl.appendChild(renderField({ ...entry, caption: 'this game', default: '', ...fitting }, slot.peek()))
+  }
   return bagEl
 }
 
@@ -1061,6 +1200,12 @@ const overridable = (entry, row, from, slot) => {
 // value, so an overridden query reads as what the player will get.
 const proposalText = (entry, row, from, overridden) => {
   if (entry.key === 'label') return `${titleOf(from)} proposes "${row.label}"`
+  // NEW: what the BOOK said about where the picks land — which, for every book on
+  // today's shelf, is nothing at all. That is not a gap: a book proposes a row, and
+  // where its picks land is the GAME's decision, because only the game declares the
+  // sheet. So this line usually reads "Dinosaur Age 1 proposes nothing" with this
+  // game's own binding under it.
+  if (entry.key === 'fills') return `${titleOf(from)} proposes ${row.fills ? sectionCaption(row.fills) : 'nothing'}`
   const merged = mergedRowById(row.id) ?? row
   const said = entry.key === 'query' ? showsPhrase(merged.query) : whenSentence(merged.showWhen)
   return `${said} — ${overridden ? 'this game' : 'proposed'}`
@@ -1186,6 +1331,15 @@ const rowSummary = (row) => {
       if (shown.length === 0 && (editorState.merged.rules.groupRules[row.id]?.min ?? 0) > 0) warnings.push('required but matches nothing')
     }
   }
+  // NEW: where this row's picks LAND, right after what it shows — the two are one
+  // thought, which is why `fills` sits beside `query` on the sheet. checkFills is
+  // the one function three readers share: this badge, the engine's console warning
+  // and the server's refusal are the same bytes, never written twice. It is silent
+  // for a row that fills nothing (every v5 row is that row) and silent while the
+  // declaration itself dangles (rowsContext.sheetDangles).
+  const fillsProblem = rowsContext.sheetDangles ? null : checkFills(row, rowsContext.sheetType)
+  if (fillsProblem) warnings.push(fillsProblem)
+  else if ((row.fills ?? '') !== '') parts.push(`fills ${sectionCaption(row.fills)}`)
   const slot = editorState.merged.rules.groupRules[row.id]
   if (slot?.min !== undefined) parts.push(`min ${slot.min}`)
   if (slot?.max !== undefined) parts.push(`max ${slot.max}`)
@@ -1302,6 +1456,12 @@ const cascadeDelete = (sheetName, element) => {
 //   thing                 things.order[sheet]                  the id leaves the line      (forgetArranged)
 //   section (of changed)  placements under its key             emptied (forgetSectionPlacements)
 //   row (+ subtree)       row.showWhen.row                     { kind: "always" }          (forgetRow per id in idsBelow)
+// NEW, the player's sheet — two pointers, and a binding may live in either of two
+// places, so each cause repairs both:
+//   section (gone/kind flipped/re-aimed)  row.fills             the key goes to ""   (forgetFills)
+//                                         rowOverrides[…].fills the key is dropped   (forgetOverrideFills)
+//   the TYPE the player's sheet names     content.sheet         the key goes to ""   (forgetPlayerSheet)
+//   content.sheet itself (a NEW sheet)    every binding that no longer fits         (forgetUnfitFills)
 const REMOVE_HOOKS = {
   type: (type) => {
     // its own things go, and every gate and every PLACEMENT on them — before the bucket does
@@ -1312,11 +1472,22 @@ const REMOVE_HOOKS = {
     delete editorState.things.things[type.id]
     forgetShelfOrder(type.id)      // an arrangement of a shelf that is gone is fault F15, and unsaveable
     say(forgetType(editorState.content.groups, type.id))
+    // NEW: if this type WAS the sheet the player builds, this game builds no sheet
+    // now — and every row bound to one of its list sections loses its binding. Two
+    // repairs and not one, on purpose: forgetPlayerSheet deliberately does not walk
+    // the rows, because a row names a SECTION and not a type. So the sections are
+    // asked for by name, one at a time, and each keeps its own sentence.
+    say(forgetPlayerSheet(editorState.content, type.id))
+    listSectionsOf(type).forEach(section => forgetBinding(section.id))
     if (uiState.selectedType === type.id) uiState.selectedType = ''            // the Things pane falls back to the first type at paint
   },
   fieldDef: (field) => say(forgetField(editorState.content.groups, field.id)),
   // NEW: a section takes its fields with it, so every condition built on one goes too
-  section:  (section) => (section.fields ?? []).forEach(field => say(forgetField(editorState.content.groups, field.id))),
+  // — and every BINDING that named it, because nothing can fill a section that is gone.
+  section:  (section) => {
+    (section.fields ?? []).forEach(field => say(forgetField(editorState.content.groups, field.id)))
+    forgetBinding(section.id)
+  },
   thing:    (thing) => {
     say(forgetThing(editorState.content.groups, thing.id))
     say(forgetPlaced(editorState.things, editorState.merged.types.types, thing.id))
@@ -1346,6 +1517,58 @@ const forgetShelfOrder = (sheetId) => {
   if (Object.keys(order).length === 0) delete editorState.things.order
 }
 
+// NEW: a binding to the player's sheet lives in ONE of two places, and which one
+// depends on who wrote the row: on the game's own row (`row.fills`), or in
+// content.rowOverrides for a row a BOOK proposed — which is where all four of dino's
+// bindings live, because dinosaur-age 1 is frozen. references.js's forgetFills walks
+// the rows; this walks the cabinet beside them. `forgetBinding` is the one door the
+// hooks call, so no hook has to remember there are two places.
+// The KEY is dropped, not the slot: an override may also carry a label, and a slot
+// left holding nothing is dropped by dropOverride's own rule.
+const forgetOverrideFills = (sectionId) => {
+  const changed = []
+  Object.keys(editorState.content.rowOverrides).forEach(rowId => {
+    if (editorState.content.rowOverrides[rowId].fills !== sectionId) return
+    dropOverride(rowId, 'fills')
+    changed.push({ row: mergedRowById(rowId) ?? { label: rowId }, what: 'fills nothing now — the section it filled changed or was removed' })
+  })
+  return changed
+}
+const forgetBinding = (sectionId) => {
+  say(forgetFills(editorState.content.groups, sectionId))
+  say(forgetOverrideFills(sectionId))
+}
+
+// NEW: the game changed WHICH sheet the player builds. Every binding is re-judged
+// against the new one — by the very function the engine warns with and the server
+// refuses with — and the ones that no longer fit go, each named.
+// Why this is not forgetFills: that repair is keyed by SECTION, which is the right
+// shape when a section LEAVES (every row naming it is wrong, by definition). Here
+// every section is still where it was and the SHEET underneath them moved, so the
+// question is per row: two rows may name one section while only one of them still
+// fits it, and clearing by id would take the innocent one with it.
+const forgetUnfitFills = (content) => {
+  const type    = typeById(content.sheet ?? '')
+  const said    = 'fills nothing now — this game builds a different sheet'
+  const changed = []
+  rowsIn(content.groups).forEach(row => {                       // the game's own rows
+    if ((row.fills ?? '') === '' || checkFills(row, type) === null) return
+    row.fills = ''
+    changed.push({ row, what: said })
+  })
+  Object.entries(content.rowOverrides).forEach(([rowId, slot]) => {   // and the bindings it wrote onto a book's rows
+    if (slot.fills === undefined) return
+    // judged on the MERGED row: the override's value meets the BOOK's query there,
+    // and that pair is what checkFills has to weigh. (The merge is one paint stale
+    // here, which is exactly right — it still holds the binding being judged.)
+    const merged = mergedRowById(rowId)
+    if (merged !== undefined && checkFills(merged, type) === null) return
+    dropOverride(rowId, 'fills')
+    changed.push({ row: merged ?? { label: rowId }, what: said })
+  })
+  return changed
+}
+
 // NEW: hooks for a VALUE change, named on the sheet entry (afterChange) the way
 // optionsFrom names an option source. The choice builder runs it after writing.
 const CHANGE_HOOKS = {
@@ -1371,15 +1594,34 @@ const CHANGE_HOOKS = {
       section.of ??= OPTION_SOURCES.sheets()[0]?.value ?? ''
       section.placement ??= []
     }
+    // NEW: a fields section holds no entries, so nothing may fill it, and a section
+    // that has just BECOME a list aims at a shelf no existing binding was judged
+    // against. Either way the binding is void. (Idempotent: on the common path no
+    // row names this section and nothing is said.)
+    forgetBinding(section.id)
   },
   // a section re-aimed at another shelf: every entry placed under it named a
   // thing on the OLD shelf, so the arrays are emptied rather than left dangling.
-  sectionTargetChanged: (section) => say(forgetSectionPlacements(editorState.things, editorState.merged.types.types, section.id))
+  // NEW: and every ROW that filled it was showing the old shelf, so its binding goes
+  // too — a row must show what the section it fills lists.
+  sectionTargetChanged: (section) => {
+    say(forgetSectionPlacements(editorState.things, editorState.merged.types.types, section.id))
+    forgetBinding(section.id)
+  },
+  // NEW: the game now builds a DIFFERENT sheet (or none). Named here rather than on
+  // the sheet entry itself for now — see renderSheetLine. Every binding is re-judged
+  // and each casualty is named, so an engine warning about `fills` always means
+  // "somebody hand-edited a file" and never "the editor did this and said nothing".
+  playerSheetChanged: (content) => say(forgetUnfitFills(content))
 }
-// CHANGED: a repair may now report a THING as well as a row (a placement lost),
-// so the noun is read from whichever the entry carries.
-const say = (changed) => changed.forEach(entry =>
-  console.warn(`${entry.row ? 'Row' : 'Thing'} "${entry.row?.label ?? entry.thing?.name}" ${entry.what}`))
+// CHANGED: a repair may now report a THING as well as a row (a placement lost) — or
+// NEITHER: `content.sheet` is a declaration the whole game makes, belonging to no row
+// and no thing. So the noun is read from whichever the entry carries, and the third
+// one carries no name to quote.
+const say = (changed) => changed.forEach(entry => {
+  const who = entry.row ? `Row "${entry.row.label}"` : entry.thing ? `Thing "${entry.thing.name}"` : 'This game'
+  console.warn(`${who} ${entry.what}`)
+})
 
 // ───────────────────────── newborns ─────────────────────────
 
