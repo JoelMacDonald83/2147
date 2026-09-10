@@ -9,6 +9,10 @@ import { checkShowWhen } from "./visibility.js"                 // NEW: the row'
 // the twin of checkWhere and checkShowWhen above; the other three are what the
 // border hands the interior once the check has passed.
 import { checkFills, sectionById, quantityFieldOf, playerFields, QUANTITY_KEY } from "./sheet.js"
+// NEW: what an entry DEMANDS of the player's sheet — checked here, at the border, and
+// evaluated nowhere but state.js. Exactly the bargain checkShowWhen and checkFills already
+// struck: the border makes sure a rule CAN be run, the interior runs it.
+import { demandsOf, demandFieldById, checkDemand } from "./demands.js"
 import { flattenGroups } from "../helpers.js"                   // NEW: every row at every depth, for the id sets below
 
 // helper functions
@@ -85,8 +89,12 @@ const typeOf = (row) => types.types.find(type => type.id === row.query.type)
 // existed gets that field's default rather than `undefined` on its card.
 // imageURL is the one core field the border rewrites: authors write a bare
 // filename, the view wants a URL (page-relative — see 4 above).
+// NEW: `demands` is the one core key the sheet cannot resolve — it is not a value the
+// player types but a list of CONDITIONS, and a thing that demands nothing carries no key
+// at all (the file never holds a no-op). demandsOf is the one function that knows that,
+// so the interior is handed an ARRAY every time and nobody downstream writes `?? []`.
 const hydrateThing = (thing, sheet) => {
-  const hydrated = { ...thing, ...resolveFromSheet(sheet, thing), imageURL: thing.imageURL ? `assets/${thing.imageURL}` : "" }
+  const hydrated = { ...thing, ...resolveFromSheet(sheet, thing), imageURL: thing.imageURL ? `assets/${thing.imageURL}` : "", demands: demandsOf(thing) }
   // A "placements" entry cannot be resolved by resolveFromSheet: its value is not
   // a stored value but a list of POINTERS that have to be followed. So the sheet
   // is walked once more for exactly those entries.
@@ -139,7 +147,10 @@ const resolveItems = (row) => {
     console.warn(`Row "${row.label}" cannot run its filter — ${problem}; it shows nothing`)
     return { fields: sheet, items: [] }
   }
-  return { fields: sheet, items: filterThings(bucket, type, row.query.where) }
+  // NEW, the one filter the demand border buys: a thing whose rule this game cannot RUN
+  // is not on sale in any row. It sits after the query, not inside it, because it is not
+  // a question about this row — it is a fact about the thing, decided once, above.
+  return { fields: sheet, items: filterThings(bucket, type, row.query.where).filter(item => !UNOFFERABLE.has(item.id)) }
 }
 
 // NEW: the gate, checked. A gate that names a missing thing or row, waits for
@@ -185,6 +196,80 @@ export const playerSheet = resolvePlayerSheet()
 // the game asked for a sheet and did not get one: every bound row below is broken,
 // for the ONE reason resolvePlayerSheet has already named
 const sheetDangles = (content.sheet ?? "") !== "" && playerSheet === null
+
+// NEW: the merged world's answer to "what is this thing called?" — built ONCE, here,
+// because `demandText` has to be able to say "Tyrannosaurus" for a thing that lives on a
+// shelf NO ROW SHOWS, and neither state.js nor view.js may reach into things.json. That
+// is the border principle: the interior asks for what it needs and is handed it.
+// Falls back to the id, so a name is never blank and never a guess.
+const THING_NAMES = new Map(Object.values(things.things).flat().map(thing => [thing.id, thing.name]))
+export const nameOfThing = (id) => THING_NAMES.get(id) ?? id
+
+// NEW: a thing's demands, CHECKED once at import time — not per row, because a demand is
+// judged against the game's ONE declared sheet, so the answer cannot differ between rows.
+// Three outcomes and no fourth:
+//   the thing has none      → nothing happens, and its card is byte-for-byte v6's
+//   they can be judged      → it is offered, and `demands` is an ARRAY in the interior,
+//                             always, so nothing downstream ever writes `?? []`
+//   they cannot be judged   → say so ONCE, by name, and DO NOT OFFER the thing.
+// Fail closed, and the closed door is the honest one: an entry whose rule this game
+// cannot run is not "always allowed" (that silently drops the author's rule) and not
+// "always refused" (a permanently grey card nobody can explain — a bug that looks like
+// content). It is not on sale. Same reasoning resolveFills already gives above: a pick
+// that cannot land still COSTS POINTS, and paying for nothing is silently wrong where a
+// missing card is visibly wrong.
+//
+// THE BORDER'S OWN FIRST SENTENCE, and it is not checkDemand's: "does this demand point at
+// anything at all?" is a FAULT the validator reports at save time; "can THIS game judge
+// it?" is a WARNING and an entry that is not offered. A prerequisite travels inside a
+// FROZEN book — `dinosaur-age` may demand `stats:strength` — so a game that pins the book
+// without the sheet that answers it has an entry it cannot sell and a file that is
+// perfectly well-formed. Conflate the two and that book becomes unpinnable.
+const shelfIdsFor = (field) => new Set((things.things[field.section.of] ?? []).map(thing => thing.id))
+
+const resolveDemands = () => {
+  const unofferable = new Set()
+  // the field KEYS any demand actually names — the ONE reason typing has to re-settle
+  // now (a demand can read Strength or Size). EMPTY for every game that exists today,
+  // which is exactly what makes the caret rule cost dino and vampire nothing: view.js
+  // attaches a `change` listener only to a box in this set.
+  const watched = new Set()
+  let sheetlessDemanders = 0
+  Object.values(things.things).flat().forEach(thing => {
+    const list = demandsOf(thing)
+    if (list.length === 0) return                        // the ordinary thing: not one new byte
+    if (playerSheet === null) { sheetlessDemanders += 1; unofferable.add(thing.id); return }
+    const typedKeys = []
+    for (const demand of list) {
+      const field = demandFieldById(playerSheet.type, demand.field)
+      const problem = field === undefined
+        ? `names a field that is not on this game's sheet (${demand.field})`
+        : checkDemand(demand, field, field.section ? shelfIdsFor(field) : null)
+      if (problem) {
+        // CHANGED: no "it" before the problem. checkDemand's sentences are checkWhere's
+        // shape — they start with the thing that is wrong ("operator …", "value …",
+        // "names …") — so they take the FILTER frame above, not the show-when frame.
+        // "— it operator "gte" does not fit" is not a sentence.
+        console.warn(`Thing "${thing.name}" cannot evaluate a demand — ${problem}; it is not offered`)
+        unofferable.add(thing.id)
+        return                                           // ONE sentence per thing, not one per demand
+      }
+      // a LIST section is not something anybody types, so it is not watched: picking is
+      // already the door that settles (toggleSelection). Only a TYPED slot needs the event.
+      if (!field.section) typedKeys.push(field.key)
+    }
+    typedKeys.forEach(key => watched.add(key))           // committed only once the whole thing passed
+  })
+  // the ONE-CAUSE rule the audit and resolveFills already follow: when the game builds no
+  // sheet at all, every demanding thing has ONE cause, so it is said once for the game
+  // instead of once per entry.
+  if (sheetlessDemanders > 0)
+    console.warn(`This game builds no sheet, so ${sheetlessDemanders} entries that demand something are not offered`)
+  return { unofferable, watched }
+}
+const demandBorder = resolveDemands()
+const UNOFFERABLE = demandBorder.unofferable
+export const watchedFields = demandBorder.watched
 
 // NEW: the row's binding, checked. Note the ORDER inside: checkFills is asked about
 // the RAW row, while `fills` is still an ID — get that backwards and every message
