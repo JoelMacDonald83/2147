@@ -446,7 +446,16 @@ export const mergeLayers = ({ books, game }) => {
     const over = slotOf(rowOverrides, row.id)
     if (slotOf(over, "hidden") === true) return []
     const pick = (key) => { const mine = slotOf(over, key); return mine !== undefined ? mine : row[key] }
-    return [{ id: row.id, label: pick("label"), query: pick("query"), showWhen: pick("showWhen"), children: applyOverrides(row.children) }]
+    // NEW: `fills` joins the per-key cascade. A game may re-aim a proposed row at a
+    // section of the player's sheet exactly as it may relabel one — and that is the
+    // ONLY way a game binds rows a FROZEN book proposes, without a new edition.
+    // Written ONLY when somebody wrote one (the book, or the game's override), so a
+    // row nobody bound carries no `fills` key at all: the merged file never holds a
+    // no-op, and a row nothing new was said about stays byte-identical to its v5 self.
+    const bound = pick("fills")
+    return [{ id: row.id, label: pick("label"), query: pick("query"),
+              ...(bound !== undefined ? { fills: bound } : {}),
+              showWhen: pick("showWhen"), children: applyOverrides(row.children) }]
   })
   const groups = [...applyOverrides(proposedRows.map(entry => entry.row)), ...ownRows]
 
@@ -456,8 +465,14 @@ export const mergeLayers = ({ books, game }) => {
   // pin and nothing left to override. No `order` key either — it has been applied
   // to the buckets. That is why the published folder (which the export writes
   // from exactly this) runs the engine's no-books path unchanged.
+  // NEW, in `content`: the game's declaration of which sheet the PLAYER builds. A
+  // book cannot propose one yet, so this is `own` and nothing more — no cascade, no
+  // conflict sentence. Like `fills` it is written only when the game HAS the key, so
+  // a book-less game that declares nothing still merges to ITSELF, byte for byte.
   const set = {
-    content: { version: SCHEMA_VERSION, meta: own.content.meta, books: [], groups, rowOverrides: {} },
+    content: { version: SCHEMA_VERSION, meta: own.content.meta, books: [],
+               ...(slotOf(own.content, "sheet") !== undefined ? { sheet: own.content.sheet } : {}),
+               groups, rowOverrides: {} },
     rules:   { version: SCHEMA_VERSION, ...(totalBudget !== undefined ? { totalBudget } : {}), groupRules },
     themes:  own.themes,
     types:   { version: SCHEMA_VERSION, types: [...sheets.values()], sectionsFor: {}, fieldsFor: {} },

@@ -2,6 +2,11 @@ import { SCHEMA_VERSION, SHEETS, FILE_SHEETS, BOOK_FILE_SHEETS, coreThingSchema,
 import { OPERATORS, WHERE_VALUE_TYPE } from "./query.js"
 import { GATES } from "./visibility.js"
 import { danglingReferences } from "./references.js"
+// NEW: one constant, for RULES.section's quantity sentence below. sheet.js is a
+// LEAF (it imports schema.js and nothing else), so this adds no cycle — see the
+// import graph in sheet.js's header. Importing it the other way round WOULD be
+// one: references.js already imports sheet.js, and this file imports references.js.
+import { QUANTITY_KEY } from "./sheet.js"
 
 // NEW: the border's contract, read from the sheet. The game trusts the files it
 // loads and the editor trusts the files it saves; THIS is where a file is
@@ -125,6 +130,28 @@ const CHECKERS = {
   placements:     () => {}
 }
 export const CHECKED_TYPES = Object.keys(CHECKERS)
+
+// NEW: ONE field value, checked through the SAME table a data file crosses.
+// An AUTHOR's values arrive in a file and are judged by validateFile; a PLAYER's
+// arrive from an <input> or from a kept sheet, and are judged HERE — so a number
+// field holds a number whichever door it came through, and a choice can never hold
+// an option the author never wrote.
+// The CHECKERS table itself stays private on purpose: one thin door is all anyone
+// outside needs, and a private table cannot drift into a second contract.
+// Why not query.js's SHAPE_OK, which asks a similar-looking question: SHAPE_OK is
+// deliberately LOOSE (it accepts NaN for a number, any array for lines, any string
+// for a choice) because a filter that cannot decide simply shows nothing. A kept
+// sheet a player hand-edited needs the strict answer, and `1e999` — which JSON.parse
+// turns into Infinity — is exactly the case the loose door lets through.
+// `path` is only what the sentences are ADDRESSED to ("strength", "notes[1]"), so a
+// caller can say where in ITS world the value sits.
+export const checkFieldValue = (field, value, path = "value") => {
+  const out = []
+  const checker = CHECKERS[field.type]
+  if (!checker) return [{ path, message: `no checker for kind ${JSON.stringify(field.type)}` }]
+  checker(field, value, path, out, { ids: {} })
+  return out
+}
 
 // one sheet-shaped object: every entry through its checker, then every own key
 // the sheet (or extraKeys: "version" on a file top, "id" on an element) does not name.
@@ -274,6 +301,14 @@ const RULES = {
     section.placement.forEach((field, i) => {
       if (!isPlainObject(field) || typeof field.key !== "string") return                     // already reported
       claimKeys(out, seen, field.key, `${path}.placement[${i}].key`, `${path}.placement[${i}]`, ["thing"], () => `"thing" is the key every placement already has`)
+      // NEW: the quantity convention, made binding. A placement field keyed
+      // "quantity" MULTIPLIES its entry's cost (sheet.js: QUANTITY_KEY, entryCost),
+      // so a book that names one must MEAN a number — a `quantity` holding text
+      // would read as 1 for ever and quietly charge the player once. Refusing it
+      // here turns that silent surprise into a save-time sentence with a path.
+      // Measured: no file under books/ trips this.
+      if (field.key === QUANTITY_KEY && field.type !== "number")
+        problem(out, `${path}.placement[${i}].type`, `a placement field keyed "quantity" multiplies the entry's cost, so it must be a number field`)
     })
   },
   // CHANGED: a choice needs options (at least one, all distinct — value = label, so

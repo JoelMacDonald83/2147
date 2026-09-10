@@ -1,6 +1,7 @@
 import { listSectionsOf } from "./schema.js"
 import { checkWhere } from "./query.js"
 import { checkShowWhen, idsBelow } from "./visibility.js"
+import { checkFills } from "./sheet.js"        // NEW: the row's fourth pointer asks its question there
 
 // NEW: who points where, and the repairs. Every reference in the data runs
 // ONE way: presentation → content. Rows point at type ids, field ids, thing
@@ -39,6 +40,10 @@ export const rowsIn  = (rows) => { const out = []; eachRow(rows, row => out.push
 //   NEW:
 //   thing                 thing[<list key>][j].thing           the placement is spliced out (forgetPlaced)
 //   list section's `of`   thing[<list key>]                    emptied — the old shelf's ids mean nothing on the new one (forgetSectionPlacements)
+//   section (removed, kind flipped, `of` re-aimed)
+//                         row.fills                            the key goes to ""          (forgetFills)
+//   the TYPE that is the player's sheet
+//                         content.sheet                        the key goes to ""          (forgetPlayerSheet)
 export const forgetType = (rows, typeId) => {        // rows showing the type → show nothing, no condition
   const changed = []
   eachRow(rows, row => {
@@ -66,6 +71,33 @@ export const forgetRow = (rows, rowId) => {          // gates on the row → alw
     if (row.showWhen.kind === "anyInRow" && row.showWhen.row === rowId) { row.showWhen = { kind: "always" }; changed.push({ row, what: "is always shown now — the row it waited for was removed" }) }
   })
   return changed
+}
+
+// NEW: a row fills a section that is no longer fillable — the section was removed,
+// turned into a fields section, or re-aimed at another shelf. Only the BINDING goes:
+// the row keeps its query, its gate, its rules, its children and its place, because
+// a row that lost where its picks LAND is still a perfectly good picker. Returns
+// [{ row, what }] like every repair above, so the caller can name what it changed.
+// Idempotent by construction: the second run finds no row still holding the id.
+export const forgetFills = (rows, sectionId) => {
+  const changed = []
+  eachRow(rows, row => {
+    if (row.fills === sectionId) { row.fills = ""; changed.push({ row, what: "fills nothing now — the section it filled changed or was removed" }) }
+  })
+  return changed
+}
+
+// NEW: the TYPE the player's sheet named is gone. The declaration goes. Note what
+// this repair does NOT do: it does not walk the rows. Every row's binding names a
+// SECTION of that type, and every one of those sections went with it, so the editor's
+// remove hook runs forgetFills per section — one cause, one repair each, no repair
+// reaching into another's rows. Returns [{ what }] with no `row` and no `thing`,
+// because a game-wide declaration belongs to no row: the editor's `say` reads the
+// noun it can find.
+export const forgetPlayerSheet = (content, typeId) => {
+  if ((content.sheet ?? "") !== typeId) return []
+  content.sheet = ""
+  return [{ what: `builds no sheet now — the type it named was removed` }]
 }
 
 // NEW: every (list section, thing of its sheet) pair — the one walk the
@@ -152,9 +184,21 @@ const placementProblems = ({ types, things }) => {
 // CHANGED: the audit returns row entries { row, path, pointer, what } as today AND thing entries
 // { thing, path, pointer, what } from the placement walk. The editor's `say`
 // reads entry.row?.label ?? entry.thing?.name.
+// CHANGED again: and ONE entry that has neither — { path: "content", pointer: "sheet" },
+// the game's own declaration, which belongs to no row and no thing. crossChecks turns
+// all three into { path, message } the same way; only the editor needs the third noun.
 export const danglingReferences = ({ content, types, things }) => {
   const rowIds   = new Set(rowsIn(content.groups).map(row => row.id))
   const thingIds = new Set(Object.values(things.things).flat().map(thing => thing.id))
+  // NEW: the game's declared sheet — the one reference that is not a row's. "" is the
+  // honest "this game builds no sheet"; anything else must name a type in the merged
+  // library. When it DANGLES, every bound row would otherwise report too — one cause,
+  // five sentences — so the row walk skips its `fills` question and this single
+  // sentence stands alone. That is checkFile's own rule ("an old file has dozens of
+  // consequent problems; the version line is the one that matters"), applied here.
+  const sheetId      = content.sheet ?? ""
+  const sheetType    = types.types.find(type => type.id === sheetId)
+  const sheetDangles = sheetId !== "" && sheetType === undefined
   const found = []
   eachRow(content.groups, (row, path) => {
     const type = types.types.find(type => type.id === row.query.type)
@@ -162,6 +206,17 @@ export const danglingReferences = ({ content, types, things }) => {
     if (type) { const problem = checkWhere(row.query.where, type); if (problem) found.push({ row, path, pointer: "query.where", what: `filter ${problem}` }) }
     const gate = checkShowWhen(row, rowIds, thingIds)
     if (gate) found.push({ row, path, pointer: "showWhen", what: `show-when ${gate}` })
+    // NEW: the row's fourth pointer. checkFills is asked about the RAW row — `fills`
+    // is still an ID here, which is the only shape it ever has on disk — and it says
+    // the same bytes the engine warns with and the editor badges. `sheetType` is
+    // undefined when the game declares no sheet, which is exactly the argument
+    // checkFills wants for "fills a section but this game builds no sheet".
+    if (!sheetDangles) {
+      const fills = checkFills(row, sheetType)
+      if (fills) found.push({ row, path, pointer: "fills", what: fills })
+    }
   })
+  // the one cause, said first: the sheet line comes before the rows it invalidates
+  if (sheetDangles) found.unshift({ path: "content", pointer: "sheet", what: `builds a sheet that does not exist (${sheetId})` })
   return [...found, ...placementProblems({ types, things })]
 }
