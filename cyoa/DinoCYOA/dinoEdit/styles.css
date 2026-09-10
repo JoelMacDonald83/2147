@@ -446,6 +446,28 @@ button {
 .placement-row select { flex: 1 1 180px; min-width: 0; padding: 6px 8px; font-family: inherit; font-size: 0.9rem; border: 1px solid #d8d3c8; border-radius: 8px; background: #fff; }
 .placement-row .field { margin: 0; flex: 0 1 120px; }
 
+/* NEW: one demand — WHICH slot, WHICH operator, WHICH value, and a small Remove. A COPY
+   of .placement-row rather than a shared class: the two lines look alike today and are
+   free to diverge tomorrow, and the third control here is sometimes a number box (a
+   demand's number value is the one typed value in the language) rather than a select. */
+.demand-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.demand-row select,
+.demand-row input { padding: 6px 8px; font-family: inherit; font-size: 0.9rem; border: 1px solid #d8d3c8; border-radius: 8px; background: #fff; }
+.demand-row select { flex: 1 1 180px; min-width: 0; }
+.demand-row input  { flex: 0 1 120px; min-width: 0; }
+
+/* NEW: the demands SENTENCE above the lines — the same words the player's card prints,
+   which is what makes a frozen book's card (every control in it greyed by lockCard)
+   readable at all; and the italic line an entry that asks for nothing draws instead. */
+.demands-line  { margin-bottom: 8px; }
+.demands-empty { margin: 0 0 8px; color: #8a857b; font-size: 0.82rem; font-style: italic; }
+
 /* NEW: ▲▼ on a shelf entry's header — the game's arrangement of the merged shelf */
 .shelf-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .shelf-heading h2 { margin: 0; }

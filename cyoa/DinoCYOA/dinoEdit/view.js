@@ -15,7 +15,7 @@ import { editorState, buildSheets, remerge } from './state.js'
 import {
   contentSchema, typesSchema, metaSchema, pageThemeSchema, totalBudgetSchema,
   rowOverrideSchema, groupRulesSchema, groupThemeSchema, FILE_SHEETS,
-  queryableFields, fieldById, asOption, placementSheet, listSectionsOf
+  queryableFields, fieldById, asOption, placementSheet, listSectionsOf, fieldsOfType, coreThingSchema
 } from '/config/schema.js'
 // NEW: the player's sheet, as vocabulary — the leaf the engine, the validator and
 // this screen all read. Same discipline as query.js and visibility.js above: the
@@ -23,6 +23,16 @@ import {
 // (checkFills), so the badge this screen draws is the sentence the player's console
 // warns with and the sentence the server refuses the save with. Never write it twice.
 import { fillableSections, sectionById, checkFills, quantityFieldOf } from '/config/sheet.js'
+// NEW: what an entry DEMANDS of the player's sheet — the same leaf the engine, the
+// validator and the server read. Same discipline as sheet.js above: "why can this
+// demand not be judged?" is answered by ONE function (checkDemand), so the ⚠ this
+// screen draws is the sentence the player's console warns with and the sentence the
+// server refuses the save with; and `demandText` is the very phrase the player's card
+// prints, so a locked book's rule reads here exactly as it reads in the shop.
+import {
+  demandFields, demandFieldById, demandOperators, demandOperatorOf,
+  demandsOf, checkDemand, demandText
+} from '/config/demands.js'
 // NEW: the shared logic under engine/config/ — the same functions the game
 // runs, so what the author reads here is what the player gets there.
 // query.js answers a row's question; visibility.js says when a row shows;
@@ -30,8 +40,10 @@ import { fillableSections, sectionById, checkFills, quantityFieldOf } from '/con
 import { OPERATORS, operatorOf, WHERE_VALUE_DEFAULT, checkWhere, filterThings, valuesOf } from '/config/query.js'
 import { SHOW_WHEN_KINDS, checkShowWhen, deadRows, idsBelow } from '/config/visibility.js'
 // NEW on this line: forgetFills and forgetPlayerSheet — the two repairs a removed
-// section and a removed TYPE now owe the player's sheet (see REMOVE_HOOKS).
-import { rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet } from '/config/references.js'
+// section and a removed TYPE owe the player's sheet; and, NEW again, forgetDemandField
+// and forgetDemanded — the two a removed SLOT and a removed THING owe every demand that
+// named them (see REMOVE_HOOKS).
+import { rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, forgetDemandField, forgetDemanded } from '/config/references.js'
 // NEW: the merge's two names the screen speaks — which layer is "the game" and
 // how a book layer is labelled ("basic 1") — plus the sentence maker for a fault.
 import { GAME_LAYER, bookLabel } from '/config/merge.js'
@@ -69,6 +81,18 @@ const ownThing    = (id)   => Object.values(editorState.things.things).flat().fi
 // Everything the game defined is the game's to change; everything a book defined
 // is read-only here and is changed by publishing a new edition of that book.
 const isOwn = (id) => editorState.origins.get(id) === GAME_LAYER
+
+// NEW: the type the PLAYER builds, or undefined — the SUBJECT of every demand on this
+// screen, and the one thing a demand is ever about. Asked at draw time because the
+// declaration is one dropdown away on the Rows tab, and a demand's whole vocabulary
+// changes with it. (sectionCaption and fillableSections ask the same question, so they
+// ask it here now: one question, one function.)
+const playerSheetType = () => typeById(editorState.merged.content.sheet ?? '')
+// NEW: a thing's name from its id, over the MERGED world — what demandText is handed so
+// that demands.js never reaches for a shelf of its own. Total: an id nothing defines
+// reads as itself, exactly as the engine's nameOfThing does.
+const thingName = (id) =>
+  Object.values(editorState.merged.things.things).flat().find(thing => thing.id === id)?.name ?? id
 
 // NEW: a layer label as the author's own words. The merge speaks in folder
 // terms ("basic 1"); a badge should say what the Library says ("Basic 1").
@@ -146,6 +170,33 @@ const captionSpan = (text) => {
   spanEl.className = 'field-caption'
   spanEl.textContent = text
   return spanEl
+}
+
+// NEW: ONE line of a condition — WHICH slot, WHICH operator, WHICH value. EXTRACTED,
+// not copied: a row's `where` and a thing's `demands[i]` are the same three keys in the
+// same order (query.js's, by identity), so this project draws them with one function
+// and there is exactly one grammar to learn. Two callers today; the day a fourth select
+// is wanted, both gain it at once.
+// Everything that differs between the two arrives as `sources`, and nothing else does:
+//   gone         what a stored slot the world no longer holds is labelled
+//   fields()     the slot dropdown's options; fieldOf(id) resolves one, or undefined
+//   onField(v)   what a NEW slot MEANS to the caller — a row's condition may become
+//                "every thing" (null), a demand is reborn complete. The caller writes,
+//                this repaints, because a new slot changes the two selects after it.
+//   operators(f) which operators fit THIS slot
+//   onOp(f, v)   the operator write, which is the one write both callers spell alike
+//   value(f)     the third control: a select, a number box, or NOTHING at all (an
+//                operator that names nothing has no value to pick)
+const conditionLine = (lineEl, condition, sources) => {
+  const held = condition?.field ?? ''      // null is a row's "every thing", and only ever that
+  lineEl.appendChild(selectOf(withCurrent(sources.fields(), held, sources.gone), held, value => { sources.onField(value); rerender() }))
+  if (condition === null) return lineEl
+  const field = sources.fieldOf(condition.field)
+  if (!field) return lineEl                // the select says so; the card's ⚠ says what it costs
+  lineEl.appendChild(selectOf(withCurrent(sources.operators(field), condition.op, 'not valid for this kind'), condition.op, value => { sources.onOp(field, value); rerender() }))
+  const valueEl = sources.value(field)
+  if (valueEl) lineEl.appendChild(valueEl)
+  return lineEl
 }
 
 // ───────────────────────── field builders ─────────────────────────
@@ -339,34 +390,31 @@ query: (entry, target) => {
   const type = typeById(query.type)
   if (!type) return rowEl   // "" (shows nothing yet) or a stale id — nothing below it can be built
 
-  // 2. the field, or "every thing". A new condition is born complete: the
-  //    kind's first operator and the first value the bucket offers (or the
-  //    kind's empty condition value when the bucket offers none).
+  // 2. the condition — the field, the operator and the value, drawn by the line
+  //    every builder that asks a question shares (conditionLine above). CHANGED: the
+  //    three selects were spelled out here; they are the same three a demand draws, so
+  //    they moved into one function and this builder hands in its own sources. A new
+  //    condition is still born complete: the kind's first operator and the first value
+  //    the bucket offers (or the kind's empty condition value when the bucket offers
+  //    none). A number field's value is Number()ed HERE, the one place a ROW's condition
+  //    value is typed — exactly like the number builder.
   rowEl.appendChild(captionSpan('where'))
-  rowEl.appendChild(selectOf(withCurrent(OPTION_SOURCES.fieldsOf(type), query.where?.field ?? '', 'no longer exists'), query.where?.field ?? '', value => {
-    if (value === '') {
-      query.where = null
-    } else {
+  conditionLine(rowEl, query.where, {
+    gone:      'no longer exists',
+    fields:    ()      => OPTION_SOURCES.fieldsOf(type),
+    fieldOf:   (id)    => fieldById(type, id),
+    onField:   (value) => {
+      if (value === '') { query.where = null; return }
       const field = fieldById(type, value)
       query.where = { field: value, op: OPERATORS[field.type][0].value, value: firstValue(type, field) }
-    }
-    rerender()
-  }))
-  if (query.where === null) return rowEl
-  const field = fieldById(type, query.where.field)
-  if (!field) return rowEl   // the field select shows "(no longer exists)"; the header carries checkWhere's message
-
-  // 3. operator and value. The value select hands back a string (every
-  //    <select> does); a number field's value is Number()ed HERE, the one
-  //    place a condition value is typed — exactly like the number builder.
-  rowEl.appendChild(selectOf(withCurrent(OPTION_SOURCES.operatorsFor(field.type), query.where.op, 'not valid for this kind'), query.where.op, value => {
-    query.where.op = value
-    rerender()
-  }))
-  rowEl.appendChild(selectOf(withCurrent(OPTION_SOURCES.valuesFor(type, field), query.where.value, 'no thing has this'), query.where.value, value => {
-    query.where.value = field.type === 'number' ? Number(value) : value
-    rerender()
-  }))
+    },
+    operators: (field) => OPTION_SOURCES.operatorsFor(field.type),
+    onOp:      (field, value) => { query.where.op = value },
+    value:     (field) => selectOf(withCurrent(OPTION_SOURCES.valuesFor(type, field), query.where.value, 'no thing has this'), query.where.value, value => {
+      query.where.value = field.type === 'number' ? Number(value) : value
+      rerender()
+    })
+  })
   return rowEl
 },
 
@@ -396,6 +444,65 @@ showWhen: (entry, target) => {
   const picker = GATE_PICKERS[gate.kind]
   if (picker) rowEl.appendChild(picker(gate, target))
   return rowEl
+},
+
+// NEW: what this entry DEMANDS of the player's sheet — a list of conditions, ALL of
+// which must hold before the player may take it. It appears on every thing card with no
+// wiring at all, because a thing's card sheet is coreThingSchema + the type's own
+// (dinoEdit/state.js) and `demands` is now a core entry.
+//
+// THE SENTENCE FIRST, THEN THE EDITORS, and that order is the whole point: a book's
+// card is drawn by this very code and then lockCard disables every control inside it,
+// so without the sentence a frozen book's prerequisite would read as three greyed
+// dropdowns. The sentence is demandText — the same bytes the player's card prints — so
+// the author reads Dinosaur Age's rule the way the printed page states it.
+//
+// The write happens on CLICK, never on paint (the placements builder's own rule):
+// `target[entry.key] ??= []` lives inside the Add handler, so a thing that was merely
+// looked at saves byte-identical. And removing the LAST demand DELETES the key: "this
+// entry demands nothing" already has a spelling and it is the key's absence — which is
+// why the validator refuses `"demands": []` with a sentence of its own.
+demands: (entry, target) => {
+  const list = target[entry.key] ?? []     // absent stays absent: reading must not write
+  const type = playerSheetType()
+
+  const bagEl = document.createDocumentFragment()
+  bagEl.appendChild(captionSpan(entry.caption))
+  bagEl.appendChild(list.length === 0
+    ? el('p', 'demands-empty', 'no demands')
+    : el('p', 'field-note demands-line', `Needs: ${list.map(demand => demandPhrase(demand, type)).join(' · ')}`))
+
+  list.forEach(demand => {
+    const lineEl = el('div', 'demand-row')
+    conditionLine(lineEl, demand, demandSources(demand, type))
+    const removeBtn = el('button', 'remove-button', 'Remove')
+    removeBtn.addEventListener('click', () => {
+      const at = list.indexOf(demand)
+      if (at !== -1) list.splice(at, 1)               // in place: the array is the one in state
+      if (list.length === 0) delete target[entry.key] // the file never carries a no-op
+      rerender()
+    })
+    lineEl.appendChild(removeBtn)
+    bagEl.appendChild(lineEl)
+  })
+
+  // disabled with a title rather than hidden, exactly as the placements builder
+  // disables Add on an empty shelf: a control that is missing teaches nothing, and both
+  // of these have a fix that is one tab away.
+  const addBtn = el('button', 'add-button', '+ Add demand')
+  if (type === undefined) {
+    addBtn.disabled = true
+    addBtn.title = 'this game builds no sheet — say what the player builds on the Rows tab'
+  } else if (demandFields(type).length === 0) {
+    addBtn.disabled = true
+    addBtn.title = 'this sheet has no fields or lists to demand anything of'
+  }
+  addBtn.addEventListener('click', () => {
+    reserveDemands(target).push(newbornDemand(type))
+    rerender()
+  })
+  bagEl.appendChild(addBtn)
+  return bagEl
 },
 
 // NEW: a LIST section's entries — the things this thing has placed from
@@ -544,6 +651,112 @@ const GATE_PICKERS = {
   anyInRow:    (gate, self) => selectOf(withCurrent(OPTION_SOURCES.rows(self), gate.row, 'missing'), gate.row, value => { gate.row = value; rerender() })
 }
 
+// NEW: the demands array, created IN ITS CANONICAL PLACE when the thing has none yet.
+// A thing's keys are id · name · cost · imageURL · demands · <the type's own>, and
+// `demands` is the ONE key born ABSENT — its sheet default is null, which is schema.js's
+// own spelling for "not written at birth" — so it is the one key that can ever arrive
+// AFTER keys that should follow it. `target.demands ??= []` on a thing that already has
+// a description would put it last, and a thing's key order is a rule this project keeps
+// (the oracles read the file). A list section's key needs none of this: it is born with
+// the thing, because its default is [].
+// The later keys are re-added IN PLACE, so the object's IDENTITY survives — the card,
+// the game's own bucket and the merge are all holding this very object, and building a
+// replacement would edit a copy nobody saves.
+const BEFORE_DEMANDS = ['id', ...coreThingSchema.slice(0, coreThingSchema.findIndex(entry => entry.key === 'demands')).map(entry => entry.key)]
+const reserveDemands = (thing) => {
+  if (Array.isArray(thing.demands)) return thing.demands
+  const after = Object.keys(thing).filter(key => !BEFORE_DEMANDS.includes(key))
+  const held  = Object.fromEntries(after.map(key => [key, thing[key]]))
+  after.forEach(key => delete thing[key])
+  thing.demands = []
+  Object.assign(thing, held)
+  return thing.demands
+}
+
+// NEW: one demand, in words — demandText with the two things that file may not fetch
+// for itself handed in: the resolved slot, and a name for a thing id. TOTAL, because it
+// is drawn on every card including one whose sheet was taken away: a slot that is gone
+// reads as one sentence instead of throwing.
+const demandPhrase = (demand, type) =>
+  demandText(demand, type === undefined ? undefined : demandFieldById(type, demand.field), thingName)
+
+// NEW: what a demand looks like the moment its SLOT is chosen — complete, never
+// half-built, exactly as a gate is (NEWBORN_GATES). The slot's first operator, and the
+// first value that operator can carry. Changing the slot rebuilds the whole condition,
+// which is a `where`'s own rule verbatim: a condition names ONE kind's operators, so it
+// cannot survive a change of kind.
+const demandOn = (field) => {
+  const operator = demandOperators(field)[0]
+  return { field: field.id, op: operator.value, value: operator.valueless ? '' : firstDemandValue(field) }
+}
+// the first slot of the sheet the player builds. The [0] is safe: + Add demand is
+// disabled while the sheet has no slots at all.
+const newbornDemand = (type) => demandOn(demandFields(type)[0])
+
+// NEW: the value a new demand starts with — the first value its dropdown offers, else
+// the kind's empty condition value. A number never asks the dropdown (it has none, and
+// §3.7 is why): 0 is where a number box starts, the same WHERE_VALUE_DEFAULT a row's
+// condition uses. "" when a shelf is empty — and then the card's ⚠ quotes checkDemand's
+// own sentence rather than this screen inventing a second one.
+const firstDemandValue = (field) => field.type === 'number'
+  ? WHERE_VALUE_DEFAULT.number
+  : (OPTION_SOURCES.demandValues(field)[0]?.value ?? WHERE_VALUE_DEFAULT[field.type])
+
+// NEW: the third control of a demand line — the ONE place a demand differs from a row
+// filter, and there are only three answers:
+//   an operator that names nothing (`holds anything`, `holds nothing`) → NO control at
+//     all, and the stored value is "" — present and empty, never absent
+//   a NUMBER slot → one number box. The only typed value in this whole language, and
+//     the argument is short: a row filter can offer a dropdown because it filters an
+//     existing bucket, while a demand has no bucket of player sheets — so "Strength ≥
+//     12" would be unsayable unless some book happened to have written a 12 somewhere.
+//     Nothing is parsed: there is no expression here, just one number crossing the same
+//     Number() border every other number in this project crosses.
+//   anything else → a dropdown, so a demand can never carry a typo
+const demandValueControl = (field, demand) => {
+  const operator = demandOperatorOf(field, demand.op)
+  if (operator?.valueless) return null
+  if (field.type === 'number') {
+    const inputEl = document.createElement('input')
+    inputEl.type = 'number'
+    inputEl.value = demand.value
+    // no rerender, here as everywhere: typing is a content edit and the box already
+    // shows what was typed. The Needs: sentence above catches up at the next paint —
+    // the same one-beat delay every other one-liner in this file has always had.
+    inputEl.addEventListener('input', () => { demand.value = Number(inputEl.value) })
+    return inputEl
+  }
+  return selectOf(withCurrent(OPTION_SOURCES.demandValues(field), demand.value, field.section ? 'not on the shelf' : 'no thing has this'), demand.value, value => {
+    demand.value = value
+    rerender()
+  })
+}
+
+// NEW: the demand half of conditionLine's sources. Every one of them answers about the
+// sheet the PLAYER builds — never about the shelf the card itself sits on, which is the
+// single idea an author has to hold: a demand is a question about the player.
+const demandSources = (demand, type) => ({
+  gone:      "not on this game's sheet",
+  fields:    ()      => OPTION_SOURCES.demandFields(),
+  fieldOf:   (id)    => type === undefined ? undefined : demandFieldById(type, id),
+  onField:   (value) => {
+    const field = type === undefined ? undefined : demandFieldById(type, value)
+    if (field === undefined) return          // only reachable by re-picking the stale option
+    Object.assign(demand, demandOn(field))   // in place, so the stored key order stays field, op, value
+  },
+  operators: (field) => OPTION_SOURCES.demandOps(field),
+  onOp:      (field, value) => {
+    demand.op = value
+    const operator = demandOperatorOf(field, value)
+    // an operator that names nothing carries NO value, and turning it back into one
+    // that DOES name something needs a real value again — or one edit would leave a
+    // demand born broken, which is the state this builder exists to prevent.
+    if (operator?.valueless) demand.value = ''
+    else if (demand.value === '') demand.value = firstDemandValue(field)
+  },
+  value:     (field) => demandValueControl(field, demand)
+})
+
 // where a builder gets its options when they are DATA, not a fixed list.
 // "types" is nullary — every loaded type, read at draw time, plus a blank
 // first row for "shows nothing yet" (its value "" is the query's empty type)
@@ -576,6 +789,35 @@ const OPTION_SOURCES = {
   // hold a pick while this row is hidden, so offering them would mint dead
   // rows. Ancestors are offered — "pick a Lair, then choose a Location inside it".
   rows:         (self)        => { const below = new Set(idsBelow(self)); return rowsIn(editorState.merged.content.groups).filter(row => !below.has(row.id)).map(row => ({ value: row.id, label: row.label })) },
+  // NEW: the three sources a DEMAND's dropdowns read. All three answer about the sheet
+  // the PLAYER builds, and the labels say where each slot came from, because a demand
+  // routinely crosses a book boundary — Dinosaur Age's trait asks about Basic's Origin
+  // and Stats' Strength, and the author should see that seam here, when choosing.
+  // NEVER the core three: `name` and `imageURL` are not game state, and a sheet's `cost`
+  // is what the picks being judged already cost — demandFields simply does not offer
+  // them, which is why this screen needs no caption table of its own.
+  // (`demandFields(...)` inside is the import from demands.js: a property name creates
+  // no binding, so nothing is shadowed — the same note fillableSections carries below.)
+  demandFields: () => {
+    const type = playerSheetType()
+    if (!type) return [{ value: '', label: '— this game builds no sheet —' }]
+    return demandFields(type).map(field => {
+      const from = editorState.origins.get(field.id)
+      return { value: field.id, label: from === undefined ? field.caption : `${field.caption} (${titleOf(from)})` }
+    })
+  },
+  // which operators FIT this slot: a LIST section's four, or the field kind's own row of
+  // OPERATORS — query.js's table by identity, so a row filter and a demand can never
+  // drift apart. Drawn from `label`, so `gte` reads "≥".
+  demandOps:    (field) => demandOperators(field).map(({ value, label }) => ({ value, label })),
+  // and what its value may be: a LIST section names a THING on the shelf it lists (the
+  // whole merged shelf, wherever the entry came from); everything else offers exactly
+  // what a row filter offers for that kind — a choice its own options, text and lines
+  // the values the sheet type's own things hold. A number asks nothing of this source:
+  // it gets a box (see demandValueControl).
+  demandValues: (field) => field.section
+    ? OPTION_SOURCES.thingsOf(field.section.of)
+    : OPTION_SOURCES.valuesFor(playerSheetType(), field),
   // NEW: what a GAME may declare as the sheet the PLAYER builds — every merged type,
   // plus the honest "none" first. "" is a real answer and the default one: a game that
   // builds no sheet is a menu of plain pickers, which is what every v5 game is.
@@ -592,7 +834,7 @@ const OPTION_SOURCES = {
   // hand-written binding that does NOT fit is SHOWN, labelled, never silently swapped
   // for the first option; the row's header carries checkFills' sentence beside it.
   fillableSections: (row)     => {
-    const type = typeById(editorState.merged.content.sheet ?? '')
+    const type = playerSheetType()        // CHANGED: the same one question, asked in one place
     if (!type) return [{ value: '', label: '— this game builds no sheet —' }]
     const fits = fillableSections(type, row?.query?.type ?? '')
       .map(section => ({ value: section.id, label: `${section.caption} — ${sheetLabel(section.of)} entries` }))
@@ -621,7 +863,7 @@ const sheetLabel = (sheetName) =>
 // cards that must paint whatever the file says, including a binding to a section a
 // book upgrade took away. The ⚠ beside it is checkFills' job, never this one's.
 const sectionCaption = (sectionId) => {
-  const type = typeById(editorState.merged.content.sheet ?? '')
+  const type = playerSheetType()          // CHANGED: the same one question, asked in one place
   return (type ? sectionById(type, sectionId) : undefined)?.caption ?? sectionId
 }
 
@@ -801,17 +1043,51 @@ const renderThingsTab = () => {
     // "+ Add" writes on CLICK: the bucket for this sheet is created only when
     // something is actually put in it, so looking at a book's empty shelf never
     // adds an empty bucket to the game's things.json.
+    // CHANGED: WHAT is born now depends on the "from" line below it — a blank thing
+    // built from the sheet's defaults, which is every game's behaviour to date, or a
+    // COPY of a thing already on this shelf. Both write on the same click.
     const addBtn = el('button', 'add-button', `+ Add ${shownType.label}`)
     addBtn.addEventListener('click', () => {
-      const born = newborn(shownType.id)
+      const source = shelf.find(thing => thing.id === startFrom)   // undefined for "— blank —", and for a source the shelf lost
+      const born = source === undefined ? newborn(shownType.id) : newbornFrom(source)
       ;(editorState.things.things[shownType.id] ??= []).push(born)
       uiState.expanded.add(born.id)
       rerender()
     })
     paneEl.appendChild(addBtn)
+    paneEl.appendChild(startFromLine(shownType, shelf))
   }
   layoutEl.appendChild(paneEl)
   editorEl.appendChild(layoutEl)
+}
+
+// NEW: which thing the NEXT newborn copies — a thing id, or '' for a blank one.
+// Module scope for exactly the reason uiState exists: render() wipes the DOM at every
+// paint, so a control's own value is lost unless something outside the DOM holds it.
+// It is not IN uiState because it is not in the hash and no other screen asks about it
+// — one screen's scratch memory, and reloading the page forgetting it is correct.
+let startFrom = ''
+
+// NEW: "from [ — blank — ▾ ]", the whole AUTHOR half of templates.
+// A template is not a new shape and carries no mark: it is a thing of a sheet's type
+// used as a newborn's source, and buildSheet already says the player's sheet IS a thing
+// of its type. So a book "ships a template" by shipping a thing, and this screen needs
+// no new key, no validator rule and no migration to offer one.
+// The options are the MERGED shelf, so a book's thing is offered and labelled with the
+// book it came from — that is how a book's template reaches a game. "— blank —" is
+// first and is today's behaviour exactly, which is why no existing game changes.
+// It does NOT repaint on change: the select already shows the author's choice, and
+// nothing else on the screen depends on it until Add is clicked.
+// A remembered source that is not on the shown shelf — the rail moved to another type,
+// or a book was un-pinned — falls back to blank instead of being shown as a missing
+// option. It is not a fault in the data (nothing on disk points at it); it is a screen
+// that moved on, and the quiet answer is the honest one.
+const startFromLine = (type, shelf) => {
+  if (!shelf.some(thing => thing.id === startFrom)) startFrom = ''
+  const lineEl = conditionRow('from')
+  const options = [{ value: '', label: '— blank —' }, ...OPTION_SOURCES.thingsOf(type.id)]
+  lineEl.appendChild(selectOf(options, startFrom, value => { startFrom = value }))
+  return lineEl
 }
 
 // NEW: the shelf's heading — the sheet's label, its badge, and [Reset order]
@@ -1300,6 +1576,7 @@ const sectionSummary = (section) => ({
 // author is looking, not only in the console.
 const thingSummary = (thing, sheetName) => {
   const type = typeById(sheetName)
+  const parts = [`${thing.name} · ${thing.cost} pt${thing.cost === 1 ? '' : 's'}`]
   const warnings = []
   if (type) listSectionsOf(type).forEach(section => {
     const placed = thing[section.key]
@@ -1307,7 +1584,65 @@ const thingSummary = (thing, sheetName) => {
     const shelf = new Set((editorState.merged.things.things[section.of] ?? []).map(target => target.id))
     if (placed.some(placement => !shelf.has(placement?.thing))) warnings.push('places a thing that does not exist')
   })
-  return { text: `${thing.name} · ${thing.cost} pt${thing.cost === 1 ? '' : 's'}`, warnings }
+  // NEW: what this entry asks of the player, and the two ways that can go wrong — the
+  // border's ("this game cannot judge it, so it is not on sale") and the reachability
+  // one below it. Both quote the ENGINE's own sentences; neither is written twice.
+  const demands = demandsOf(thing)
+  if (demands.length > 0) {
+    parts.push(plural(demands.length, 'demand'))
+    const cannot = cannotJudge(thing)
+    if (cannot) warnings.push(cannot)
+    const never = neverMet(demands)
+    if (never) warnings.push(never)
+  }
+  return { text: parts.join(' · '), warnings }
+}
+
+// NEW: the BORDER's own question, asked on this screen: can THIS game JUDGE everything
+// this entry demands? gameConfig.js warns once by name and DOES NOT OFFER a thing it
+// must answer "no" for, so this screen must subtract exactly the same entries from a
+// row's count — or the editor's number stops being the game's offer.
+// null when the entry is offerable, which includes "it demands nothing at all".
+// The first sentence is the border's and NOT checkDemand's, because the two ask
+// different questions: "does this point at anything, anywhere?" is the audit's (it is a
+// FAULT, and the banner at the top of this screen already carries it), while "can this
+// GAME answer it?" is the border's — a book's trait may ask about Stats' Strength in a
+// game that never pinned Stats, and that file is perfectly well-formed.
+const cannotJudge = (thing) => {
+  const demands = demandsOf(thing)
+  if (demands.length === 0) return null
+  const type = playerSheetType()
+  if (type === undefined) return 'demands something, but this game builds no sheet — it is not offered'
+  for (const demand of demands) {
+    const field = demandFieldById(type, demand.field)
+    const problem = field === undefined
+      ? `names a field that is not on this game's sheet (${demand.field})`
+      : checkDemand(demand, field, field.section ? shelfIdsOf(field) : null)
+    if (problem) return `a demand ${problem}`     // ONE sentence per entry, as the border says one per thing
+  }
+  return null
+}
+const shelfIdsOf = (field) => new Set((editorState.merged.things.things[field.section.of] ?? []).map(thing => thing.id))
+
+// NEW: the cheap, SOUND half of "can this entry ever be taken?" — a demand that asks a
+// section to HOLD something can never be met while NO ROW fills that section, because a
+// section fills only from a row's picks. It is the deadRows question one storey down and
+// it is exactly decidable; the complete version is a reachability fixpoint over a
+// non-monotone condition, and it is deliberately out of scope.
+// Only `holds` and `holds anything` are asked about: on a section nothing can ever fill,
+// `does not hold` and `holds nothing` are not unmeetable — they are permanently MET, and
+// warning about them would be a lie.
+const neverMet = (demands) => {
+  const type = playerSheetType()
+  if (type === undefined) return null                  // cannotJudge already said the one thing worth saying
+  const filled = new Set(rowsIn(editorState.merged.content.groups).map(row => row.fills).filter(id => id))
+  const doomed = demands.find(demand => {
+    if (demand.op !== 'holds' && demand.op !== 'any') return false
+    const field = demandFieldById(type, demand.field)
+    return field?.section !== undefined && !filled.has(field.section.id)
+  })
+  if (doomed === undefined) return null
+  return `asks about ${demandFieldById(type, doomed.field).caption}, which no row fills — nothing can ever meet it`
 }
 
 // NEW: the row's header sentence: label · what it shows · how many things ·
@@ -1326,9 +1661,14 @@ const rowSummary = (row) => {
     const problem = checkWhere(row.query.where, type)
     if (problem) { parts.push(`shows ${type.label}`); warnings.push(`filter ${problem}`) }
     else {
-      const shown = filterThings(bucketOf(type), type, row.query.where)
-      parts.push(`shows ${type.label}${wherePhrase(row.query.where, type)}`, plural(shown.length, 'thing'))
-      if (shown.length === 0 && (editorState.merged.rules.groupRules[row.id]?.min ?? 0) > 0) warnings.push('required but matches nothing')
+      // CHANGED: the count is what the row OFFERS, not what it matches. An entry whose
+      // demands this game cannot judge is not on sale (cannotJudge, the border's own
+      // rule), so counting it here would make this number a promise the player's page
+      // does not keep. Nothing moves for a game with no demands: the filter drops none.
+      const shown   = filterThings(bucketOf(type), type, row.query.where)
+      const offered = shown.filter(thing => cannotJudge(thing) === null)
+      parts.push(`shows ${type.label}${wherePhrase(row.query.where, type)}`, plural(offered.length, 'thing'))
+      if (offered.length === 0 && (editorState.merged.rules.groupRules[row.id]?.min ?? 0) > 0) warnings.push('required but matches nothing')
     }
   }
   // NEW: where this row's picks LAND, right after what it shows — the two are one
@@ -1462,6 +1802,14 @@ const cascadeDelete = (sheetName, element) => {
 //                                         rowOverrides[…].fills the key is dropped   (forgetOverrideFills)
 //   the TYPE the player's sheet names     content.sheet         the key goes to ""   (forgetPlayerSheet)
 //   content.sheet itself (a NEW sheet)    every binding that no longer fits         (forgetUnfitFills)
+// NEW, what an entry DEMANDS — two more pointers, and both repairs SPLICE rather than
+// neutralise. A gate on a removed thing becomes `always` because a row with no gate is a
+// sensible row; a demand on a removed slot has no sensible neutral value at all ("always
+// true" silently drops the author's rule, "always false" kills the entry), so the honest
+// repair is that the condition ceases to exist and the author is told.
+//   field / section (gone, kind flipped, re-aimed)  thing.demands[j].field  (forgetDemandField)
+//   thing                                           thing.demands[j].value  (forgetDemanded)
+//   content.sheet CHANGED                           NOTHING — see playerSheetChanged
 const REMOVE_HOOKS = {
   type: (type) => {
     // its own things go, and every gate and every PLACEMENT on them — before the bucket does
@@ -1479,18 +1827,32 @@ const REMOVE_HOOKS = {
     // asked for by name, one at a time, and each keeps its own sentence.
     say(forgetPlayerSheet(editorState.content, type.id))
     listSectionsOf(type).forEach(section => forgetBinding(section.id))
+    // NEW: and every demand that asked about one of its slots. A demand may name a
+    // FIELD or a LIST section — demandFields offers exactly those two — so exactly
+    // those two are asked for by name, and a thing anywhere in this game may be the
+    // one that asked.
+    fieldsOfType(type).forEach(field => say(forgetDemandField(editorState.things, field.id)))
+    listSectionsOf(type).forEach(section => say(forgetDemandField(editorState.things, section.id)))
     if (uiState.selectedType === type.id) uiState.selectedType = ''            // the Things pane falls back to the first type at paint
   },
-  fieldDef: (field) => say(forgetField(editorState.content.groups, field.id)),
+  fieldDef: (field) => {
+    say(forgetField(editorState.content.groups, field.id))
+    say(forgetDemandField(editorState.things, field.id))     // NEW: and every demand that asked about it
+  },
   // NEW: a section takes its fields with it, so every condition built on one goes too
   // — and every BINDING that named it, because nothing can fill a section that is gone.
   section:  (section) => {
-    (section.fields ?? []).forEach(field => say(forgetField(editorState.content.groups, field.id)))
+    (section.fields ?? []).forEach(field => {
+      say(forgetField(editorState.content.groups, field.id))
+      say(forgetDemandField(editorState.things, field.id))   // NEW: its fields' demands go with them
+    })
     forgetBinding(section.id)
+    say(forgetDemandField(editorState.things, section.id))   // NEW: and every demand about the SECTION itself
   },
   thing:    (thing) => {
     say(forgetThing(editorState.content.groups, thing.id))
     say(forgetPlaced(editorState.things, editorState.merged.types.types, thing.id))
+    say(forgetDemanded(editorState.things, thing.id))        // NEW: "Fireball requires Mage" outlives neither
     forgetArranged(thing.id)
   },
   group:    (row)   => idsBelow(row).forEach(id => say(forgetRow(editorState.content.groups, id)))   // the row AND its subtree
@@ -1574,6 +1936,7 @@ const forgetUnfitFills = (content) => {
 const CHANGE_HOOKS = {
   fieldKindChanged: (field) => {
     say(forgetField(editorState.content.groups, field.id))   // the old kind's operators and values no longer fit
+    say(forgetDemandField(editorState.things, field.id))     // NEW: and neither do a demand's — the same reason, one storey down
     // NEW: a choice needs options and no other kind may carry them. An empty
     // list is unsaveable ("a choice needs at least one option") — loudly wrong
     // beats silently blank.
@@ -1599,6 +1962,9 @@ const CHANGE_HOOKS = {
     // against. Either way the binding is void. (Idempotent: on the common path no
     // row names this section and nothing is said.)
     forgetBinding(section.id)
+    // NEW: and so is every demand about it — a fields section cannot be `holds`-ed, and
+    // a section that has just become a list holds ids from a shelf nothing has yet.
+    say(forgetDemandField(editorState.things, section.id))
   },
   // a section re-aimed at another shelf: every entry placed under it named a
   // thing on the OLD shelf, so the arrays are emptied rather than left dangling.
@@ -1607,11 +1973,18 @@ const CHANGE_HOOKS = {
   sectionTargetChanged: (section) => {
     say(forgetSectionPlacements(editorState.things, editorState.merged.types.types, section.id))
     forgetBinding(section.id)
+    say(forgetDemandField(editorState.things, section.id))   // NEW: its `holds` named a thing on the OLD shelf
   },
   // NEW: the game now builds a DIFFERENT sheet (or none). Named here rather than on
   // the sheet entry itself for now — see renderSheetLine. Every binding is re-judged
   // and each casualty is named, so an engine warning about `fills` always means
   // "somebody hand-edited a file" and never "the editor did this and said nothing".
+  // NEW, and it is a DECISION that this hook gains nothing: a demand is a fact about the
+  // ENTRY — "Fireball requires Mage" is true in every game that ships Fireball — so a
+  // game that changes what the player builds makes some entries unofferable (the border
+  // says so, once, by name; the card carries the ⚠) and repairs nothing. This is the one
+  // place `fills` and `demands` deliberately differ, and it is what "the rule travels in
+  // the book" means in code.
   playerSheetChanged: (content) => say(forgetUnfitFills(content))
 }
 // CHANGED: a repair may now report a THING as well as a row (a placement lost) — or
@@ -1649,6 +2022,24 @@ const newborn = (sheetName) => {
   })
   return born
 }
+
+// NEW: a newborn from a SOURCE — newborn's twin, and the only new function templates
+// need. `newborn` builds from the sheet's defaults; this builds from another thing on
+// the same shelf, which is what a template IS.
+// Three things are deliberate here and each is one word of the line:
+//   a FRESH uuid, never the source's — the copy lands in the GAME's bucket, so origins
+//     claims it for the game layer at the next merge and its card is editable even when
+//     the source was a frozen book's locked one. That is how a book ships a template.
+//   a name that SAYS it is a copy, so two identical names never sit on one shelf and
+//     the author is told which card to rename.
+//   a DEEP clone of everything else, for the same reason newborn clones each default:
+//     two things that share one array are one thing wearing two names. `demands` and
+//     the list sections come with it, and that is right — a copy of an entry is a copy
+//     of its rules, and everything after this point is what any newborn already gets
+//     (the cascade, the repairs, the validation, the canonical save order).
+// Spread FIRST, then override: `id` and `name` already exist on the source, so the copy
+// keeps the source's key order rather than inventing a second one.
+const newbornFrom = (source) => ({ ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name} copy` })
 
 // ───────────────────────── cards ─────────────────────────
 
