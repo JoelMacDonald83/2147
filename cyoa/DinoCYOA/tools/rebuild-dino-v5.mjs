@@ -33,6 +33,21 @@
 //                                 proposes, so they are DELETED here and show
 //                                 through — statusOf asserts they matched
 //                                 first, so nothing is lost silently.
+//   DECLARES A SHEET (Stage 2)    content.sheet becomes "basic:character": the
+//                                 type the PLAYER fills in. It is written HERE
+//                                 rather than by hand because of oracle D5 —
+//                                 "the dino on disk byte-equals this script's
+//                                 output". The data and the script that
+//                                 reproduces it move together, or D5 lies.
+//   BINDS THE FOUR ROWS           each override gains `fills`: the section of
+//                                 that sheet a pick from this row lands in.
+//                                 Two rows (Lairs and Locations) fill the SAME
+//                                 section, places — legal, and required by
+//                                 this data. Binding changes what a pick
+//                                 RECORDS, never what a row OFFERS, which is
+//                                 why every item count in EXPECTED_ROWS below
+//                                 is unmoved and every price on the page is
+//                                 the price it was.
 //
 // Nothing is minted. Every uuid in the output was in the input, minus the 23
 // the plan retires — asserted before a byte is written.
@@ -91,17 +106,22 @@ const serialize = (obj) => JSON.stringify(obj, null, 2) + '\n'
 //              Burger. With it, it reads exactly as v4 did.
 export const PLAN = {
   pins: [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 1 }],
+  sheet: 'basic:character',                                  // the TYPE the player builds. Beside the pins because the pins are what define it: Basic proposes Character, Stats and Dinosaur Age add to it
   types: {                                                   // the four v4 types → the Basic sheet their things move to; the type and its two field ids retire
     '4043b853-f2e2-43bd-9a59-a1df426f55e7': { from: 'Dino',      to: 'basic:character' },
     '126a2b60-f165-4974-b5d5-b19e1a7043ab': { from: 'Stuffable', to: 'basic:item' },
     '8f600498-8359-4ca2-aef8-c2a80a23ed5a': { from: 'Lair',      to: 'basic:place' },
     '9a439978-8907-4c37-a19d-fcc29faf472b': { from: 'Location',  to: 'basic:place' }
   },
-  rows: {                                                    // the four v4 rows → the proposed rows that replace them; the label becomes the override
-    'dc59d633-7a9d-441b-a8c5-e9224d16eec8': { from: 'Choose your Dino pet uWu',                                  to: 'dinosaur-age:row-companions' },
-    '2f388c57-809e-49c0-b03d-216b9bd894f7': { from: 'Now give your Dino stuffables!',                            to: 'dinosaur-age:row-gear' },
-    'bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e': { from: 'Now select a Lair! Do you have a Lair? Dino needs a Lair!', to: 'dinosaur-age:row-lairs' },
-    'cd9dd080-40ca-4ae9-9487-d67242cf7265': { from: 'Lair Location',                                             to: 'dinosaur-age:row-locations' }
+  rows: {                                                    // the four v4 rows → the proposed rows that replace them; the label AND the binding become the override
+    // `fills` is a SECTION id of plan.sheet: where a pick from this row lands on
+    // the player's sheet. Written down, never inferred — basic:trait fits TWO
+    // sections of Character (advantages and disadvantages), so "the obvious
+    // one" does not exist, and this codebase never guesses.
+    'dc59d633-7a9d-441b-a8c5-e9224d16eec8': { from: 'Choose your Dino pet uWu',                                  to: 'dinosaur-age:row-companions', fills: 'basic:character.companions' },
+    '2f388c57-809e-49c0-b03d-216b9bd894f7': { from: 'Now give your Dino stuffables!',                            to: 'dinosaur-age:row-gear',       fills: 'basic:character.gear' },
+    'bdd3ed8d-74a8-455f-bef7-b115fe5d9f2e': { from: 'Now select a Lair! Do you have a Lair? Dino needs a Lair!', to: 'dinosaur-age:row-lairs',      fills: 'basic:character.places' },
+    'cd9dd080-40ca-4ae9-9487-d67242cf7265': { from: 'Lair Location',                                             to: 'dinosaur-age:row-locations',  fills: 'basic:character.places' }
   },
   pets: {                                                    // kept uuids; label → concept, traits → notes; size and origin are the owner's call (one line each, edit freely)
     'a8d09a0f-f269-4a04-a173-d694dc36b105': { from: 'Tali',                size: 'biggie', origin: 'dinosaur-age:tyrannosaurus' },
@@ -147,12 +167,13 @@ const FRESH_RULES = {
 
 // What the rebuilt game must produce, checked before the write (step 7). Rows
 // in v4 order, each with the label the override restores, the min/max it must
-// end up with after the cascade, and the item count its query must answer.
+// end up with after the cascade, the item count its query must answer, and
+// (Stage 2) the sheet section its picks must land in after that same cascade.
 const EXPECTED_ROWS = [
-  { id: 'dinosaur-age:row-companions', label: 'Choose your Dino pet uWu',                                  min: 1, max: 1,        items: 8 },
-  { id: 'dinosaur-age:row-gear',       label: 'Now give your Dino stuffables!',                            min: 0, max: Infinity, items: 4 },
-  { id: 'dinosaur-age:row-lairs',      label: 'Now select a Lair! Do you have a Lair? Dino needs a Lair!', min: 1, max: 3,        items: 4 },
-  { id: 'dinosaur-age:row-locations',  label: 'Lair Location',                                             min: 0, max: Infinity, items: 1 }
+  { id: 'dinosaur-age:row-companions', label: 'Choose your Dino pet uWu',                                  min: 1, max: 1,        items: 8, fills: 'basic:character.companions' },
+  { id: 'dinosaur-age:row-gear',       label: 'Now give your Dino stuffables!',                            min: 0, max: Infinity, items: 4, fills: 'basic:character.gear' },
+  { id: 'dinosaur-age:row-lairs',      label: 'Now select a Lair! Do you have a Lair? Dino needs a Lair!', min: 1, max: 3,        items: 4, fills: 'basic:character.places' },
+  { id: 'dinosaur-age:row-locations',  label: 'Lair Location',                                             min: 0, max: Infinity, items: 1, fills: 'basic:character.places' }
 ]
 const EXPECTED_GATE = { kind: 'anyInRow', row: 'dinosaur-age:row-lairs' }
 const EXPECTED_BUDGET = 10
@@ -375,9 +396,13 @@ export const rebuildDino = (set, plan, books) => {
   //    page theme is untouched — it was never about a row).
   //    types goes empty: all four sheets are Basic's now. The two addition
   //    cabinets stay (empty) because every layer has them.
+  //    CHANGED (Stage 2): the game also DECLARES the sheet the player builds,
+  //    and each override carries a second key — the section that row's picks
+  //    fill. Two keys now, in the schema's order: label, then fills.
   out.content.groups = []
+  out.content.sheet = plan.sheet
   out.content.rowOverrides = {}
-  Object.values(plan.rows).forEach(({ from, to }) => { out.content.rowOverrides[to] = { label: from } })
+  Object.values(plan.rows).forEach(({ from, to, fills }) => { out.content.rowOverrides[to] = { label: from, fills } })
   out.rules = { version: out.rules.version, groupRules: {} }
   out.themes = {
     version: out.themes.version,
@@ -400,7 +425,7 @@ export const rebuildDino = (set, plan, books) => {
   // every file rebuilt key by key, canonical order (§2.8), so the bytes are the
   // same whatever order the steps above happened to leave
   const result = {
-    content: { version: out.content.version, meta: out.content.meta, books: out.content.books, groups: out.content.groups, rowOverrides: out.content.rowOverrides },
+    content: { version: out.content.version, meta: out.content.meta, books: out.content.books, sheet: out.content.sheet, groups: out.content.groups, rowOverrides: out.content.rowOverrides },
     rules:   out.rules,
     themes:  out.themes,
     types:   out.types,
@@ -428,6 +453,12 @@ export const rebuildDino = (set, plan, books) => {
   })
   assert.ok(!('totalBudget' in result.rules), 'the game must not write a budget — Dinosaur Age proposes it')
   assert.equal(merged.rules.totalBudget ?? budgetDefault(), EXPECTED_BUDGET, 'the merged budget')
+
+  //   the declaration and the four bindings, read back off the MERGED rows. A
+  //   file that SAYS `fills` is not the same claim as a cascade that DELIVERS
+  //   it, and it is the cascade the player plays.
+  assert.equal(merged.content.sheet, plan.sheet, `the merged game builds ${JSON.stringify(merged.content.sheet)}, expected ${JSON.stringify(plan.sheet)}`)
+  assert.deepEqual(merged.content.groups.map(row => row.fills), EXPECTED_ROWS.map(row => row.fills), 'the four merged rows are not bound to the planned sections, in order')
 
   //   what every row OFFERS, in order, against what the v4 game offered. Four
   //   deepEquals, one per row: names, costs and images, position by position.

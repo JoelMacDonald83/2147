@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "meta": {
     "pageTitle": "Adopt a Dino! CYOA",
     "heroTitle": "dw"
@@ -18,19 +18,24 @@
       "edition": 1
     }
   ],
+  "sheet": "basic:character",
   "groups": [],
   "rowOverrides": {
     "dinosaur-age:row-companions": {
-      "label": "Choose your Dino pet uWu"
+      "label": "Choose your Dino pet uWu",
+      "fills": "basic:character.companions"
     },
     "dinosaur-age:row-gear": {
-      "label": "Now give your Dino stuffables!"
+      "label": "Now give your Dino stuffables!",
+      "fills": "basic:character.gear"
     },
     "dinosaur-age:row-lairs": {
-      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!"
+      "label": "Now select a Lair! Do you have a Lair? Dino needs a Lair!",
+      "fills": "basic:character.places"
     },
     "dinosaur-age:row-locations": {
-      "label": "Lair Location"
+      "label": "Lair Location",
+      "fills": "basic:character.places"
     }
   }
 }
