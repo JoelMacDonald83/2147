@@ -34,7 +34,15 @@
 //   T2 editions (NEW)                 edition 2 is edition 1 plus exactly one thing
 //   T3 the shelf's version (NEW)      every data file on the shelf says SCHEMA_VERSION and moved no other byte
 //   T4 the shelf's demands (NEW, v7)  no book on the shelf authors one (§12.1's decision, asserted); every book still validates
+//       T1–T4's subject is THE COMMITTED SHELF — books/ as real, hand-authored DATA that must
+//       not drift. It is not a claim that no shelf can be written: a scratch shelf is a
+//       different subject and the checks that write one say so. The anchor below the T-heading
+//       keeps the four pointed at the committed bytes and at nothing else.
 //   W1 the shelf's placement fields (NEW) Gear ships quantity/number/1, Skills level/number/1, and nobody else a `quantity`
+//   R6 the id census (NEW, stage 4)   every id-shaped string under books/** and games/** sits where
+//       engine/config/ids.js's walk reaches, found by two hand-typed regexes that know nothing of the
+//       marker tables; a total rename leaves no old string in the bytes; A→B→A is byte-identical; and
+//       breaking a marker in memory turns both halves red. R1–R5, the fixture half, are in oracles-logic
 //   D1 rebuild in-process (NEW)       the rebuilt dino plays EXACTLY what the v4 dino played, row by row, item by item
 //   D2 rebuild CLI (NEW)              exit 0 writes D1's bytes; a second run exits 1; a partial state or a short shelf exits 2
 //   D3 play replay (NEW)              I1's four steps over the rebuilt files + the shelf
@@ -87,7 +95,28 @@
 //   M9 scratch only             the real games/, dist/ AND books/ are byte-identical to before the run
 //   M10 the seed pins Basic (NEW)     POST /api/games over a scratch shelf; books given, books empty, an empty shelf
 //   M11 GET /api/books (NEW)          every folder, every edition, the counts and the problems
-//   M12 the shelf is read-only (NEW)  books/ is byte-identical after the whole run
+//   M12 no check writes the real shelf (RE-AIMED) books/ is byte-identical after the whole
+//       run, AND the scratch-shelf mechanism that makes that true is asserted to be in use
+//       — test hygiene, which is all this check ever proved. "An edition is frozen" is a
+//       different promise and it is M13's.
+//   M13 the freeze, POSITIVELY (NEW, stage 4) an edition a game pins refuses a save, a delete of
+//       itself and a delete of its whole book — each naming the game, each moving no byte; a CUT
+//       is allowed (it is what the refusal points at); the same writes one edition along, which
+//       nobody pins, are accepted; and moving the pin moves the freeze with it
+//   M14 POST /api/books (NEW)         the newborn's four files written out literally, and 10 refusals
+//   M15 …/<e>/save (NEW)              the WHOLE book in one request; 9 refusals, nothing written
+//   M16 …/<e>/cut and …/delete (NEW)  a copy plus more, assets included; the last edition takes the folder
+//   M17 …/rename (NEW)                the name IS the namespace — ids, references and pins, counted independently
+//   M18 the seam between routes (NEW) create → cut → delete → create again: no shared folder, no empty book
+//   M19 a staging folder (NEW)        a stale <edition>.tmp and <book>.tmp are invisible to every reader
+//   M20 ONE freeze sentence (NEW)     the editor's copy of the three is the server's own, word for word
+//   M21 POST /api/games/<g>/extract (NEW) "save as a book": vampire's 64 UUIDs re-minted, dino's
+//       four row facts left behind with a sentence each, and both games PLAY WHAT THEY PLAYED
+//   I4  the editor opens a BOOK (NEW) through its own paint: reading writes nothing, frozen or not
+//   I5  the home screen's LIBRARY (NEW) painted by its own code: the freeze as a fact on screen
+//   I6  the SUBJECT TABLE (NEW)        spec §2's owed sweep: every attachment's `entry.file` is a
+//       ROLE the drawers table answers, for BOTH kinds — which is the only thing standing
+//       between `null` (silent, by design) and `undefined` (a warning on every paint)
 //
 // RETIRED, with the reason: H1–H4 (tools/restructure-v4.mjs). That script's
 // PRECONDITION — a v4 set read from the working tree's border — no longer exists
@@ -97,13 +126,20 @@
 // script" oracle is now the D-checks over tools/rebuild-dino-v5.mjs. S1 drops
 // its "restructured" set with them.
 //
-// NEW (v7): two more child modes, and both are about what a PERSON sees.
+// NEW (v7, and two more in stage 4): four child modes, all about what a PERSON sees — or,
+// for --subject, about the one table that decides what a person is looking at.
 //   --paint  the engine's real app.js and view.js over a tiny hand-written DOM, so
 //            W7, W9 and E14 can read the words and classes on a card and press the
 //            button a player would press. The DOM is deliberately small and dumb —
 //            no layout, no CSS — because what is checked is which words the engine
 //            puts on the page, and a fuller fake would only be more code to be wrong
 //            in. It is written here rather than pulled in: no npm, no build step.
+//   --subject  dinoEdit/subject.js, the PURE half of the subject table, read out of the copy and
+//            with every column evaluated over named sample states, because a function cannot
+//            cross a pipe (I6).
+//   --library  the home screen's Library (dinoEdit/library.js), painted from two receipts and
+//            nothing else — renderLibrary fetches nothing, only a click does — so one fixture
+//            holds a frozen edition, an unreadable one and a mis-named folder at once (I5).
 //   --edit   the EDITOR's real view.js, painted the same way, for I3. Its modules
 //            import "/config/…" — the one url the dev server maps onto engine/config/
 //            (M2) — and node has no import map, so it runs out of a scratch copy with
@@ -158,6 +194,13 @@ const OPTIONAL_FILES = ['types', 'things']   // absent before v3 — reading the
 const BOOK_FILE_NAMES = ['book', 'types', 'things', 'proposals']
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g
 const REAL_BOOKS = join(DINO_DIR, 'books')   // READ-ONLY here, always: M12 hashes it
+// NEW (stage 4): the two registries M12 reads. A check that needs a shelf it can
+// WRITE takes a COPY (copyShelf) and points the server at it through CYOA_BOOKS_DIR.
+// M12 used to prove that by hashing books/ and finding it unmoved — which was free
+// while nothing in the project could write to a shelf at all. These two say the
+// mechanism is genuinely IN USE, so the proof cannot pass because nobody tried.
+const scratchShelves = []    // every copy copyShelf made, in the order it made them
+const servedShelves = []     // every shelf a REAL server was pointed at (CYOA_BOOKS_DIR)
 
 // the server's exact on-disk format
 const serialize = (obj) => JSON.stringify(obj, null, 2) + '\n'
@@ -538,8 +581,21 @@ if (process.argv[2] === '--paint') {
 // A STEP is one of two shapes:
 //   { startFrom: "<thing id>" }   choose in the "from [ — blank — ▾ ]" control
 //   { add: true }                 press "+ Add <sheet>"
+//
+// CHANGED (stage 4): IT OPENS A SUBJECT, NOT A GAME. This child hard-coded a game's five
+// drawers and the `#<game>/<tab>` hash, which made it the one shared dependency of the
+// whole suite that could not be pointed at a book — and it is the ONLY check driven
+// through the editor's real paint, so "opening a frozen edition writes nothing" had
+// nowhere to be proved. `script.subject` is { kind, name, edition }; omitted means the
+// game in <gameDir>, which is what I3 drives and what it drove before. A BOOK is opened
+// out of <booksDir>: its four files, the layers its manifest REQUIRES, and the pin census
+// (`script.pinnedBy`) that decides whether the edition is editable at all — an edition a
+// game pins is frozen, and the editor must write nothing into it.
+// OPENERS is a table keyed by kind, for the same reason the editor's own SUBJECTS is: a
+// third kind of subject is a row, never a branch in here.
 if (process.argv[2] === '--edit') {
   const [editRoot, gameDir, booksDir, scriptJSON] = process.argv.slice(3)
+  const script = JSON.parse(scriptJSON)
   const warnings = captureWarnings()
   const page = installDOM()
   // the editor's shell — the three elements its modules reach for at import time
@@ -550,26 +606,54 @@ if (process.argv[2] === '--edit') {
   globalThis.location = { hash: '' }
 
   const editDir = (...parts) => pathToFileURL(join(editRoot, ...parts)).href
-  const { editorState, remerge } = await import(editDir('dinoEdit', 'state.js'))
-  const { uiState, readHash } = await import(editDir('dinoEdit', 'uiState.js'))
+  const { editorState, remerge, S } = await import(editDir('dinoEdit', 'state.js'))
+  const { uiState, readHash, subjectAt, hashForSubject } = await import(editDir('dinoEdit', 'uiState.js'))
   const { render } = await import(editDir('dinoEdit', 'view.js'))
   const { migrateSet } = await import(editDir('engine', 'config', 'migrations.js'))
 
-  // the game's five files and the layers it pins, read straight off disk
-  const set = migrateSet(Object.fromEntries(['content', 'rules', 'themes', 'types', 'things']
-    .map(name => [name, JSON.parse(readFileSync(join(gameDir, 'data', `${name}.json`), 'utf8'))])))
   const readBook = (pin) => {
     const at = (file) => { try { return JSON.parse(readFileSync(join(booksDir, pin.name, String(pin.edition), `${file}.json`), 'utf8')) } catch { return null } }
     const manifest = at('book')
     return manifest === null ? null : { pin, manifest, types: at('types'), things: at('things'), proposals: at('proposals') }
   }
-  Object.assign(editorState, { game: 'demo', ...set, books: set.content.books.map(readBook) })
+  // one row per kind: the subject triple, the drawers, and the layers underneath.
+  // A BOOK IS NEVER MIGRATED (engine/helpers.js: born at SCHEMA_VERSION and frozen there),
+  // which is why only the game row climbs — migrateSet on a book would rewrite a frozen
+  // edition, and its key set is the game's five anyway.
+  const OPENERS = {
+    game: () => {
+      const set = migrateSet(Object.fromEntries(['content', 'rules', 'themes', 'types', 'things']
+        .map(name => [name, JSON.parse(readFileSync(join(gameDir, 'data', `${name}.json`), 'utf8'))])))
+      return { subject: subjectAt('game', 'demo'), files: set, books: (set.content.books ?? []).map(readBook) }
+    },
+    book: (spec) => {
+      const layer = readBook({ name: spec.name, edition: spec.edition })
+      return {
+        subject: subjectAt('book', spec.name, spec.edition),
+        files: { book: layer.manifest, types: layer.types, things: layer.things, proposals: layer.proposals },
+        books: (layer.manifest.requires ?? []).map(readBook)
+      }
+    }
+  }
+  const spec = script.subject ?? { kind: 'game' }
+  const { subject, files, books } = OPENERS[spec.kind](spec)
+  // `pinnedBy` is the freeze census the server answers with. [] = nobody pins this edition,
+  // so it is editable; a non-empty list is a FROZEN edition, and SUBJECTS.book.editable
+  // reads null (never asked) as frozen too.
+  Object.assign(editorState, { subject, ...files, books, pinnedBy: script.pinnedBy ?? [] })
   remerge()
 
-  const shownType = JSON.parse(scriptJSON).type
-  globalThis.location.hash = `#demo/things/${shownType}`
+  const shownType = script.type
+  const tab = script.tab ?? 'things'
+  globalThis.location.hash = hashForSubject(subject, tab) + (tab === 'things' && shownType ? `/${shownType}` : '')
   readHash()
-  render({})
+  // CHANGED (stage 4): the real render() is handed the real actions TABLE, so the painter
+  // that asks for the shelf can ask. A Proxy and not a hand-typed list of the nine: a list
+  // here would rot the day main.js grows an action, and what is being checked is the PAINT,
+  // never what an action does. Every call is recorded instead of answered — `render({})`
+  // would simply have thrown on the one tab that calls one.
+  const actionCalls = []
+  render(new Proxy({}, { get: (_, name) => (...args) => { actionCalls.push([String(name), ...args]) } }))
 
   const bucket = () => structuredClone(editorState.things.things[shownType] ?? [])
   // the SHEET's own two controls — the ones hung directly on the pane. A card carries
@@ -590,7 +674,7 @@ if (process.argv[2] === '--edit') {
       ?? lastCard()?.querySelectorAll('.demands-empty').map(el => el.textContent)[0] ?? null,
     demandRows: lastCard()?.querySelectorAll('.demand-row').length ?? 0
   })
-  const steps = JSON.parse(scriptJSON).steps.map(step => {
+  const steps = script.steps.map(step => {
     if (step.startFrom !== undefined) { const selectEl = fromSelect(); selectEl.value = step.startFrom; selectEl.dispatch('change'); return shot() }
     if (step.addDemand !== undefined) { lastCard().querySelectorAll('.add-button').find(el => el.textContent === '+ Add demand').click(); return shot() }
     if (step.removeDemand !== undefined) { lastCard().querySelectorAll('.demand-row .remove-button')[0].click(); return shot() }
@@ -607,9 +691,103 @@ if (process.argv[2] === '--edit') {
   })
   writeSync(process.stdout.fd, JSON.stringify({
     warnings, steps,
-    addLabel: addButton().textContent,
-    // what the SAVE would write: the game's own five drawers, in the editor's order
-    own: Object.fromEntries(['content', 'rules', 'themes', 'types', 'things'].map(name => [name, editorState[name]]))
+    // the pane's own Add button, where there is a pane — a tab other than Things has none
+    addLabel: paneEl() === undefined ? null : addButton().textContent,
+    // CHANGED: what a SAVE would write is THE SUBJECT'S own drawers, whichever they are —
+    // a game's five, or a book's four — read through the editor's own subject table so
+    // this child cannot disagree with it about what the page is holding.
+    own: Object.fromEntries(S().files.map(name => [name, editorState[name]])),
+    // NEW: what was PAINTED, so a book's paint can be seen to have happened rather than
+    // inferred from the absence of a throw: which tab, how many cards, how many of them
+    // lockCard turned off, and the faults banner's own sentences.
+    paint: {
+      tab: uiState.tab,
+      actions: actionCalls,
+      // every card, of either style — CARD_STYLES gives a sheet's elements `editor-section`
+      // (a row, a type) or `item-card` (a section, a thing, a field), and "how many cards did
+      // this tab draw" has to mean both or it means whichever tab was looked at first
+      cards: editorEl.querySelectorAll('.editor-section').length + editorEl.querySelectorAll('.item-card').length,
+      locked: editorEl.querySelectorAll('.editor-section.locked').length + editorEl.querySelectorAll('.item-card.locked').length,
+      faults: editorState.faults.map(fault => `${fault.path}: ${fault.message}`)
+    }
+  }))
+  process.exit(0)
+}
+
+// node oracles.mjs --subject <editRoot>
+// THE SUBJECT TABLE, read out of the editor's own module. dinoEdit/subject.js is PURE — no
+// DOM, no fetch, no work at import time, every column taking the state it needs as an argument
+// — exactly so a check can drive it. What it is not is importable by the FAST half: it reads
+// FILE_SHEETS and calls the merge through the absolute "/config/…" urls only the dev server
+// resolves, which is why the address half of the table lives in uiState.js (which imports
+// nothing) and this half is read here, out of the copy with that one mapping applied.
+// Functions cannot cross a pipe, so each column is EVALUATED here over named sample states and
+// the answers travel. The samples are deliberately minimal: what is being checked is the TABLE,
+// not the merge.
+if (process.argv[2] === '--subject') {
+  const [editRoot] = process.argv.slice(3)
+  const { SUBJECTS } = await import(pathToFileURL(join(editRoot, 'dinoEdit', 'subject.js')).href)
+  const sample = {
+    game: { subject: { kind: 'game', name: 'demo', edition: 0 }, content: { meta: { pageTitle: 'A Game' } } },
+    book: { subject: { kind: 'book', name: 'bk', edition: 2 }, book: { name: 'bk', title: 'A Book', edition: 2, requires: [] } }
+  }
+  writeSync(process.stdout.fd, JSON.stringify(Object.fromEntries(Object.entries(SUBJECTS).map(([kind, row]) => [kind, {
+    files:    row.files,
+    drawers:  row.drawers,
+    mintsIds: row.mintsIds,
+    keyword:  row.keyword,
+    columns:  Object.keys(row).sort(),
+    title:    row.title(sample[kind]),
+    // `editable` is the freeze, asked three ways: a census that says nobody pins it, one that
+    // names a game, and one that was never asked at all (null must read as FROZEN)
+    editable: [[], [{ game: 'dino' }], null].map(pinnedBy => row.editable({ ...sample[kind], pinnedBy }))
+  }]))))
+  process.exit(0)
+}
+
+// node oracles.mjs --library <editRoot> <scriptJSON>
+// THE HOME SCREEN'S LIBRARY, painted by its own code. `renderLibrary` (dinoEdit/library.js)
+// is a pure function of two receipts — GET /api/books and GET /api/games — and a repaint
+// handle: it fetches nothing itself, and only a CLICK does. So the whole author-facing surface
+// of stage 4 (which editions may be edited, which are frozen and why, what a cut would be
+// numbered, who pins what, the namespace, and the New book form) can be read off a real paint
+// with no server at all. The two receipts are the script's, so a frozen edition, a broken
+// edition and an empty shelf are each one fixture rather than a state to arrange on disk.
+if (process.argv[2] === '--library') {
+  const [editRoot, scriptJSON] = process.argv.slice(3)
+  const script = JSON.parse(scriptJSON)
+  const warnings = captureWarnings()
+  const page = installDOM()
+  const editorEl = page.makeEl('div'); editorEl.id = 'editor'
+  page.body.appendChild(editorEl)
+  globalThis.location = { hash: '' }
+  const { renderLibrary } = await import(pathToFileURL(join(editRoot, 'dinoEdit', 'library.js')).href)
+  const repaints = []
+  renderLibrary(editorEl, script.shelf, script.games, { forget: () => repaints.push('forget'), now: () => repaints.push('now') })
+
+  const textsOf = (el, selector) => el.querySelectorAll(selector).map(each => each.textContent)
+  // one card per book, read the way an author reads it: the heading, the folder, every
+  // `book-facts` line in order, and every control with its label and (for a link) its href
+  const cards = editorEl.querySelectorAll('.book-card').map(cardEl => ({
+    title: textsOf(cardEl, 'h2')[0] ?? null,
+    path: textsOf(cardEl, '.book-path')[0] ?? null,
+    facts: textsOf(cardEl, '.book-facts'),
+    hints: textsOf(cardEl, '.wall-hint'),
+    frozen: textsOf(cardEl, '.shelf-frozen'),
+    rows: cardEl.querySelectorAll('.game-actions').map(rowEl => rowEl.children
+      .filter(child => child.tagName === 'a' || child.tagName === 'button')
+      .map(child => child.tagName === 'a' ? `${child.textContent} → ${child.href ?? child.getAttribute('href')}` : child.textContent))
+  }))
+  const formEl = editorEl.querySelectorAll('.new-game')[0]
+  writeSync(process.stdout.fd, JSON.stringify({
+    warnings, repaints, cards,
+    heading: textsOf(editorEl, '.library-heading')[0] ?? null,
+    hints: editorEl.children.filter(child => child.className === 'wall-hint').map(child => child.textContent),
+    form: formEl === undefined ? null : {
+      heading: textsOf(formEl, 'h2')[0] ?? null,
+      labels: textsOf(formEl, 'label span'),
+      offers: formEl.querySelectorAll('.checkbox-field').map(each => each.textContent)
+    }
   }))
   process.exit(0)
 }
@@ -639,14 +817,20 @@ if (process.argv[2] === '--hydrate-http') {
 const { blockedChecks } = await import('./oracles-logic.mjs')
 
 const { migrateSet } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'migrations.js')).href)
-const { SCHEMA_VERSION, fieldsOfType, listSectionsOf, thingKeys, sheetKeys, placementSheet } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'schema.js')).href)
+const { SCHEMA_VERSION, fieldsOfType, listSectionsOf, thingKeys, sheetKeys, placementSheet, FILE_SHEETS, BOOK_FILE_SHEETS, BOOK_FILES, SHEETS, MINTS, BOOK_ID } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'schema.js')).href)
+// NEW (stage 4): the id walk and the two marker tables it is blind without. R6 below asks
+// the REAL books/** and games/** the one question the fast half cannot (it never reads the
+// shelf): is there an id-shaped string anywhere on disk at a position this walk does not
+// reach? The tables are imported so the anti-vacuity pass can break one IN MEMORY.
+const { eachId, rewriteIds } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'ids.js')).href)
+const { QUERY_IDS } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'query.js')).href)
 // NEW (v6): the two files the player's sheet is made of. Both are pure, so the
 // parent can ask them the same questions the engine asks — and W3 can build the
 // sheet a child printed a second time, from the merged set, and compare.
 const { QUANTITY_KEY, quantityFieldOf, blankFields } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'sheet.js')).href)
 const { danglingReferences, forgetType, forgetThing } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'references.js')).href)
 const { flattenGroups } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'helpers.js')).href)
-const { validateFile, crossChecks, problemText } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'validate.js')).href)
+const { validateFile, crossChecks, problemText, FILE_NAMES } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'validate.js')).href)
 // CHANGED: validateSet lives in merge.js now — judging a set means merging the
 // layers under it. The whole merge API is imported: the D-checks flatten, the
 // T-checks validate books, the E-checks compare against flattenGame.
@@ -657,7 +841,7 @@ const REBUILD_SCRIPT = join(DINO_DIR, 'tools', 'rebuild-dino-v5.mjs')
 const { exportGame, ExportRefusal, MANIFEST, TOOL, listFiles, sha256, readBookSync } = await import(pathToFileURL(EXPORT_SCRIPT).href)
 const { PLAN, statusOf, rebuildDino } = await import(pathToFileURL(REBUILD_SCRIPT).href)
 const { seedSet } = await import(pathToFileURL(join(DINO_DIR, 'server', 'games.js')).href)
-const { shelfOf } = await import(pathToFileURL(join(DINO_DIR, 'server', 'books.js')).href)
+const { shelfOf, frozenEditionSentence, pinnedEditionSentence, pinnedBookSentence } = await import(pathToFileURL(join(DINO_DIR, 'server', 'books.js')).href)
 assert.equal(SCHEMA_VERSION, 7, 'these oracles describe schema version 7')
 
 const games = process.argv.length > 2 ? process.argv.slice(2) : ['dino', 'vampire']
@@ -738,6 +922,15 @@ const editorCopy = (() => {
   return root
 })()
 const editorRun = (gameDir, booksDir, script) => runChild('--edit', [editorCopy, gameDir, booksDir, JSON.stringify(script)])
+// NEW (stage 4): the same child, opening one EDITION OF A BOOK. There is no gameDir in the
+// question at all, so the slot gets a path nothing under it reads — a book's drawers come
+// from the shelf, and a child that quietly fell back to a game would be the bug this names.
+const editorRunBook = (booksDir, name, edition, script) =>
+  editorRun(join(booksDir, '-no-game-'), booksDir, { ...script, subject: { kind: 'book', name, edition } })
+// NEW (stage 4): the home screen's Library, painted from two receipts and nothing else
+const libraryRun = (script) => runChild('--library', [editorCopy, JSON.stringify(script)])
+// NEW (stage 4): the subject table, read out of the editor's own pure module
+const subjectTable = () => runChild('--subject', [editorCopy])
 // The HTTP child must NOT be run with execFileSync: the server it fetches from
 // lives in THIS process, and a synchronous wait would freeze the event loop that
 // answers it — the child would wait forever. So this one is awaited.
@@ -765,7 +958,11 @@ const runRebuildCLI = (args) => {
 // picked. A child that dies or stays silent rejects (and is killed), so a broken
 // server fails the run instead of hanging it.
 // PORT=0 ALWAYS: port 3000 is the owner's live server and nothing here may bind it.
+// CHANGED (stage 4): the shelf a server is pointed at is REGISTERED. The day a book
+// write route exists, this is the list that says no server in the run could have
+// written the real one — the hash M12 takes is the other half of the same claim.
 const startServer = (gamesDir, distDir, booksDir) => new Promise((resolve, reject) => {
+  servedShelves.push(booksDir)
   const child = spawn(process.execPath, [SERVER_SCRIPT], { env: { ...process.env, PORT: '0', CYOA_GAMES_DIR: gamesDir, CYOA_DIST_DIR: distDir, CYOA_BOOKS_DIR: booksDir }, stdio: ['ignore', 'pipe', 'inherit'] })
   let banner = ''
   const timer = setTimeout(() => { child.kill(); reject(new Error('server did not start in 10 s')) }, 10_000)
@@ -837,7 +1034,9 @@ const treeHash = (dir) => listFiles(dir).map(rel => `${rel}:${sha256(join(dir, r
 const copyGame = (from, to) => { cpSync(from, to, { recursive: true }); return to }
 // NEW: the real shelf, copied into a scratch root. EVERY server and every test
 // that could conceivably write reads this copy, never books/ itself.
-const copyShelf = (dest) => { mkdirSync(dirname(dest), { recursive: true }); cpSync(REAL_BOOKS, dest, { recursive: true }); return dest }
+// CHANGED (stage 4): every copy is REGISTERED, so M12 can say the scratch shelf is
+// really where the writing goes rather than merely that books/ did not move.
+const copyShelf = (dest) => { mkdirSync(dirname(dest), { recursive: true }); cpSync(REAL_BOOKS, dest, { recursive: true }); scratchShelves.push(dest); return dest }
 // NEW: a fixture book on a scratch shelf. `files` is { book, types, things,
 // proposals } — anything absent is simply not written, which is how Basic and
 // Stats ship (book.json + types.json only).
@@ -1321,6 +1520,20 @@ for (const game of games) {
     assert.deepEqual(play(v5EngineDir, v4Dir, I1_STEPS), v4Play, 'the v4 and v5 engines play the committed v4 data identically')
     ok('I1 play: Lair → Location appears; Location picked (spent 4); Lair unpicked → hidden, "Volcano Rim" refunded (spent 0); hidden pick refused — identical under the v4 and v5 engines')
 
+    // ── T1–T4: the subject, said out loud (RE-AIMED, stage 4 §10 step 1) ──
+    // These four pin WHAT THE COMMITTED SHELF HOLDS — the real books/ as data, the
+    // bytes three games are built on. They were written in a world where that was
+    // also the only shelf there could be, so they read as "a shelf is never written".
+    // They do not say that and must not: a scratch shelf may be written freely (M12),
+    // and the four below keep judging the committed bytes regardless. The anchor is
+    // what stops them being quietly re-pointed at a copy and going on passing — a
+    // scratch shelf holds the same bytes on the day it is made, so "every book
+    // validates" would be just as true of a copy, and just as worthless.
+    assert.ok(!REAL_BOOKS.startsWith(WORK + sep), 'T1–T4 read the repo\'s own books/, never the scratch root')
+    assert.ok(!scratchShelves.includes(REAL_BOOKS), 'and never a copy of it')
+    assert.ok(execFileSync('git', ['ls-files', '--', `${DINO_IN_REPO}/books`], { cwd: GIT_ROOT, encoding: 'utf8' }).trim().length > 0,
+      'every byte the four judge below is committed data — this is the shelf, not a temp folder')
+
     // ── T1 the committed shelf ──
     const shelf = await shelfOf(REAL_BOOKS)
     const folders = readdirSync(REAL_BOOKS, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
@@ -1458,6 +1671,18 @@ for (const game of games) {
     // engine: `quantity` multiplies only because Basic authored exactly one such
     // field, as a number, with a default of 1. If a book ever names a second one,
     // this is where the owner finds out — before a player pays twice for a Level.
+    //
+    // CHANGED (stage 4, gap 13): IT NOW SAYS WHAT TO DO. An author can CREATE a book since
+    // the write routes landed, so the second `quantity` this check forbids is a thing a
+    // person can now author into books/ in a few clicks — and before this the check went red
+    // saying only "and NO other shipped list section carries a `quantity`", which names the
+    // rule and not the remedy. The border does NOT refuse it (validate.js judges one file
+    // against its sheet and knows nothing about the shelf, and quantityFieldOf is a reader,
+    // not a checker), so until it does, the sentence below is the whole of the author's
+    // guidance. THE HANDOFF, recorded where it will be read: refuse a second `quantity`
+    // placement field at the border — the shelf-wide question belongs with bookRules, which
+    // already judges one book against the books it requires — with a sentence that names the
+    // section that already has one. Then this check becomes the second opinion it ought to be.
     const shelfLayersAll = editions.map(([name, edition]) => readBookSync(REAL_BOOKS, { name, edition }))
     const shelfSections = shelfLayersAll.flatMap(layer => [
       ...(layer.types?.types ?? []).flatMap(type => type.sections),
@@ -1469,11 +1694,11 @@ for (const game of games) {
     assert.deepEqual(sectionNamed('basic:character.gear').placement.map(spell), ['quantity:number:1'], 'Gear ships exactly one placement field, and it is the one that multiplies')
     assert.deepEqual(sectionNamed('basic:character.skills').placement.map(spell), ['level:number:1'], 'Skills ships exactly one, and a LEVEL does not multiply')
     assert.deepEqual(listSections.filter(section => section.placement.some(field => field.key === QUANTITY_KEY)).map(section => section.id),
-      ['basic:character.gear'], 'and NO other list section on any shipped sheet carries a `quantity`')
+      ['basic:character.gear'], 'and NO other list section on any shipped sheet carries a `quantity`. IF THIS IS RED, a book on the shelf has authored a second one: `quantity` is the ONE placement key that multiplies an entry\'s cost (sheet.js: entryCost = cost × quantityOf), so a second one makes a player pay twice for something that was never meant to be countable. The fix is in the BOOK, not here — rename that placement field to anything else (Basic\'s Skills calls its own `level` for exactly this reason, and a level does not multiply) by cutting a new edition of the book that added it, and re-pin. Only widen this list if the owner has decided a second section really should multiply')
     assert.equal(quantityFieldOf(sectionNamed('basic:character.gear')).id, 'basic:character.gear.quantity')
     assert.equal(quantityFieldOf(sectionNamed('basic:character.skills')), null)
     listSections.filter(section => section.id !== 'basic:character.gear').forEach(section => assert.equal(quantityFieldOf(section), null, `${section.id} multiplies nothing`))
-    ok(`W1 the shelf's placement fields: over the REAL books, ${listSections.length} list sections; Gear's placement is exactly quantity/number/1 and Skills' is exactly level/number/1; no other shipped list section carries a "quantity", so quantityFieldOf answers null for every one of them`)
+    ok(`W1 the shelf's placement fields: over the REAL books, ${listSections.length} list sections; Gear's placement is exactly quantity/number/1 and Skills' is exactly level/number/1; no other shipped list section carries a "quantity", so quantityFieldOf answers null for every one of them — and the assertion now carries the remedy, because an author can write a second one into a book since the shelf's write routes landed and the border does not yet refuse it`)
 
     // ── D1 rebuild in-process — the exact-order equality test ──
     // The whole books arc's promise to the player, measured: the rebuilt dino,
@@ -1920,9 +2145,23 @@ for (const game of games) {
       // AMENDED (v7): three now — config/demands.js is the demand vocabulary, the fifth
       // sibling of query/visibility/sheet/references. The claim is the same claim: the
       // engine grows by NAMED files and never by accident.
-      assert.deepEqual(nowFiles.filter(file => !v5Files.includes(file)).sort(), ['config/demands.js', 'config/kept.js', 'config/sheet.js'], 'three new files, and no others')
+      // CHANGED (stage 4): the names are a TABLE, so a new engine file is a ROW added
+      // in the SAME COMMIT that adds the file — and the file is named beside its
+      // reason, the way OWNER_JUNK above is. It stays a deepEqual: an engine file
+      // nobody declared is exactly what this refuses.
+      const NEW_SINCE_V5 = [
+        'config/sheet.js',    // the player's sheet — what buildSheet reads and what a pick costs
+        'config/kept.js',     // the keepsake: one file a player saves and loads
+        'config/demands.js',  // what an entry DEMANDS of that sheet (v7)
+        // DECLARED HERE, and the one row in this file whose truth another package owns:
+        // the id walk every rewriter, the reference repairs and the audit read (spec §4).
+        // The row and the file must land together — an exact set is the whole check, so
+        // this row without the file fails just as loudly as the file without the row.
+        'config/ids.js'
+      ].sort()
+      assert.deepEqual(nowFiles.filter(file => !v5Files.includes(file)).sort(), NEW_SINCE_V5, `${NEW_SINCE_V5.length} new files, and no others`)
       assert.deepEqual(v5Files.filter(file => !nowFiles.includes(file)), [], 'and none was lost')
-      ok(`W3 the sheet's content: after §2.6's eighth step gameState.sheet deep-equals §2.4 whole (cost 9 included) and its keys ARE sheetKeys(basic:character); placed on the merged shelf it adds nothing to danglingReferences; the two rows that fill one section land in row order; index.html gained exactly ${SHEET_ELEMENT} and is still wordless; @media print hides .hero, #status, #groups and .sheet-actions; engine/ grew exactly config/sheet.js, config/kept.js and config/demands.js`)
+      ok(`W3 the sheet's content: after §2.6's eighth step gameState.sheet deep-equals §2.4 whole (cost 9 included) and its keys ARE sheetKeys(basic:character); placed on the merged shelf it adds nothing to danglingReferences; the two rows that fill one section land in row order; index.html gained exactly ${SHEET_ELEMENT} and is still wordless; @media print hides .hero, #status, #groups and .sheet-actions; engine/ grew exactly ${NEW_SINCE_V5.join(', ')}`)
     }
 
     // ── W4 keep and load, end to end, no DOM ──
@@ -2538,11 +2777,19 @@ for (const game of games) {
         assert.ok([403, 404].includes(status), `${path} → ${status}`)
         assert.ok(!text.includes('createServer'), `${path}: never a server file`)
       }
-      // read-only: there is no route under /books/ that is not a GET
+      // The STATIC drawer is read-only: there is no route under /books/ that is not a
+      // GET. RE-AIMED (stage 4): this clause used to carry the whole weight of "the
+      // shelf cannot be written", which was really a fact about there being no write
+      // route ANYWHERE. A book's write routes live under /api/books/ (§8), so what
+      // this says — and all it meant — is that /books/ is a DRAWER, not a door. The
+      // bytes are checked now, not just the status code: a 404 that wrote something
+      // would have passed the old form.
+      const shelfBefore = treeHash(shelfBooks)
       for (const method of ['POST', 'PUT', 'DELETE']) {
         const { status } = await raw(origin, '/books/basic/1/book.json', method, '{}')
         assert.equal(status, 404, `${method} /books/… is not a route`)
       }
+      assert.equal(treeHash(shelfBooks), shelfBefore, 'and not one byte of the shelf moved under any of the three')
       // the ENGINE asks page-relative, so the same file answers under the game too
       assert.equal((await at('/games/dino/books/basic/1/types.json')).text, bookBytes('basic', '1', 'types.json'), 'the engine\'s page-relative books/… lands on the same shelf')
       assert.equal((await at('/games/dino/books/nope/1/book.json')).status, 404)
@@ -2561,7 +2808,7 @@ for (const game of games) {
       assert.equal((await at('/games/dino/assets/nope.jpg')).status, 404, 'a picture nobody has')
       assert.equal((await at('/games/vampire/assets/cannon.jpg')).status, 404, 'a game that pins nothing has no fallback')
       assert.equal((await raw(origin, '/games/dino/assets/../data/content.json')).status, 403, 'and the drawer\'s door is still guarded')
-      ok(`S5 the shelf's routes: /books/<n>/<e>/<file> is the shelf's bytes, ${refusedShelf.length} refused spellings and 3 write methods → 403/404 and never a server file, no folder index; /games/<g>/books/… is the same file; the asset search path answers the game's copy, then the book's, then 404 — and a game with no pins has no fallback`)
+      ok(`S5 the shelf's routes: /books/<n>/<e>/<file> is the shelf's bytes, ${refusedShelf.length} refused spellings → 403/404 and never a server file, no folder index; the static drawer is GET-only — 3 write methods → 404 with not one byte of the shelf moved; /games/<g>/books/… is the same file; the asset search path answers the game's copy, then the book's, then 404 — and a game with no pins has no fallback`)
 
       // ── S6 save against the pins ──
       const shortShelfRoot = join(WORK, 'srv-short')
@@ -2778,12 +3025,25 @@ for (const game of games) {
       // onto engine/config/ — so they run here out of a copy with that ONE mapping
       // applied; `editorCopy` above does it, and nothing else about the bytes moves.)
       {
-        // the rewrite really was the ONE mapping and nothing else
-        const rewritten = readFileSync(join(editorCopy, 'dinoEdit', 'view.js'), 'utf8')
-        assert.equal(rewritten.replace(/\.\.\/engine\/config\//g, '/config/').replace(/\.\.\/engine\/helpers\.js/g, '/helpers.js'),
-          readFileSync(join(DINO_DIR, 'dinoEdit', 'view.js'), 'utf8'), 'the editor copy is the editor\'s own bytes with only "/config/…" made relative')
+        // The rewrite really was the ONE mapping and nothing else. CHANGED (stage 4):
+        // EVERY module of the editor, not just view.js. The copy is made by walking
+        // dinoEdit/*.js, so checking one file proved the claim for one file and read as
+        // a claim about the copy; a new editor module (the subject table the book editor
+        // adds is the next one) would be rewritten unchecked. The list is read off disk,
+        // so a new module joins this by existing.
+        const editorModules = readdirSync(join(DINO_DIR, 'dinoEdit')).filter(file => file.endsWith('.js')).sort()
+        assert.ok(editorModules.length >= 7, `the editor's modules were found (${editorModules.length})`)
+        editorModules.forEach(file => {
+          const rewritten = readFileSync(join(editorCopy, 'dinoEdit', file), 'utf8')
+          assert.equal(rewritten.replace(/\.\.\/engine\/config\//g, '/config/').replace(/\.\.\/engine\/helpers\.js/g, '/helpers.js'),
+            readFileSync(join(DINO_DIR, 'dinoEdit', file), 'utf8'), `dinoEdit/${file}: the copy is the editor's own bytes with only "/config/…" and "/helpers.js" made relative`)
+        })
+        assert.deepEqual(readdirSync(join(editorCopy, 'dinoEdit')).filter(file => file.endsWith('.js')).sort(), editorModules, 'and the copy holds exactly the editor\'s modules — no extra file runs in the child')
 
-        // (a) READING MUST NOT WRITE. Opening the game and painting it changes nothing.
+        // (a) READING MUST NOT WRITE. Opening the SUBJECT and painting it changes
+        // nothing. (Here the subject is a game and its five files; the same claim over
+        // a book's four is what makes opening a frozen edition safe, and it is owed by
+        // whoever teaches this child to open one.)
         const opened = editorRun(dinoDir, shelfBooks, { type: 'basic:place', steps: [] })
         assert.deepEqual(opened.warnings, [], 'the paint says nothing')
         assert.equal(opened.addLabel, '+ Add Place', 'the sheet\'s own Add button')
@@ -2830,7 +3090,10 @@ for (const game of games) {
         const tali = rebuilt.things.things['basic:character'].find(thing => thing.id === TALI)
         const copy = fromTali.steps[1].bucket.at(-1)
         assert.notEqual(copy.id, TALI)
-        assert.match(copy.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'a FRESH uuid — the copy lands in the GAME\'s bucket, so its card is editable')
+        // a FRESH id from THIS SUBJECT's minter — a game mints uuids (a book cannot:
+        // every id it defines must sit in its own `<name>:` namespace). What the claim
+        // is about is the BUCKET: the copy lands in the subject's own, so its card is editable.
+        assert.match(copy.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'a fresh uuid — the GAME\'s minter — and the copy lands in the GAME\'s bucket, so its card is editable')
         assert.equal(copy.name, 'Tali copy', 'a name that SAYS it is a copy, so two identical names never sit on one shelf')
         assert.deepEqual({ ...copy, id: TALI, name: tali.name }, tali, 'every other key deep-equal to the source')
         assert.deepEqual(Object.keys(copy), Object.keys(tali), 'in the source\'s own key order — the spread comes first')
@@ -3102,13 +3365,29 @@ for (const game of games) {
   assert.equal(JSON.parse(readFileSync(join(dyingOut, MANIFEST), 'utf8')).complete, true)
   const dataHash = treeHash(join(v5Source, 'data'))
   const shelfHash = treeHash(expShelf)
-  ;[v5Source, join(v5Source, 'assets'), expShelf, join(expShelf, 'basic'), dirname(DINO_DIR), DINO_DIR].forEach(target => {
-    assert.throws(() => exportOf({ outDir: target }), /refusing to write/, `guard: ${target}`)
-    assert.ok(!existsSync(join(target, MANIFEST)), `${target}: nothing claimed`)
+  // CHANGED (stage 4): the guard list is a TABLE carrying its reason per row, and it
+  // reaches the depth an AUTHOR writes at. guardOutDir's rule is about a books folder
+  // AT ANY DEPTH; the list only ever probed the shelf root and one book, so "never the
+  // shelf" was read off a list that stopped one level above where a book actually
+  // lives. Note whose claim this is: the EXPORT TOOL never writes into a books folder.
+  // The editor's book routes write one on purpose, and the guard that matters there —
+  // refusing a pinned edition — is theirs to state and theirs to prove.
+  const GUARDED = [
+    [v5Source,                     'the source game itself'],
+    [join(v5Source, 'assets'),     'and its assets'],
+    [expShelf,                     'the books folder'],
+    [join(expShelf, 'basic'),      'a book inside it'],
+    [join(expShelf, 'basic', '1'), 'and an EDITION inside that — the folder an author writes'],
+    [dirname(DINO_DIR),            'cyoa/, which CONTAINS the books folder'],
+    [DINO_DIR,                     'and the project itself']
+  ]
+  GUARDED.forEach(([target, why]) => {
+    assert.throws(() => exportOf({ outDir: target }), /refusing to write/, `guard: ${why} (${target})`)
+    assert.ok(!existsSync(join(target, MANIFEST)), `${why}: nothing claimed`)
   })
   assert.equal(treeHash(join(v5Source, 'data')), dataHash, 'the source game\'s data is untouched')
-  assert.equal(treeHash(expShelf), shelfHash, 'and so is the shelf')
-  ok('E8 wipe safety: an unmarked folder with files → refused, file kept; an empty folder → filled; an interrupted export → rebuilt; another tool\'s marker → refused; a file as --out → refused; a copy that dies leaves the claim marker; the source game, its assets, the SHELF, cyoa/ and DinoCYOA → refused, untouched')
+  assert.equal(treeHash(expShelf), shelfHash, 'and so is the shelf this export was given')
+  ok(`E8 wipe safety: an unmarked folder with files → refused, file kept; an empty folder → filled; an interrupted export → rebuilt; another tool's marker → refused; a file as --out → refused; a copy that dies leaves the claim marker; ${GUARDED.length} guarded out-dirs — the source game, its assets, the books folder, a book, an EDITION, cyoa/ and DinoCYOA → refused, nothing claimed, nothing touched`)
 
   // ── E9 the CLI: exit codes and the printed tree ──
   const cliOut = join(WORK, 'cli-export', game)
@@ -3219,11 +3498,15 @@ for (const game of games) {
       ], 'the four §5.3 faults, by path')
       return true
     })
-    // no tool ever writes under a books folder — the rule, not the location
+    // RE-AIMED (stage 4): the EXPORT TOOL never writes under a books folder — by the
+    // rule, not by where the folder happens to sit. (It used to read "no tool ever",
+    // which was a description of a project in which nothing could write a shelf at
+    // all. The editor's book routes write one deliberately; what they must refuse is a
+    // PINNED edition, and that sentence belongs to them.)
     assert.throws(() => exportOf({ outDir: join(expShelf, 'dinosaur-age', '9') }), /refusing to write .*the books folder/)
     assert.equal(treeHash(outDir), hKept, 'the previous export survives every one of them')
-    assert.equal(treeHash(expShelf), shelfHash, 'and the shelf is untouched')
-    ok('E13 refusals with a shelf: a pin the shelf cannot answer → "pins a book that is not on the shelf: dinosaur-age 3"; the §5.3 shelf → refused with the four fault paths; --out inside the books folder → the guard sentence; the previous export and the shelf survive all three')
+    assert.equal(treeHash(expShelf), shelfHash, 'and the shelf this export was given is untouched')
+    ok('E13 refusals with a shelf: a pin the shelf cannot answer → "pins a book that is not on the shelf: dinosaur-age 3"; the §5.3 shelf → refused with the four fault paths; --out inside the books folder → the guard sentence, so the EXPORT tool is not a door onto a shelf; the previous export and the shelf survive all three')
   }
 }
 
@@ -3676,7 +3959,15 @@ for (const game of games) {
     ok(`M6 export + /dist/: ${exportedGames.join(', ')} → 200 with exportGame's exact bytes and counts; /dist/<g> → 302; /dist/<g>/ hydrates from the folder alone (no book url), every image whole, no engine fallback; the list says exported; a dangling gate → 400 at its merged path and the old export survives; the newborn exports 1 row, 1 thing`)
 
     // ── M7 traversal and case ──
+    // RE-AIMED (stage 4): the shelf clause below used to compare this scratch shelf
+    // against a FRESH COPY of the real one, which asserted "nothing in the whole
+    // manager block has ever written a shelf" — true only because no route could, and
+    // a claim M12 makes properly. What M7 means is narrower and permanent: NO PROBE
+    // WRITES. So the baseline is taken here, a line before the probes, and the same
+    // shelf is compared against itself — which stays exactly as strong the day a
+    // create-book route legitimately writes this shelf earlier in the block.
     const filesBefore = listFiles(ROOT)
+    const shelfBeforeProbes = treeHash(SHELF)
     const probes = [
       `/games/../server/server.js`,
       `/games/%2e%2e/server/server.js`,
@@ -3716,8 +4007,8 @@ for (const game of games) {
     }
     assert.deepEqual(listFiles(ROOT), filesBefore, 'no probe wrote a file')
     assert.equal(existsSync(join(DIST, 'server')), false, 'no probe made a folder under dist/')
-    assert.equal(treeHash(SHELF), treeHash(copyShelf(join(WORK, 'shelf-witness', 'books'))), 'and the scratch shelf is byte-identical to a fresh copy of the real one')
-    ok(`M7 traversal and case: ${probes.length} literal GET probes and ${posts.length} POST probes over http.request → 403/404, never a server file or another game's data; nothing written, on the games root, under dist/ or on the shelf`)
+    assert.equal(treeHash(SHELF), shelfBeforeProbes, 'and no probe moved a byte of the shelf the server was pointed at')
+    ok(`M7 traversal and case: ${probes.length} literal GET probes and ${posts.length} POST probes over http.request → 403/404, never a server file or another game's data; nothing written, on the games root, under dist/ or on the shelf this server serves`)
   } finally {
     stop()
   }
@@ -3810,6 +4101,1004 @@ for (const game of games) {
   } finally { stop() }
 }
 
+// ═════════════════════ R6 the id census over the REAL tree (NEW, stage 4) ═════════════════════
+// THE THIRD SOURCE of the rename proof, and the one the fast half cannot hold: oracles-logic
+// NEVER READS THE SHELF, so R1–R5 there are the hand-authored fixtures and the substitution
+// over them. This is the same three questions asked of the REAL books/** and games/**, where
+// 300-odd ids in five shapes actually live — including the one shape no fixture would have
+// thought of (a v3→v4 migrated section id is `<the type's uuid>.identity`, a uuid with a
+// dotted tail, and it was THIS census that found it: without the tail in the grammar below,
+// eight vampire uuids survived a total rename).
+//
+// It READS ONLY. Nothing here writes anything anywhere — the subject is the committed tree,
+// exactly as T1–T4's is, and M9/M12 hash games/ and books/ after the last check to say so.
+//
+// WHY IT IS SHAPED THIS WAY. All three design judges found every proposed rename proof
+// VACUOUS, because each generated its fixture from the same tables the walker reads, so a
+// wrong marker passed with the fixture agreeing. The two halves below are independent of
+// those tables by construction:
+//   (a) a SHAPE CENSUS — "which strings LOOK like an id, and where do they sit?" — written
+//       with two regexes typed out here and no reference whatever to MINTS, QUERY_IDS,
+//       GATES, SHEETS or any file table. Every path it finds must be a path eachId reaches.
+//   (c) TEXTUAL SUBSTITUTION — rename every id the census found to a fresh token, serialise,
+//       and assert the old string survives nowhere in the bytes. That catches a missed
+//       position WITHOUT knowing where positions are.
+//   plus ROUND TRIP (A→B→A is byte-identical, key order included) and the ANTI-VACUITY pass
+//   that breaks a marker in memory and asserts this very check goes red.
+// The census's grammar is asserted to BE schema.js's BOOK_ID at the very end — said last, on
+// purpose, so the census never read the thing it is being compared with.
+{
+  const NAMESPACED = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:[.-][a-z0-9]+)*$/
+  const UUID_ID    = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]+(?:[.-][a-z0-9]+)*)*$/
+  const idShaped   = (value) => typeof value === 'string' && (NAMESPACED.test(value) || UUID_ID.test(value))
+  // validate.js's own `at` rule and one spelling for a path, retyped rather than imported
+  const at   = (path, key) => /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`
+  const norm = (path) => path.replace(/\["([A-Za-z_$][\w$]*)"\]/g, '.$1')
+  const censusOf = (root, value) => {
+    const found = []
+    const walk = (path, node) => {
+      if (typeof node === 'string') { if (idShaped(node)) found.push({ path: norm(path), id: node }); return }
+      if (Array.isArray(node)) { node.forEach((item, i) => walk(`${path}[${i}]`, item)); return }
+      if (node !== null && typeof node === 'object') Object.entries(node).forEach(([key, item]) => {
+        const here = at(path, key)
+        if (idShaped(key)) found.push({ path: norm(here), id: key })            // the KEY itself is an id
+        walk(here, item)
+      })
+    }
+    walk(root, value)
+    return found
+  }
+  const censusAll = (files) => Object.entries(files).flatMap(([name, file]) => file === null || file === undefined ? [] : censusOf(name, file))
+
+  // ── the real tree, read with fs and nothing else ──
+  const maybeJSON = (path) => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null
+  const dirsIn = (dir) => existsSync(dir) ? readdirSync(dir).filter(name => !name.startsWith('.') && statSync(join(dir, name)).isDirectory()).sort() : []
+  const shelf = {}
+  dirsIn(REAL_BOOKS).forEach(name => dirsIn(join(REAL_BOOKS, name)).forEach(edition => {
+    const dir = join(REAL_BOOKS, name, edition)
+    ;(shelf[name] ??= {})[edition] = { pin: { name, edition: Number(edition) }, manifest: maybeJSON(join(dir, 'book.json')),
+      types: maybeJSON(join(dir, 'types.json')), things: maybeJSON(join(dir, 'things.json')), proposals: maybeJSON(join(dir, 'proposals.json')) }
+  }))
+  // a SUBJECT is one thing eachId can be asked about: its files, the table that shapes them,
+  // and the MERGED types that are its phonebook (which of a thing's keys hold placements, and
+  // whether a demand's value is a thing id, are the only two questions that need one).
+  const subjects = []
+  dirsIn(join(DINO_DIR, 'games')).forEach(name => {
+    const data = join(DINO_DIR, 'games', name, 'data')
+    if (!existsSync(join(data, 'content.json'))) return
+    const raw = Object.fromEntries(FILES.map(file => [file, maybeJSON(join(data, `${file}.json`))]))
+    if (FILES.some(file => raw[file] === null)) return                          // a game that is not all five files is not this check's subject
+    // a file below SCHEMA_VERSION is migrated first, because that is what EVERY reader of it
+    // does at the border (loadData, the editor, the export) — the rewriter never meets v4 bytes
+    const files = raw.content.version === SCHEMA_VERSION ? raw : migrateSet(structuredClone(raw))
+    const pins = (files.content.books ?? []).map(pin => shelf[pin.name]?.[pin.edition] ?? null)
+    subjects.push({ what: `games/${name}`, files, fileSheets: FILE_SHEETS, types: mergeLayers({ books: pins, game: files }).set.types.types })
+  })
+  Object.entries(shelf).forEach(([name, editions]) => Object.entries(editions).forEach(([edition, layer]) => {
+    const required = (layer.manifest?.requires ?? []).map(pin => shelf[pin.name]?.[pin.edition] ?? null)
+    subjects.push({ what: `books/${name}/${edition}`, fileSheets: BOOK_FILE_SHEETS,
+      files: { book: layer.manifest, types: layer.types, things: layer.things, proposals: layer.proposals },
+      types: mergeLayers({ books: [...required, layer], game: null }).set.types.types })
+  }))
+  assert.ok(subjects.length >= 6, `the real tree gave this check something to walk (${subjects.length} subjects)`)
+
+  // ── (a) the census: every id-shaped string sits where eachId reaches ──
+  const proveCensus = () => {
+    let censused = 0, positions = 0
+    const unreachable = []
+    subjects.forEach(subject => {
+      const seen = []
+      const answer = eachId(subject.files, subject.types, (position) => seen.push(norm(position.path)), subject.fileSheets)
+      const reached = new Set(seen)
+      positions += seen.length
+      assert.deepEqual(answer.unknownSheets, [], `${subject.what}: every things bucket's sheet is in the merged types`)
+      censusAll(subject.files).forEach(({ path, id }) => {
+        censused += 1
+        if (!reached.has(path)) unreachable.push(`${subject.what}  ${path} = ${JSON.stringify(id)}`)
+      })
+    })
+    assert.deepEqual(unreachable, [], `every id-shaped string on disk sits at a position eachId reaches:\n${unreachable.join('\n')}`)
+    assert.ok(censused > 200, `the census found enough to be a census (${censused})`)
+    return { censused, positions }
+  }
+  // ── (c) textual substitution, and the round trip ──
+  const proveBytes = () => {
+    let renamed = 0, bytes = 0
+    subjects.forEach(subject => {
+      const ids = [...new Set(censusAll(subject.files).map(entry => entry.id))].sort()
+      const forward = Object.fromEntries(ids.map((id, i) => [id, `zz${i}:t`]))
+      const back    = Object.fromEntries(ids.map((id, i) => [`zz${i}:t`, id]))
+      const there = rewriteIds(subject.files, subject.types, forward, subject.fileSheets)
+      const text  = serialize(there)
+      const survivors = ids.filter(id => text.includes(id))
+      assert.deepEqual(survivors, [], `${subject.what}: ${survivors.length} old id(s) still in the bytes after a total rename: ${survivors.join(', ')}`)
+      // the phonebook for the way back is the RENAMED phonebook — a rename moves the sheets
+      // too, and the merged types are not part of the files being rewritten. Getting this
+      // wrong is not a silent loss: eachId NAMES the buckets whose sheet it could not find.
+      const thereTypes = rewriteIds({ types: { version: SCHEMA_VERSION, types: subject.types, sectionsFor: {}, fieldsFor: {} } }, subject.types, forward).types.types
+      const home = rewriteIds(there, thereTypes, back, subject.fileSheets)
+      assert.deepEqual(eachId(there, thereTypes, () => {}, subject.fileSheets).unknownSheets, [], `${subject.what}: the renamed phonebook covers the way back`)
+      assert.equal(serialize(home), serialize(subject.files), `${subject.what}: A→B→A is byte-identical — no key reordered, none dropped, none created`)
+      assert.equal(serialize(subject.files), serialize(JSON.parse(serialize(subject.files))), `${subject.what}: rewriteIds left its input alone`)
+      renamed += ids.length; bytes += text.length
+    })
+    return { renamed, bytes }
+  }
+  const { censused, positions } = proveCensus()
+  const { renamed, bytes } = proveBytes()
+
+  // ── ANTI-VACUITY: break a marker IN MEMORY and this check must go red ──
+  // R5 does this for the fixtures; here it is done for the census, because "every id-shaped
+  // string is reachable" is the one claim that could pass by the census being too narrow
+  // rather than by the walk being complete.
+  const SABOTAGE = [['MINTS.type', MINTS, 'type'], ['MINTS.group', MINTS, 'group'],
+                    ['MINTS.section', MINTS, 'section'], ['MINTS.fieldDef', MINTS, 'fieldDef'],
+                    ['QUERY_IDS.type', QUERY_IDS, 'type'], ['QUERY_IDS["where.field"]', QUERY_IDS, 'where.field']]
+  SABOTAGE.forEach(([what, table, key]) => {
+    const held = table[key]
+    delete table[key]
+    try {
+      assert.throws(proveCensus, assert.AssertionError, `the census must FAIL with ${what} missing`)
+      assert.throws(proveBytes, assert.AssertionError, `and so must the substitution`)
+    } finally { table[key] = held }
+  })
+  proveCensus(); proveBytes()                                                   // put back, and green again
+
+  // and the grammar the census typed out by hand IS the shelf's own — said LAST, so the
+  // census never read it
+  assert.equal(BOOK_ID.source, NAMESPACED.source, 'the census\'s hand-typed id grammar IS schema.js\'s BOOK_ID')
+  ok(`R6 the id census over the REAL tree: ${censused} id-shaped strings (values AND object keys) found by two hand-typed regexes over ${subjects.length} real subjects, every one of them at a path eachId reaches — ${positions} positions visited in all, no things bucket's sheet missing from its phonebook; ${renamed} distinct ids renamed to fresh tokens and NOT ONE old string survives in the ${bytes} serialised bytes; A→B→A byte-identical for all ${subjects.length}; and each of the ${SABOTAGE.length} marker rows deleted in memory turns BOTH halves red, so this is a proof that can fail. The census's grammar is asserted equal to BOOK_ID last of all`)
+}
+
+// ═════════════════════ the shelf's WRITE half: M13–M19 (NEW, stage 4) ═════════════════════
+// M12 above says the only thing it ever said: NO CHECK WRITES THE REAL SHELF. The promise an
+// AUTHOR actually has is a different one — AN EDITION A GAME PINS CANNOT CHANGE — and until
+// these checks it had none at all, because until stage 4 no route could have broken it. Every
+// one of them runs over a COPY of the shelf (copyShelf) and a scratch games root, so M12 and
+// M9 stay true and gain meaning: the writing really happens, and it really happens over there.
+//
+// ONE SENTENCE PER FAULT, READ BY EVERY READER: each refusal below is asserted by FULL STRING
+// EQUALITY against the sentence server/books.js writes, never by a /regex/. A sentence is the
+// product here — the author reads it and has to know what to do next — so a check that
+// matched loosely would let the words rot while staying green.
+
+// ── M13 the freeze, POSITIVELY (spec gap 6) ──
+// The shape of the claim, in the order it is asked:
+//   a pinned edition refuses a SAVE, a DELETE of itself, and a DELETE of its book; each
+//   refusal NAMES the game that pins it and the shelf's bytes do not move;
+//   a CUT is allowed while pinned, because a cut is the answer the refusal points at;
+//   the CONVERSE — the same writes, aimed at an edition nobody pins, are accepted;
+//   and UN-PINNING lifts it: the freeze is exactly "a game pins it", with no other ingredient.
+{
+  const SHELF = copyShelf(join(WORK, 'm13-shelf', 'books'))
+  const GAMES = join(WORK, 'm13')
+  // a game called `dino` so the refusals read the way an author will read them
+  writeGame(join(GAMES, 'dino'), seedSet('Dino', [{ name: 'basic', edition: 1 }]))
+  const before = treeHash(SHELF), gamesBefore = treeHash(GAMES)
+  const basicFiles = () => ({ book: JSON.parse(readFileSync(join(SHELF, 'basic', '1', 'book.json'), 'utf8')),
+                              types: JSON.parse(readFileSync(join(SHELF, 'basic', '1', 'types.json'), 'utf8')) })
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm13-dist'), SHELF)
+  try {
+    // ── the three refusals, each naming games/dino, each writing nothing ──
+    const refusals = [
+      ['/api/books/basic/1/save', basicFiles(), 409, 'games/dino pins this edition — it is frozen. Cut edition 2 to change it.'],
+      ['/api/books/basic/1/delete', undefined, 409, 'games/dino pins this edition. Un-pin it first, or delete the whole book.'],
+      ['/api/books/basic/delete', undefined, 409, 'games/dino pins edition 1 — un-pin it first.']
+    ]
+    for (const [path, body, status, error] of refusals) {
+      assert.deepEqual(await api(origin, path, { method: 'POST', body }), { status, body: { ok: false, error } }, `POST ${path}`)
+      assert.equal(treeHash(SHELF), before, `POST ${path} wrote nothing — the shelf is byte-identical`)
+      assert.equal(treeHash(GAMES), gamesBefore, `POST ${path} left the pinning game alone too`)
+    }
+    // a save that is not even about the pinned edition's CONTENT is refused: the freeze is
+    // about the FOLDER, so posting the bytes that are already there is still a write
+    assert.equal((await api(origin, '/api/books/basic/1/save', { method: 'POST', body: { ...basicFiles(), proposals: { version: SCHEMA_VERSION, groups: [], groupRules: {} } } })).status, 409,
+      'even adding a file to a pinned edition is refused — the freeze is about the folder, not the diff')
+    assert.equal(treeHash(SHELF), before)
+
+    // ── the CUT is allowed while pinned: it is what the refusal tells the author to do ──
+    assert.deepEqual(await api(origin, '/api/books/basic/1/cut', { method: 'POST' }), { status: 201, body: { ok: true, edition: 2 } },
+      'the sentence said "Cut edition 2 to change it", and that is the edition the cut makes')
+    assert.equal(treeHash(GAMES), gamesBefore, 'a cut changes no game — the pin still names edition 1')
+    // edition 2 is edition 1's bytes plus the new number — the shelf's own definition of a cut
+    ;['book.json', 'types.json'].forEach(file => assert.equal(
+      readFileSync(join(SHELF, 'basic', '2', file), 'utf8'),
+      file === 'book.json' ? readFileSync(join(SHELF, 'basic', '1', file), 'utf8').replace('"edition": 1', '"edition": 2') : readFileSync(join(SHELF, 'basic', '1', file), 'utf8'),
+      `basic/2/${file} is basic/1's bytes (book.json differs only in the number)`))
+
+    // ── THE CONVERSE: the identical writes, aimed at the edition nobody pins ──
+    const editionTwo = { book: { ...basicFiles().book, edition: 2 }, types: basicFiles().types }
+    assert.deepEqual(await api(origin, '/api/books/basic/2/save', { method: 'POST', body: editionTwo }), { status: 200, body: { ok: true } },
+      'the SAME book, the SAME bytes, one edition along: accepted, because no game pins it')
+    // ── and UN-PINNING lifts the freeze on edition 1: nothing else is an ingredient ──
+    const content = JSON.parse(readFileSync(join(GAMES, 'dino', 'data', 'content.json'), 'utf8'))
+    writeFileSync(join(GAMES, 'dino', 'data', 'content.json'), serialize({ ...content, books: [{ name: 'basic', edition: 2 }] }))
+    assert.deepEqual(await api(origin, '/api/books/basic/1/save', { method: 'POST', body: basicFiles() }), { status: 200, body: { ok: true } },
+      'the pin moved to edition 2, so edition 1 is the author\'s again — the freeze is exactly "a game pins it"')
+    assert.deepEqual(await api(origin, '/api/books/basic/1/delete', { method: 'POST' }), { status: 200, body: { ok: true } }, 'and it can be deleted')
+    assert.equal(existsSync(join(SHELF, 'basic', '1')), false)
+    assert.equal(existsSync(join(SHELF, 'basic', '2')), true, 'the edition the game now pins is untouched')
+    // …and edition 2, which the pin followed, is frozen now. The SAME edition, the other way.
+    assert.deepEqual(await api(origin, '/api/books/basic/2/save', { method: 'POST', body: editionTwo }),
+      { status: 409, body: { ok: false, error: 'games/dino pins this edition — it is frozen. Cut edition 3 to change it.' } },
+      'and the edition the pin moved to is frozen now — the refusal follows the pin, and so does the number in it')
+    ok(`M13 the freeze, POSITIVELY: over a scratch shelf and a scratch games root, an edition games/dino pins refuses a save, a delete of itself and a delete of its whole book — three 409s, each by FULL STRING EQUALITY against books.js's own sentence, each naming games/dino, and after every one of them the shelf AND the game are byte-identical; adding a file to the pinned edition is refused too (the freeze is the folder, not the diff); a CUT is allowed while pinned and makes exactly the edition the refusal named, with edition 1's bytes and the number changed; the CONVERSE holds — the same book one edition along, which nobody pins, takes the identical save; and moving the pin to edition 2 unfreezes 1 (save and delete both accepted) while freezing 2, whose refusal now says "Cut edition 3". That is the whole rule: an edition is frozen when a game pins it, and nothing else is an ingredient`)
+  } finally { stop() }
+}
+
+// ── M14 POST /api/books: the newborn book and every refusal (§8 row 1) ──
+{
+  const SHELF = copyShelf(join(WORK, 'm14-shelf', 'books'))
+  const GAMES = join(WORK, 'm14')
+  mkdirSync(GAMES, { recursive: true })
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm14-dist'), SHELF)
+  try {
+    assert.deepEqual(await api(origin, '/api/books', { method: 'POST', body: { title: 'My Beasts' } }),
+      { status: 201, body: { ok: true, name: 'my-beasts', edition: 1 } }, 'the receipt: the folder the title made, and edition 1')
+    // THE BYTES, written out literally rather than compared against the seeder that made
+    // them — a newborn's birth values are a decision (§6, and BOOK_UNWRITTEN), and a check
+    // that asked seedBook would agree with whatever it did.
+    const born = join(SHELF, 'my-beasts', '1')
+    assert.deepEqual(readdirSync(born).sort(), ['book.json', 'proposals.json', 'things.json', 'types.json'], 'all four files, and no assets folder')
+    assert.equal(readFileSync(join(born, 'book.json'), 'utf8'), '{\n  "name": "my-beasts",\n  "title": "My Beasts",\n  "edition": 1,\n  "requires": []\n}\n',
+      'book.json: name, title, edition, requires — in that order, and NO version key (it is not a data file)')
+    assert.equal(readFileSync(join(born, 'types.json'), 'utf8'), `{\n  "version": ${SCHEMA_VERSION},\n  "types": [],\n  "sectionsFor": {},\n  "fieldsFor": {}\n}\n`)
+    assert.equal(readFileSync(join(born, 'things.json'), 'utf8'), `{\n  "version": ${SCHEMA_VERSION},\n  "things": {}\n}\n`,
+      'things.json carries no `order`: a book may not arrange a shelf, and `default: null` is that rule')
+    assert.equal(readFileSync(join(born, 'proposals.json'), 'utf8'), `{\n  "version": ${SCHEMA_VERSION},\n  "groups": [],\n  "groupRules": {}\n}\n`,
+      'proposals.json carries NO totalBudget: a book only PROPOSES one, and a proposal nobody made is not a proposal')
+    // and what it is worth: the newborn is on the shelf, validating, and a game can pin it
+    const shelf = await shelfOf(SHELF)
+    assert.deepEqual(validateBook(shelf['my-beasts']['1'], shelf).map(problemText), [], 'a newborn book validates against the shelf it was born on')
+    const listed = await api(origin, '/api/books')
+    assert.deepEqual(listed.body.books.find(book => book.name === 'my-beasts').editions,
+      [{ edition: 1, title: 'My Beasts', requires: [], sheets: 0, sectionsAdded: 0, fieldsAdded: 0, things: 0, rows: 0, budget: null, problems: [] }],
+      'the Library lists it with no opinion about anything — budget null, nothing added')
+    // a book born ON another book
+    assert.deepEqual(await api(origin, '/api/books', { method: 'POST', body: { title: 'Built On Basic', requires: [{ name: 'basic', edition: 1 }] } }),
+      { status: 201, body: { ok: true, name: 'built-on-basic', edition: 1 } })
+    assert.deepEqual(JSON.parse(readFileSync(join(SHELF, 'built-on-basic', '1', 'book.json'), 'utf8')).requires, [{ name: 'basic', edition: 1 }])
+    // a name GIVEN rather than made from the title
+    assert.deepEqual(await api(origin, '/api/books', { method: 'POST', body: { title: 'Anything', name: 'given-name' } }),
+      { status: 201, body: { ok: true, name: 'given-name', edition: 1 } }, 'a name may be given; the title still has to be there, it is the Library\'s card')
+    // ── every refusal, with its status, its sentence and its path ──
+    const before = treeHash(SHELF)
+    const refusals = [
+      [{ title: 'My Beasts' },                            409, 'a book named "my-beasts" is already on the shelf', undefined],
+      [{ title: '  ' },                                   400, 'title does not make a book name', { path: 'title', message: 'must be a non-empty string' }],
+      [{ name: 'nameless' },                              400, 'title does not make a book name', { path: 'title', message: 'must be a non-empty string' }],
+      [{ title: '!!!' },                                  400, 'title does not make a book name', { path: 'title', message: 'gives no folder name (it needs a letter or a digit)' }],
+      [{ title: 'Home' },                                 400, 'title does not make a book name', { path: 'title', message: '"home" is a name the editor keeps for itself' }],
+      [{ title: 'Book' },                                 400, 'title does not make a book name', { path: 'title', message: '"book" is a name the editor keeps for itself' }],
+      [{ title: 'X', name: 'Bad Name' },                  400, 'name does not make a book name', { path: 'name', message: '"Bad Name" is not a book name (lowercase letters, digits and single dashes)' }],
+      [{ title: 'X', name: '..' },                        400, 'name does not make a book name', { path: 'name', message: '".." is not a book name (lowercase letters, digits and single dashes)' }],
+      [{ title: 'Needy', requires: [{ name: 'nope', edition: 1 }] }, 400, 'books/needy/1 does not fit the schema', { path: 'book.requires[0]', message: '"nope" 1 is not on the shelf' }],
+      [{ title: 'Needy', requires: [{ name: 'basic', edition: 0 }] }, 400, 'books/needy/1 does not fit the schema', { path: 'book.requires[0].edition', message: 'must be a positive integer (found 0)' }]
+    ]
+    for (const [body, status, error, problem] of refusals) {
+      const answer = await api(origin, '/api/books', { method: 'POST', body })
+      assert.deepEqual(answer, { status, body: problem === undefined ? { ok: false, error } : { ok: false, error, problems: [problem] } }, `POST /api/books ${JSON.stringify(body)}`)
+    }
+    assert.deepEqual(await api(origin, '/api/books', { method: 'POST', body: '{' }), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.equal(treeHash(SHELF), before, 'not one refusal wrote a byte — and "needy" left no ghost folder behind either')
+    assert.equal(existsSync(join(SHELF, 'needy')), false, 'a refusal AFTER the name was made leaves no claimed folder: the claim is books/<name> itself')
+    // the NOT-a-route cases: the shelf's write half is POST under /api/books and nothing else
+    assert.deepEqual(await api(origin, '/api/books', { method: 'PUT', body: { title: 'Nope' } }), { status: 404, body: { ok: false, error: 'Unknown route' } })
+    assert.deepEqual(await api(origin, '/api/books/my-beasts/1/frobnicate', { method: 'POST', body: {} }), { status: 404, body: { ok: false, error: 'Unknown route' } })
+    assert.deepEqual(await api(origin, '/api/books/my-beasts/1/save'), { status: 404, body: { ok: false, error: 'Unknown route' } }, 'GET on a write route is not a route at all')
+    ok(`M14 POST /api/books: a newborn book is 201 { ok, name, edition: 1 } and four files on disk whose bytes are written out here literally — book.json name,title,edition,requires with NO version, the three data files stamped ${SCHEMA_VERSION}, things.json with no \`order\` (a book may not arrange a shelf) and proposals.json with NO totalBudget (a book only proposes one, and a proposal nobody made is not a proposal); it validates against its shelf and the Library lists it with budget null; \`requires\` and a given \`name\` are honoured; and ${refusals.length} refusals — 409 already on the shelf, a blank/absent/unusable title, the two reserved words, a bad given name, ".." refused by the GRAMMAR before any path is built, a requirement off the shelf and one with a bad edition — each at its exact status with its exact sentence and path, nothing written and no ghost folder left; "{" → 400, PUT → 404, an unknown action → 404, GET on a write route → 404`)
+  } finally { stop() }
+}
+
+// ── M15 POST /api/books/<n>/<e>/save: the whole book in one request (§8 row 2) ──
+// A game posts five files with content.json LAST because content.json carries every
+// cross-reference. A book has four files and no such last one, so ONE route takes all four
+// and renames the whole edition into place (L2) — which is why "half a saved book" is not a
+// case this check can even construct.
+{
+  const SHELF = copyShelf(join(WORK, 'm15-shelf', 'books'))
+  const GAMES = join(WORK, 'm15')
+  mkdirSync(GAMES, { recursive: true })
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm15-dist'), SHELF)
+  try {
+    await api(origin, '/api/books', { method: 'POST', body: { title: 'Beasts' } })
+    const whole = {
+      book: { name: 'beasts', title: 'Beasts', edition: 1, requires: [] },
+      types: { version: SCHEMA_VERSION, types: [{ id: 'beasts:dino', label: 'Dino', sections: [
+        { id: 'beasts:dino.identity', key: 'identity', caption: 'Identity', kind: 'fields',
+          fields: [{ id: 'beasts:dino.identity.era', key: 'era', caption: 'Era', type: 'text', default: '' }] }] }], sectionsFor: {}, fieldsFor: {} },
+      things: { version: SCHEMA_VERSION, things: { 'beasts:dino': [{ id: 'beasts:rex', name: 'Rex', cost: 2, imageURL: '', era: 'Cretaceous' }] } },
+      proposals: { version: SCHEMA_VERSION, totalBudget: 12, groups: [
+        { id: 'beasts:row-pick', label: 'Pick a beast', query: { type: 'beasts:dino', where: null }, fills: '', showWhen: { kind: 'always' }, children: [] }], groupRules: { 'beasts:row-pick': { min: 1 } } }
+    }
+    assert.deepEqual(await api(origin, `/api/books/beasts/1/save`, { method: 'POST', body: whole }), { status: 200, body: { ok: true } })
+    BOOK_FILE_NAMES.forEach(file => assert.equal(readFileSync(join(SHELF, 'beasts', '1', `${file}.json`), 'utf8'), serialize(whole[file]),
+      `${file}.json is the bytes that were posted, in the server's one on-disk format`))
+    const shelf = await shelfOf(SHELF)
+    assert.deepEqual(validateBook(shelf.beasts['1'], shelf).map(problemText), [], 'and what landed validates')
+    // A FILE THE CALLER DOES NOT SEND IS A FILE THE EDITION DOES NOT HAVE. That is the only
+    // way "the whole book in one request" can mean what it says — and it is how Basic and
+    // Stats ship (book.json + types.json and nothing else).
+    assert.deepEqual(await api(origin, '/api/books/beasts/1/save', { method: 'POST', body: { book: whole.book, types: whole.types } }), { status: 200, body: { ok: true } })
+    assert.deepEqual(readdirSync(join(SHELF, 'beasts', '1')).sort(), ['book.json', 'types.json'],
+      'things.json and proposals.json are GONE — a book\'s data files are optional, and absent means "this book has none of that"')
+    const before = treeHash(SHELF)
+    // ── every refusal ──
+    const uuid = '11111111-2222-4333-8444-555555555555'
+    const refusals = [
+      ['/api/books/beasts/1/save', { ...whole, types: { ...whole.types, types: [{ id: uuid, label: 'Nope', sections: [] }] } }, 400,
+        'books/beasts/1 does not fit the schema', [{ path: 'types.types[0].id', message: `"${uuid}" is not in this book's namespace (beasts:)` }]],
+      ['/api/books/beasts/1/save', { ...whole, book: { ...whole.book, name: 'other' } }, 400,
+        'books/beasts/1 does not fit the schema', [{ path: 'book.name', message: 'must be "beasts" — the folder\'s name (found "other")' }]],
+      ['/api/books/beasts/1/save', { ...whole, book: { ...whole.book, requires: [{ name: 'beasts', edition: 1 }] } }, 400,
+        'books/beasts/1 does not fit the schema', [{ path: 'book.requires[0]', message: 'a book cannot require itself' }]],
+      ['/api/books/beasts/1/save', { ...whole, things: { ...whole.things, order: { 'beasts:dino': ['beasts:rex'] } } }, 400,
+        'books/beasts/1 does not fit the schema', [{ path: 'things.order', message: 'a book may not arrange a shelf (order is the game\'s)' }]],
+      ['/api/books/beasts/1/save', { types: whole.types }, 400,
+        'books/beasts/1 does not fit the schema', [{ path: 'book', message: 'must be an object (found absent)' }]],
+      ['/api/books/nobody/1/save', whole, 404, 'Unknown book "nobody" 1', undefined],
+      ['/api/books/beasts/9/save', whole, 404, 'Unknown book "beasts" 9', undefined],
+      ['/api/books/beasts/01/save', whole, 404, 'Unknown book "beasts" 01', undefined],
+      ['/api/books/BEASTS/1/save', whole, 404, 'Unknown book "BEASTS" 1', undefined]
+    ]
+    for (const [path, body, status, error, problems] of refusals) {
+      const answer = await api(origin, path, { method: 'POST', body })
+      assert.deepEqual(answer, { status, body: problems === undefined ? { ok: false, error } : { ok: false, error, problems } }, `POST ${path}`)
+      assert.equal(treeHash(SHELF), before, `POST ${path} wrote nothing`)
+    }
+    assert.deepEqual(await api(origin, '/api/books/beasts/1/save', { method: 'POST', body: '{' }), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.equal(treeHash(SHELF), before)
+    ok(`M15 POST /api/books/<n>/<e>/save: the WHOLE book in one request — four files posted, 200 { ok }, every byte on disk the server's own format, and validateBook clean; a file the caller does not send is a file the edition does not have (things.json and proposals.json really go, which is how Basic and Stats ship); and ${refusals.length} refusals — a UUID id outside the namespace, a manifest disagreeing with its folder, a book requiring itself, a book arranging a shelf, a body with no book.json, an unknown book, an unknown edition, "01" and "BEASTS" refused by the GRAMMAR before any path is built — each at its exact status with the validator's own path and sentence, and the shelf byte-identical after every single one`)
+  } finally { stop() }
+}
+
+// ── M16 cut and delete (§8 rows 3 and 4) ──
+// "AN EDITION IS A COPY PLUS MORE" is the shelf's own rule and T2 asserts it of the committed
+// Dinosaur Age 2. Here it is asserted of the route that makes one — including the half T2
+// cannot see, which is that everything that is NOT one of the four files comes along too.
+{
+  const SHELF = copyShelf(join(WORK, 'm16-shelf', 'books'))
+  const GAMES = join(WORK, 'm16')
+  writeGame(join(GAMES, 'dino'), seedSet('Dino', [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 2 }]))
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm16-dist'), SHELF)
+  try {
+    // ── CUT: edition 3 of Dinosaur Age, which ships assets/ ──
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/2/cut', { method: 'POST' }), { status: 201, body: { ok: true, edition: 3 } })
+    const [two, three] = ['2', '3'].map(edition => join(SHELF, 'dinosaur-age', edition))
+    BOOK_FILE_NAMES.filter(file => file !== 'book').forEach(file => assert.equal(readFileSync(join(three, `${file}.json`), 'utf8'), readFileSync(join(two, `${file}.json`), 'utf8'),
+      `${file}.json is edition 2's bytes, to the byte`))
+    assert.equal(readFileSync(join(three, 'book.json'), 'utf8'), readFileSync(join(two, 'book.json'), 'utf8').replace('"edition": 2', '"edition": 3'),
+      'book.json differs in the number and in nothing else')
+    assert.equal(treeHash(join(three, 'assets')), treeHash(join(two, 'assets')), 'and the pictures came along — a cut carries everything that is not one of the four files')
+    assert.ok(listFiles(join(three, 'assets')).length > 0, 'there really were pictures to carry')
+    const shelf = await shelfOf(SHELF)
+    assert.deepEqual(validateBook(shelf['dinosaur-age']['3'], shelf).map(problemText), [], 'the cut edition validates')
+    // a cut is allowed from ANY edition, not just the latest — and the number is always one
+    // past the HIGHEST folder, so a cut from 2 while 3 exists makes 4 and buries nothing
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/2/cut', { method: 'POST' }), { status: 201, body: { ok: true, edition: 4 } })
+    assert.equal(readFileSync(join(SHELF, 'dinosaur-age', '4', 'types.json'), 'utf8'), readFileSync(join(two, 'types.json'), 'utf8'), 'edition 4 is edition 2 again')
+    const before = treeHash(SHELF)
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/9/cut', { method: 'POST' }), { status: 404, body: { ok: false, error: 'books/dinosaur-age/9 is not on the shelf' } })
+    assert.deepEqual(await api(origin, '/api/books/nobody/1/cut', { method: 'POST' }), { status: 404, body: { ok: false, error: 'books/nobody/1 is not on the shelf' } })
+    assert.equal(treeHash(SHELF), before, 'a refused cut writes nothing')
+    // ── DELETE an edition, and the rule the listing needs ──
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/4/delete', { method: 'POST' }), { status: 200, body: { ok: true } })
+    assert.equal(existsSync(join(SHELF, 'dinosaur-age', '4')), false)
+    assert.deepEqual(readdirSync(join(SHELF, 'dinosaur-age')).sort(), ['1', '2', '3'], 'the other editions are untouched and the book stays')
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/4/delete', { method: 'POST' }), { status: 404, body: { ok: false, error: 'books/dinosaur-age/4 is not on the shelf' } })
+    // THE LAST EDITION TAKES THE BOOK FOLDER WITH IT, or the Library shows a book with no
+    // editions — a ghost that cannot be opened, cannot be pinned and cannot be explained.
+    await api(origin, '/api/books', { method: 'POST', body: { title: 'Only One' } })
+    assert.deepEqual(await api(origin, '/api/books/only-one/1/delete', { method: 'POST' }), { status: 200, body: { ok: true } })
+    assert.equal(existsSync(join(SHELF, 'only-one')), false, 'the last edition took the book folder with it')
+    // …unless something the author made by hand is still in there: rmdir without recursive
+    // is the whole rule, so a folder we did not delete keeps the book exactly as it is
+    await api(origin, '/api/books', { method: 'POST', body: { title: 'Kept' } })
+    mkdirSync(join(SHELF, 'kept', 'notes'))
+    assert.deepEqual(await api(origin, '/api/books/kept/1/delete', { method: 'POST' }), { status: 200, body: { ok: true } })
+    assert.deepEqual(readdirSync(join(SHELF, 'kept')), ['notes'], 'a folder the author made by hand keeps the book — nothing of theirs is swept away')
+    // ── DELETE the whole book ──
+    await api(origin, '/api/books', { method: 'POST', body: { title: 'Doomed' } })
+    await api(origin, '/api/books/doomed/1/cut', { method: 'POST' })
+    assert.deepEqual(await api(origin, '/api/books/doomed/delete', { method: 'POST' }), { status: 200, body: { ok: true } })
+    assert.equal(existsSync(join(SHELF, 'doomed')), false, 'every edition, and the folder')
+    assert.deepEqual(await api(origin, '/api/books/doomed/delete', { method: 'POST' }), { status: 404, body: { ok: false, error: 'books/doomed is not on the shelf' } })
+    // a pinned edition is M13's subject; here the other half — the whole book, pinned at an
+    // edition that does not even exist any more, is still refused and still names the game
+    assert.deepEqual(await api(origin, '/api/books/dinosaur-age/delete', { method: 'POST' }),
+      { status: 409, body: { ok: false, error: 'games/dino pins edition 2 — un-pin it first.' } })
+    ok(`M16 cut and delete: a cut is 201 { ok, edition } and edition N+1 is edition N's bytes to the byte with book.json differing only in the number AND the assets/ folder carried (the half T2 cannot see); the number is one past the HIGHEST folder, so a cut from 2 while 3 exists makes 4 and buries nothing; a cut of an edition or a book that is not there is a 404 with the shelf's own sentence and writes nothing; deleting an edition leaves its siblings alone, deleting the LAST one takes the book folder with it (no ghost the Library would show), and a folder the author made by hand keeps the book instead; deleting a whole book takes every edition, a second delete is a 404, and a book a game pins is refused by name`)
+  } finally { stop() }
+}
+
+// ── M17 POST /api/books/<n>/rename: the name IS the namespace (§8 row 5) ──
+// A BOOK'S NAME IS ITS ID NAMESPACE, so a rename is two walks over two grammars: every id in
+// every edition AND every reference to one inside every local game that pins it, plus the
+// PINS themselves, which name a folder and are not ids at all. The count in the receipt is
+// checked against an INDEPENDENT census (R6's, retyped) rather than against a magic number,
+// so the two can never agree by being the same code twice.
+{
+  const SHELF = copyShelf(join(WORK, 'm17-shelf', 'books'))
+  const GAMES = join(WORK, 'm17')
+  // the REAL games/dino: the only game whose own files hold references INTO a book's
+  // namespace (four rowOverrides keyed by Dinosaur Age's rows, ten things in Basic's buckets)
+  copyGame(join(DINO_DIR, 'games', 'dino'), join(GAMES, 'dino'))
+  const PREFIX = 'dinosaur-age:'
+  const before = { shelf: readdirSync(SHELF).sort(), game: readGameSet(join(GAMES, 'dino')) }
+  // the independent count: every id-shaped string under this namespace, found by reading the
+  // bytes, with no reference to the walker the route uses
+  const occurrences = (root) => listFiles(root).filter(rel => rel.endsWith('.json'))
+    .reduce((n, rel) => n + [...readFileSync(join(root, rel), 'utf8').matchAll(/"(dinosaur-age:[a-z0-9]+(?:[.-][a-z0-9]+)*)"/g)].length, 0)
+  // the pins are NOT ids and must not be counted: `"dinosaur-age"` has no colon, so the
+  // regex above already excludes them — which is the point the receipt's two numbers make
+  const expectedIds = occurrences(join(SHELF, 'dinosaur-age')) + occurrences(join(GAMES, 'dino'))
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm17-dist'), SHELF)
+  try {
+    const answer = await api(origin, '/api/books/dinosaur-age/rename', { method: 'POST', body: { to: 'thunder-lizards' } })
+    assert.deepEqual(answer, { status: 200, body: { ok: true, name: 'thunder-lizards', rewritten: { ids: expectedIds, pins: 1 } } },
+      `the receipt names both walks, and \`ids\` is exactly the ${expectedIds} namespaced strings an independent byte count finds`)
+    assert.deepEqual(readdirSync(SHELF).sort(), before.shelf.map(name => name === 'dinosaur-age' ? 'thunder-lizards' : name).sort(), 'one folder, renamed; nothing else on the shelf moved')
+    assert.deepEqual(readdirSync(join(SHELF, 'thunder-lizards')).sort(), ['1', '2'], 'both editions came along')
+    assert.ok(listFiles(join(SHELF, 'thunder-lizards', '1', 'assets')).length > 0, 'and their pictures')
+    assert.equal(occurrences(join(SHELF, 'thunder-lizards')) + occurrences(join(GAMES, 'dino')), 0, 'not one string of the old namespace survives anywhere — in the book or in the game')
+    // THE PIN is the other half, over a different grammar
+    const content = JSON.parse(readFileSync(join(GAMES, 'dino', 'data', 'content.json'), 'utf8'))
+    assert.deepEqual(content.books, before.game.content.books.map(pin => pin.name === 'dinosaur-age' ? { name: 'thunder-lizards', edition: pin.edition } : pin),
+      'the pin names the new folder, and a pin\'s { name, edition } key order survived')
+    // …and the world still fits together: the shelf validates, the game validates against it,
+    // and the game's rowOverrides still point at rows that exist
+    const shelf = await shelfOf(SHELF)
+    Object.entries(shelf).forEach(([name, editions]) => Object.entries(editions).forEach(([edition, layer]) =>
+      assert.deepEqual(validateBook(layer, shelf).map(problemText), [], `books/${name}/${edition} still validates after the rename`)))
+    const own = readGameSet(join(GAMES, 'dino'))
+    const books = own.content.books.map(pin => shelf[pin.name]?.[pin.edition] ?? null)
+    assert.deepEqual(validateGame({ own, books }).map(problemText), [], 'and games/dino still fits — every rowOverride and every things bucket followed the rename')
+    assert.deepEqual(Object.keys(own.content.rowOverrides), Object.keys(before.game.content.rowOverrides).map(id => id.replace(/^dinosaur-age:/, 'thunder-lizards:')),
+      'the game\'s four override slots are the same four, under the new namespace, IN THEIR PLACES — a rewriter that deleted and re-assigned would have moved every one of them to the end')
+    // EVERY file of the game that names one of these ids followed, and the ones that do not
+    // are byte-identical — games/dino's themes.json keys two group themes by Dinosaur Age's
+    // rows, so it moved; its types.json names no id of this book at all, so it did not.
+    assert.deepEqual(Object.keys(own.themes.groupThemes), Object.keys(before.game.themes.groupThemes).map(id => id.replace(/^dinosaur-age:/, 'thunder-lizards:')),
+      'themes.json keys two group themes by this book\'s rows, so they followed the rename — in their places')
+    assert.equal(serialize(own.types), serialize(before.game.types), 'types.json names no id of this book, so it is byte-identical (the route writes only the files whose bytes change)')
+    // ── every refusal ──
+    const frozen = treeHash(SHELF), gamesFrozen = treeHash(GAMES)
+    const refusals = [
+      ['thunder-lizards', { to: 'thunder-lizards' }, 400, 'books/thunder-lizards is already called that', undefined],
+      ['thunder-lizards', { to: 'basic' }, 409, 'a book named "basic" is already on the shelf', undefined],
+      ['thunder-lizards', { to: 'Bad Name' }, 400, 'to does not make a book name', [{ path: 'to', message: '"Bad Name" is not a book name (lowercase letters, digits and single dashes)' }]],
+      ['thunder-lizards', { to: '..' }, 400, 'to does not make a book name', [{ path: 'to', message: '".." is not a book name (lowercase letters, digits and single dashes)' }]],
+      ['thunder-lizards', { to: 'book' }, 400, 'to does not make a book name', [{ path: 'to', message: '"book" is a name the editor keeps for itself' }]],
+      ['ghost', { to: 'spook' }, 404, 'books/ghost has no edition to rename', undefined],
+      // A REQUIRED BOOK CANNOT BE RENAMED, and this refusal is not in §8's table — the freeze
+      // demands it. Following the rename into another book's `requires` means writing an
+      // edition some other author's game may already pin, which is exactly what FROZEN forbids.
+      ['basic', { to: 'bedrock' }, 409,
+        'books/stats/1, books/thunder-lizards/1 and books/thunder-lizards/2 require this book — a required book cannot be renamed, because rewriting a frozen edition to follow it is exactly what "editions are frozen" forbids.', undefined]
+    ]
+    for (const [name, body, status, error, problems] of refusals) {
+      const got = await api(origin, `/api/books/${name}/rename`, { method: 'POST', body })
+      assert.deepEqual(got, { status, body: problems === undefined ? { ok: false, error } : { ok: false, error, problems } }, `POST /api/books/${name}/rename ${JSON.stringify(body)}`)
+      assert.equal(treeHash(SHELF), frozen, 'a refused rename moves no byte of the shelf')
+      assert.equal(treeHash(GAMES), gamesFrozen, 'and none of any game')
+    }
+    assert.deepEqual(await api(origin, '/api/books/thunder-lizards/rename', { method: 'POST', body: '{' }), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.deepEqual(await api(origin, '/api/books/Bad Name/rename', { method: 'POST', body: { to: 'x' } }), { status: 404, body: { ok: false, error: 'Unknown book "Bad%20Name"' } },
+      'the name in the URL is judged by the grammar before any path is built from it')
+    assert.equal(treeHash(SHELF), frozen)
+    // A RENAME IS ALLOWED WHILE A GAME PINS IT — the one reading of the freeze that holds,
+    // because the pinning game is rewritten in the same step, so no world changes under it.
+    // Said here as the positive half of the sentence the refusals above are the negative of.
+    assert.deepEqual(await api(origin, '/api/books/thunder-lizards/rename', { method: 'POST', body: { to: 'dinosaur-age' } }),
+      { status: 200, body: { ok: true, name: 'dinosaur-age', rewritten: { ids: expectedIds, pins: 1 } } }, 'and back again, the same two numbers')
+    const backShelf = await shelfOf(SHELF)
+    assert.deepEqual(validateBook(backShelf['dinosaur-age']['1'], backShelf).map(problemText), [])
+    BOOK_FILE_NAMES.filter(file => file !== 'book').forEach(file => assert.equal(
+      readFileSync(join(SHELF, 'dinosaur-age', '1', `${file}.json`), 'utf8'), readFileSync(join(REAL_BOOKS, 'dinosaur-age', '1', `${file}.json`), 'utf8'),
+      `A→B→A: ${file}.json is byte-identical to the committed shelf's`))
+    assert.deepEqual(readGameSet(join(GAMES, 'dino')), before.game, 'and the game came home byte-identical too')
+    ok(`M17 POST /api/books/<n>/rename: renaming Dinosaur Age rewrites ${expectedIds} ids across both editions AND inside games/dino (its four rowOverride slots and its things buckets) plus the 1 pin that names the folder — and \`ids\` is checked against an INDEPENDENT count of namespaced strings in the bytes, never a magic number; afterwards not one string of the old namespace survives anywhere, both editions validate, games/dino validates against the renamed shelf, the pictures came along, themes.json's two group-theme keys followed in their places and types.json (which names no id of this book) is byte-identical; ${refusals.length} refusals — the same name, a name already taken, a bad name, "..", a reserved word, a book with no edition, and a book another book REQUIRES (the refusal §8's table does not list and the freeze demands) — each at its status with its sentence, and neither the shelf nor any game moves a byte; and renaming it BACK is byte-identical to the committed shelf, which is the round trip a rewriter owes`)
+  } finally { stop() }
+}
+
+// ── M18 the seam between routes (gap 4), and M19 a staging folder (L2) ──
+// NO ORACLE WALKED THE SEAM. Each route was sound on its own and the question nobody asked
+// was what the SEQUENCE leaves behind: two books sharing a folder, or a folder with no
+// editions in it. Both are invisible to a per-route check and both are permanent once made.
+{
+  const SHELF = copyShelf(join(WORK, 'm18-shelf', 'books'))
+  const GAMES = join(WORK, 'm18')
+  mkdirSync(GAMES, { recursive: true })
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm18-dist'), SHELF)
+  const dirsIn = (dir) => existsSync(dir) ? readdirSync(dir).filter(name => statSync(join(dir, name)).isDirectory()).sort() : null
+  try {
+    // every book folder holds at least one edition, and no two books share a folder
+    const sound = async (after) => {
+      const listed = (await api(origin, '/api/books')).body.books
+      assert.deepEqual(listed.map(book => book.name), [...new Set(listed.map(book => book.name))], `${after}: no two books share a folder`)
+      listed.forEach(book => assert.ok((book.editions ?? []).length > 0, `${after}: books/${book.name} has at least one edition — an empty book folder is a ghost`))
+      dirsIn(SHELF).forEach(name => assert.ok(dirsIn(join(SHELF, name)).length > 0, `${after}: books/${name} is not an empty folder on disk either`))
+      return listed
+    }
+    const seam = [
+      ['create Seam', '/api/books', { title: 'Seam' }, 201, { ok: true, name: 'seam', edition: 1 }, ['1']],
+      ['cut seam/1', '/api/books/seam/1/cut', undefined, 201, { ok: true, edition: 2 }, ['1', '2']],
+      ['delete seam/1', '/api/books/seam/1/delete', undefined, 200, { ok: true }, ['2']],
+      // THE SEAM ITSELF: the folder is still there holding edition 2, so creating the same
+      // name again must be the 409 — this is the step a per-route check cannot reach, and
+      // where a create that claimed the EDITION rather than the BOOK would land a second
+      // book inside the first one's folder.
+      ['create Seam again', '/api/books', { title: 'Seam' }, 409, { ok: false, error: 'a book named "seam" is already on the shelf' }, ['2']],
+      ['delete seam/2 — the last one', '/api/books/seam/2/delete', undefined, 200, { ok: true }, null],
+      ['create Seam a third time', '/api/books', { title: 'Seam' }, 201, { ok: true, name: 'seam', edition: 1 }, ['1']]
+    ]
+    for (const [what, path, body, status, receipt, editions] of seam) {
+      assert.deepEqual(await api(origin, path, { method: 'POST', body }), { status, body: receipt }, what)
+      assert.deepEqual(dirsIn(join(SHELF, 'seam')), editions, `${what}: the folders on disk`)
+      await sound(what)
+    }
+    // the newborn at the end is a NEWBORN, not the old book's leftovers
+    assert.equal(readFileSync(join(SHELF, 'seam', '1', 'book.json'), 'utf8'), '{\n  "name": "seam",\n  "title": "Seam",\n  "edition": 1,\n  "requires": []\n}\n',
+      'and the third Seam is edition 1 of a new book, not an edition 2 wearing edition 1\'s number')
+    ok(`M18 the seam between routes: create → cut → delete edition 1 → create the same name (409, because the folder still holds edition 2 — the step no per-route check can reach) → delete the last edition → create again. After EVERY step the shelf is sound: no two books share a folder, every listed book has at least one edition, and no folder on disk is an empty book. The last create is a real newborn at edition 1, not the previous book's leftovers`)
+
+    // ── M19 a staging folder is invisible (L2) ──
+    // An edition is built whole in <edition>.tmp and RENAMED into place, and a whole book is
+    // staged at <name>.tmp while it is renamed. A crash leaves one of those behind. It must be
+    // invisible to EVERY reader, or the Library lists a half-written edition as a broken book
+    // and the next cut hands its number to a working one.
+    const halfEdition = join(SHELF, 'seam', '9.tmp')
+    mkdirSync(halfEdition, { recursive: true })
+    writeFileSync(join(halfEdition, 'book.json'), serialize({ name: 'seam', title: 'Half written', edition: 9, requires: [] }))
+    const halfBook = join(SHELF, 'ghost.tmp', '1')
+    mkdirSync(halfBook, { recursive: true })
+    writeFileSync(join(halfBook, 'book.json'), serialize({ name: 'ghost', title: 'Half renamed', edition: 1, requires: [] }))
+    const listed = await sound('with two staging folders on the shelf')
+    assert.deepEqual(listed.map(book => book.name), ['basic', 'dinosaur-age', 'seam', 'stats'], 'the Library does not list a staging folder as a book')
+    assert.deepEqual(listed.find(book => book.name === 'seam').editions.map(edition => edition.edition), [1], 'nor as an edition')
+    const shelf = await shelfOf(SHELF)
+    assert.deepEqual(Object.keys(shelf).sort(), ['basic', 'dinosaur-age', 'seam', 'stats'], 'and the MERGE cannot find one: it is not on the shelf index at all')
+    assert.deepEqual(Object.keys(shelf.seam), ['1'])
+    // the NUMBER is the other half: a cut must not hand edition 9's number to a working
+    // edition just because the staging that owns it is invisible
+    assert.deepEqual(await api(origin, '/api/books/seam/1/cut', { method: 'POST' }), { status: 201, body: { ok: true, edition: 2 } },
+      'a cut numbers from the editions that ARE editions — a staging folder owns no number')
+    assert.deepEqual(dirsIn(join(SHELF, 'seam')), ['1', '2', '9.tmp'], 'and the staging is still sitting there for a human to rename or remove')
+    // …and not over HTTP either: the static drawer's grammar refuses both spellings
+    assert.equal((await api(origin, '/books/seam/9.tmp/book.json')).status, 404, 'a staging edition is not a url — isEditionName refuses "9.tmp"')
+    assert.equal((await api(origin, '/books/ghost.tmp/1/book.json')).status, 404, 'and a staging book is not one either — isBookName refuses "ghost.tmp"')
+    ok('M19 a staging folder is invisible (L2): an edition is written whole into <edition>.tmp and renamed into place, so a crash can leave one behind — and a stale <edition>.tmp AND a stale <book>.tmp are both absent from GET /api/books, absent from shelfOf (so no merge can find one), own no edition number (a cut numbers past the real editions and gives 2, not 10), and are not reachable over HTTP at all because the shelf\'s two grammars refuse both spellings. What is left is a folder a human can see and rename, which is the repair the one named window asks for')
+  } finally { stop() }
+}
+
+// ── M21 POST /api/games/<g>/extract — "save as a book" (§8 row 6, NEW, stage 4) ──
+// The third of Joelle's three forks: lift a game's OWN layer into books/<name>/1/, re-mint
+// every id into the new namespace, and leave the game pinning the new book. It is the route
+// with the most to get wrong, because it writes TWO folders and the thing it must not change
+// is the only thing that matters — WHAT THE GAME PLAYS.
+//
+// So that is what this check asks, and it asks it of both real cases the brief names:
+//   games/vampire — a whole world in UUIDs (8 sheets, 64 things, 8 rows), which exercises the
+//                   full mint: every id the book defines must come out <name>:<noun>-<n>;
+//   games/dino    — 10 things and nothing else of its own, whose FOUR row facts are all
+//                   rowOverrides that CANNOT travel (book-over-book override is deferred), so
+//                   the receipt's `left` is the whole of the author's honesty.
+//
+// THE FAITHFULNESS TEST is an ID-FREE projection of the flattened merge: every sheet by label,
+// every section by caption, every field by key, every thing by name and cost under its sheet's
+// LABEL, every row by label at every depth with its rule and its look, the budget and the
+// declared sheet by label. Ids are exactly what this route changes, so a projection that
+// mentioned one would be testing the rename instead of the game; everything a PLAYER can see
+// is in here, and it must be identical before and after.
+{
+  const SHELF = copyShelf(join(WORK, 'm21-shelf', 'books'))
+  const GAMES = join(WORK, 'm21')
+  copyGame(join(DINO_DIR, 'games', 'dino'), join(GAMES, 'dino'))
+  copyGame(join(DINO_DIR, 'games', 'vampire'), join(GAMES, 'vampire'))
+  copyGame(join(DINO_DIR, 'games', 'vampire'), join(GAMES, 'stale'))              // kept at v4 on purpose, see the refusals
+
+  // the v4 vampire is migrated the way every reader of it migrates it, because a BOOK is never
+  // migrated and a game at an older schema is refused by name (one of the refusals below)
+  writeGame(join(GAMES, 'vampire'), migrateSet(readGameSet(join(GAMES, 'vampire'))))
+
+  const shelfOfNow = async () => shelfOf(SHELF)
+  const flatten = async (game) => {
+    const own = readGameSet(join(GAMES, game))
+    const shelf = await shelfOfNow()
+    const books = (own.content.books ?? []).map(pin => shelf[pin.name]?.[pin.edition] ?? null)
+    return { own, books, set: flattenGame({ books, game: own }) }
+  }
+  // WHAT A PLAYER CAN SEE, with every id projected away
+  const empty = (slot) => slot === undefined || slot === null || Object.keys(slot).length === 0 ? null : slot
+  const faithful = ({ set }) => {
+    const labelOf = new Map(set.types.types.map(type => [type.id, type.label]))
+    const rowLabel = new Map()
+    const walkRows = (rows) => rows.forEach(row => { rowLabel.set(row.id, row.label); walkRows(row.children ?? []) })
+    walkRows(set.content.groups)
+    const rows = (list) => list.map(row => ({
+      label: row.label,
+      shows: labelOf.get(row.query?.type) ?? row.query?.type ?? null,
+      fills: row.fills === undefined || row.fills === '' ? '' : 'bound',
+      gate: row.showWhen?.kind === 'anyInRow' ? `anyInRow:${rowLabel.get(row.showWhen.row) ?? '?'}`
+        : row.showWhen?.kind === 'thingPicked' ? 'thingPicked' : (row.showWhen?.kind ?? null),
+      // an EMPTY slot says nothing, exactly as an absent one does, so the projection spells
+      // both `null`. games/vampire's rules.json really does hold one `"<row>": {}` — "a key
+      // that means nothing is never written" broken in hand-written data, not by this route —
+      // and the merge drops it on the way back through the book. A player cannot tell.
+      rule: empty(set.rules.groupRules?.[row.id]),
+      look: empty(set.themes.groupThemes?.[row.id]),
+      children: rows(row.children ?? [])
+    }))
+    return {
+      budget: set.rules.totalBudget ?? null,
+      page: set.themes.page,
+      meta: set.content.meta,
+      builds: labelOf.get(set.content.sheet) ?? set.content.sheet ?? '',
+      sheets: set.types.types.map(type => ({ label: type.label, sections: type.sections.map(section =>
+        ({ caption: section.caption, kind: section.kind, of: labelOf.get(section.of) ?? section.of ?? null,
+           fields: (section.fields ?? section.placement ?? []).map(field => `${field.key}:${field.type}`) })) })),
+      things: Object.fromEntries(Object.entries(set.things.things).map(([sheetId, list]) =>
+        [labelOf.get(sheetId) ?? sheetId, (list ?? []).map(thing => `${thing.name}/${thing.cost}/${thing.imageURL}`)])),
+      rows: rows(set.content.groups)
+    }
+  }
+
+  const { origin, stop } = await startServer(GAMES, join(WORK, 'm21-dist'), SHELF)
+  try {
+    // ── games/vampire: the full mint ──
+    const wasVampire = faithful(await flatten('vampire'))
+    const lifted = await api(origin, '/api/games/vampire/extract', { method: 'POST', body: { title: 'Night World' } })
+    assert.equal(lifted.status, 201)
+    assert.deepEqual(Object.keys(lifted.body), ['ok', 'name', 'edition', 'moved', 'left'], 'the receipt\'s keys, in order')
+    assert.deepEqual([lifted.body.ok, lifted.body.name, lifted.body.edition], [true, 'night-world', 1])
+    assert.deepEqual(lifted.body.moved, { types: 8, things: 64, rows: 8 }, 'vampire\'s whole world moved: 8 sheets, 64 things, 8 rows')
+    // every id the book DEFINES is <name>:<noun>-<n>, and not one uuid came with it
+    const book = Object.fromEntries(BOOK_FILE_NAMES.map(file => [file, JSON.parse(readFileSync(join(SHELF, 'night-world', '1', `${file}.json`), 'utf8'))]))
+    const minted = []
+    eachId({ book: book.book, types: book.types, things: book.things, proposals: book.proposals }, book.types.types,
+      ({ id, defining }) => { if (defining) minted.push(id) }, BOOK_FILE_SHEETS)
+    assert.equal(minted.length, 8 + 64 + 8 + minted.filter(id => /:(section|field)-/.test(id)).length, 'every defining position was minted')
+    assert.deepEqual(minted.filter(id => !/^night-world:(sheet|section|field|row|thing)-[1-9][0-9]*$/.test(id)), [],
+      'every id is <book>:<noun>-<ordinal>, the noun read from MINTS and the ordinal the smallest free one — never derived from a caption, because an id must not follow a later rename')
+    assert.deepEqual([...new Set(minted)].length === minted.length, true, 'and each one exactly once')
+    assert.equal(BOOK_FILE_NAMES.some(file => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.test(readFileSync(join(SHELF, 'night-world', '1', `${file}.json`), 'utf8'))), false,
+      'not one uuid survives anywhere in the book — a uuid in a book is refused by bookRules, and this is why the mint exists')
+    // the book is a book: same shape as one POST /api/books makes
+    assert.deepEqual(readdirSync(join(SHELF, 'night-world', '1')).sort(), ['book.json', 'proposals.json', 'things.json', 'types.json'])
+    assert.equal(readFileSync(join(SHELF, 'night-world', '1', 'book.json'), 'utf8'), '{\n  "name": "night-world",\n  "title": "Night World",\n  "edition": 1,\n  "requires": []\n}\n',
+      'the manifest is the seed\'s — key order and all — and it requires exactly what the game pinned (nothing)')
+    BOOK_FILE_NAMES.forEach(file => assert.equal(readFileSync(join(SHELF, 'night-world', '1', `${file}.json`), 'utf8'), serialize(book[file]), `${file}.json is canonical bytes`))
+    // the GAME: its own layer emptied, pinning the new book, and its decisions kept
+    const now = readGameSet(join(GAMES, 'vampire'))
+    assert.deepEqual(now.content.books, [{ name: 'night-world', edition: 1 }], 'the game pins what it just made, last')
+    assert.deepEqual([now.content.groups, now.types.types, now.types.sectionsFor, now.types.fieldsFor, now.things.things], [[], [], {}, {}, {}],
+      'and owns nothing of its own any more')
+    assert.equal(now.rules.totalBudget, 15, 'the budget is a DECISION and stays — a book only proposes one')
+    assert.deepEqual(now.rules.groupRules, {}, 'the per-row rules on rows that MOVED went with them, as that row\'s own proposal')
+    assert.deepEqual(Object.keys(now.themes.groupThemes).length, 8, 'the eight row themes stay (a book proposes no look) with their keys rewritten')
+    // THE FAITHFULNESS TEST
+    assert.deepEqual(faithful(await flatten('vampire')), wasVampire,
+      'games/vampire plays EXACTLY what it played: every sheet, section, field, thing, row, rule, look, the budget and the sheet it builds — id-free, because ids are the one thing this route changes')
+    const shelf = await shelfOfNow()
+    assert.deepEqual(validateBook(shelf['night-world']['1'], shelf).map(problemText), [], 'the new book validates')
+    assert.deepEqual(validateGame({ own: now, books: [shelf['night-world']['1']] }).map(problemText), [], 'and so does the game that now stands on it')
+    // the honest half: vampire's 64 things name pictures that live in games/vampire/assets
+    const pictures = lifted.body.left.filter(line => line.includes('names the picture'))
+    assert.ok(pictures.length > 0 && pictures.every(line => line.endsWith('so it travels as a filename only.')),
+      `${pictures.length} sentences say a picture could not travel (assets are out of scope this stage)`)
+    assert.deepEqual(lifted.body.left.filter(line => !line.includes('names the picture')), [
+      'themes stay with games/vampire — a book proposes no look, so the page\'s own look and 8 row themes are the game\'s (the keys that moved have been rewritten).',
+      'rules.totalBudget stays with games/vampire — 15 is the game\'s DECISION and a book only proposes a budget; propose one on the book if you want it to travel.'
+    ], 'and the two structural sentences, in the table\'s order')
+
+    // ── games/dino: the case where almost nothing can travel ──
+    const wasDino = faithful(await flatten('dino'))
+    const overridesBefore = Object.keys(readGameSet(join(GAMES, 'dino')).content.rowOverrides)
+    const dino = await api(origin, '/api/games/dino/extract', { method: 'POST', body: { title: 'Dino Extras' } })
+    assert.equal(dino.status, 201)
+    assert.deepEqual(dino.body.moved, { types: 0, things: 10, rows: 0 }, 'dino owns 10 things and nothing else — its four row facts are overrides')
+    assert.deepEqual(dino.body.left.filter(line => !line.includes('names the picture')), [
+      '4 row overrides stay with games/dino — an override answers a BOOK\'s proposal, and a book may not override another book.',
+      'things.order stays with games/dino — arranging a shelf is the game\'s taste over the MERGED shelf and a book may not carry one; 2 ids in it named a thing that moved and have been rewritten, so the order still holds.',
+      'themes stay with games/dino — a book proposes no look, so the page\'s own look and 2 row themes are the game\'s (the keys that moved have been rewritten).',
+      'content.sheet stays with games/dino — a book proposes sheets and never says which one the player builds; games/dino still builds "basic:character".'
+    ], 'FOUR sentences for the four kinds of thing that cannot travel — this is the feature being honest about what it did not do')
+    const dinoNow = readGameSet(join(GAMES, 'dino'))
+    assert.deepEqual(Object.keys(dinoNow.content.rowOverrides), overridesBefore, 'the four override slots are untouched — they key on a BOOK\'s row ids, which did not move')
+    assert.deepEqual(dinoNow.content.books.at(-1), { name: 'dino-extras', edition: 1 }, 'the new book is pinned LAST, which is where the game\'s own layer was in the merge order')
+    assert.deepEqual(JSON.parse(readFileSync(join(SHELF, 'dino-extras', '1', 'book.json'), 'utf8')).requires, dinoNow.content.books.slice(0, -1),
+      'and the book REQUIRES exactly what the game pinned before, at the same editions — which is what keeps the layer order')
+    assert.deepEqual(faithful(await flatten('dino')), wasDino, 'and games/dino plays exactly what it played, overrides and arrangement included')
+
+    // ── every refusal, writing nothing ──
+    const before = { shelf: treeHash(SHELF), games: treeHash(GAMES) }
+    const refusals = [
+      ['dino', { title: 'Dino Extras' }, 409, 'a book named "dino-extras" is already on the shelf', undefined],
+      ['dino', { title: '  ' }, 400, 'title does not make a book name', [{ path: 'title', message: 'must be a non-empty string' }]],
+      ['dino', { title: 'Book' }, 400, 'title does not make a book name', [{ path: 'title', message: '"book" is a name the editor keeps for itself' }]],
+      ['dino', { title: 'X', name: 'Bad Name' }, 400, 'name does not make a book name', [{ path: 'name', message: '"Bad Name" is not a book name (lowercase letters, digits and single dashes)' }]],
+      // NOTHING LEFT TO LIFT: dino was just emptied, so a second extract has nothing to carry
+      ['dino', { title: 'Again' }, 400, 'games/dino has nothing of its own that a book could carry — no sheets, no rows, and no things on a sheet the shelf defines.', undefined],
+      // A GAME AT AN OLDER SCHEMA. A book is NEVER migrated, so one born from stale shapes
+      // would be stale for ever in an edition that freezes the moment a game pins it — and the
+      // refusal is validate.js's own sentence, the one already on the author's screen.
+      ['stale', { title: 'Old World' }, 400, 'games/stale does not fit the schema, so there is nothing safe to lift out of it',
+        FILES.map(file => ({ path: `games/stale.${file}.version`, message: `must be ${SCHEMA_VERSION} (found 4) — open the game in the editor and Save to migrate it` }))]
+    ]
+    for (const [game, body, status, error, problems] of refusals) {
+      const got = await api(origin, `/api/games/${game}/extract`, { method: 'POST', body })
+      assert.deepEqual(got, { status, body: problems === undefined ? { ok: false, error } : { ok: false, error, problems } }, `POST /api/games/${game}/extract ${JSON.stringify(body)}`)
+      assert.equal(treeHash(SHELF), before.shelf, 'a refused extract writes nothing on the shelf')
+      assert.equal(treeHash(GAMES), before.games, 'and nothing in any game — both halves land or neither does')
+    }
+    assert.deepEqual(await api(origin, '/api/games/dino/extract', { method: 'POST', body: '{' }), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
+    assert.deepEqual(await api(origin, '/api/games/nope/extract', { method: 'POST', body: { title: 'X' } }), { status: 404, body: { ok: false, error: 'Unknown CYOA "nope"' } })
+    assert.deepEqual(await api(origin, '/api/games/dino/extract'), { status: 404, body: { ok: false, error: 'Unknown route' } }, 'GET is not a route')
+    assert.equal(treeHash(SHELF), before.shelf)
+    assert.equal(treeHash(GAMES), before.games)
+    ok(`M21 POST /api/games/<g>/extract — "save as a book": games/vampire's whole world (8 sheets, 64 things, 8 rows, every id a UUID) is lifted into books/night-world/1 with EVERY defining id re-minted as <book>:<noun>-<ordinal> from MINTS' own nouns, not one uuid left anywhere in it, the manifest in the seed's key order requiring exactly what the game pinned, canonical bytes throughout — and the game keeps its budget, its look and its declared sheet, owns nothing of its own, pins the new book LAST, and PLAYS EXACTLY WHAT IT PLAYED, measured by an id-free projection of the flattened merge (every sheet, section, field, thing with its cost and picture, every row with its rule, gate and look, the budget and the sheet it builds); games/dino — 10 things and four row facts that are all overrides — is lifted with four \`left\` sentences saying in the author's own language what could not travel and why, its overrides and arrangement untouched, and it too plays exactly what it played; and ${refusals.length + 3} refusals — already on the shelf, a blank title, a reserved word, a bad given name, a game with nothing of its own, a game at an older schema refused in validate.js's own words (a book is never migrated), "{", an unknown game and GET — each at its status with its sentence, and after every one the shelf AND every game are byte-identical, so the two halves land together or not at all`)
+  } finally { stop() }
+}
+
+// ── I4 the editor opens a BOOK, through its own paint (NEW, stage 4; gap 9) ──
+// I3 is the only check in the suite driven through the EDITOR'S REAL PAINT, and until now the
+// child behind it hard-coded a game's five drawers, `editorState.game` and the `#<game>/<tab>`
+// hash — so the one claim that matters most for a shelf an oracle hashes had nowhere to live:
+// OPENING A BOOK AND LOOKING AT IT MUST WRITE NOTHING. That is I3(a)'s claim over a game's five
+// files, asked of a book's four, and it is stronger here than there: a game's files are the
+// author's to dirty, and a FROZEN edition's are not.
+//
+// The child is the same child (`--edit`), opening a SUBJECT instead of a game — see OPENERS.
+// It is driven twice over each edition: with the freeze census EMPTY (nobody pins it, so the
+// editor may write) and with it naming a game (frozen, so `repairBuckets` — the one write a
+// paint is allowed — must hold its hand). Both must leave every byte where it was.
+{
+  const SHELF = copyShelf(join(WORK, 'i4-shelf', 'books'))
+  const before = treeHash(SHELF)
+  // dinosaur-age is the one book on the shelf that ships all four files, so it is the one
+  // this child can open: the editor's REAL loader stands a container in for an absent
+  // optional file (loadData.js's standIn) and this child reads the files itself rather than
+  // re-implementing that rule — see the note at the end of this block.
+  const editions = [1, 2]
+  const census = [['editable', []], ['frozen', [{ game: 'dino', name: 'dinosaur-age', edition: 1 }]]]
+  const TABS_THAT_PAINT = ['rows', 'types', 'things', 'books']
+  const onDisk = (edition) => Object.fromEntries(BOOK_FILE_NAMES.map(file =>
+    [file, readFileSync(join(SHELF, 'dinosaur-age', String(edition), `${file}.json`), 'utf8')]))
+  let paints = 0
+  assert.deepEqual(TABS_THAT_PAINT, ['rows', 'types', 'things', 'books'], 'all four tabs of the editor, none of them skipped')
+  for (const edition of editions) {
+    const text = onDisk(edition)
+    for (const [state, pinnedBy] of census) {
+      // EVERY tab, with the Things tab standing on a sheet this book fills
+      for (const tab of ['rows', 'types', 'things', 'books']) {
+        const run = editorRunBook(SHELF, 'dinosaur-age', edition, { tab, type: 'basic:origin', steps: [], pinnedBy })
+        paints += 1
+        assert.deepEqual(run.warnings, [], `books/dinosaur-age/${edition} ${state}, ${tab}: the paint says nothing`)
+        assert.deepEqual(run.paint.faults, [], `books/dinosaur-age/${edition} ${state}, ${tab}: and nothing is wrong with the book`)
+        assert.equal(run.paint.tab, tab, 'the hash #book/<name>/<edition>/<tab> really named this tab')
+        // (a) READING MUST NOT WRITE — the claim, over the book's four drawers
+        assert.deepEqual(Object.keys(run.own), BOOK_FILE_NAMES, 'the subject\'s own drawers are a book\'s four, in the table\'s order')
+        BOOK_FILE_NAMES.forEach(file => assert.equal(serialize(run.own[file]), text[file],
+          `books/dinosaur-age/${edition} ${state}, ${tab}: ${file}.json — a no-edit paint is byte-identical`))
+      }
+    }
+    // the paint really happened, and it is the BOOK's paint: the Things tab draws the book's
+    // own ten things plus the sheets it stands on, and a borrowed card is LOCKED while the
+    // book's own are not — `isOwn` asking the subject table for its label rather than
+    // comparing against GAME_LAYER is the whole reason that works for a book at all.
+    const things = editorRunBook(SHELF, 'dinosaur-age', edition, { tab: 'things', type: 'basic:origin', steps: [], pinnedBy: [] })
+    assert.equal(things.addLabel, '+ Add Origin', 'the pane\'s Add button is the merged sheet\'s own, in a book exactly as in a game')
+    assert.equal(things.paint.cards, 6, 'the six dinosaurs this book puts on Basic\'s Origin sheet')
+    assert.equal(things.paint.locked, 0, 'every one of them is this book\'s own, so none is locked — `isOwn` is asking the subject table for its layer label')
+    const rows = editorRunBook(SHELF, 'dinosaur-age', edition, { tab: 'rows', steps: [], pinnedBy: [] })
+    assert.equal(rows.paint.cards, 5, 'the Rows tab draws the page card plus this book\'s four proposed rows')
+    const borrowed = editorRunBook(SHELF, 'dinosaur-age', edition, { tab: 'types', steps: [], pinnedBy: [] })
+    assert.equal(borrowed.paint.cards, 7, 'the Types tab draws the seven sheets Basic defines')
+    assert.equal(borrowed.paint.locked, 7, 'and EVERY one is locked — Dinosaur Age defines no sheet of its own, it only adds fields to Basic\'s')
+    // the Books tab asks for the shelf rather than guessing at it
+    const books = editorRunBook(SHELF, 'dinosaur-age', edition, { tab: 'books', steps: [], pinnedBy: [] })
+    assert.deepEqual(books.paint.actions, [['readShelf']], 'the Books tab asks the server what else is on the shelf, once')
+  }
+  assert.equal(treeHash(SHELF), before, `${paints} paints of a book and the scratch shelf is byte-identical — the editor wrote nothing at all`)
+  ok(`I4 the editor opens a BOOK, through its own paint: the ${paints} paints of Dinosaur Age's two editions — all four tabs × two freeze states × two editions — each say nothing, find no fault, land on the tab the #book/<name>/<edition>/<tab> address named, and hand back the subject's OWN four drawers byte-identical to the four files on disk; the scratch shelf is byte-identical afterwards, so READING NEVER WRITES holds for a book exactly as I3(a) holds it for a game, frozen edition included (repairBuckets' one permitted write is gated on \`editable\`); and the paint is really a book's — the Rows tab draws its four proposals, the Things pane's Add button is the merged sheet's own with this book's six dinosaurs editable, and all seven cards on the Types tab are borrowed ones drawn read-only, which is \`isOwn\` asking the subject table for its layer label instead of comparing against GAME_LAYER`)
+  // WHAT THIS CHECK DOES NOT REACH, named so the next person does not have to find it twice:
+  skip('I4(absent) a book whose optional data file is not on disk (basic/1, stats/1 ship book.json + types.json only) — this child reads the four files itself, so it does not exercise dinoEdit/loadData.js\'s standIn/bookBody pair. Owed as an I4 that drives loadBookEdition over real HTTP against a started server, which would cover the stand-in AND the freeze census through pinnersOf')
+}
+
+// ── M20 the freeze speaks ONE sentence, in two files (NEW, stage 4) ──
+// server/books.js writes the three sentences of the freeze and every refusal the server sends
+// carries one. dinoEdit/books.js holds a SECOND COPY of all three, and its own comment says
+// why and calls it a debt: the editor needs the same words BEFORE it asks the server (a frozen
+// edition must say why it is read-only the moment it opens, and a delete must say what it
+// would refuse before the author clicks), server/ is not served to the browser, and
+// engine/config — the one place both sides can read — has no door for a shelf sentence yet.
+//
+// ONE SENTENCE PER FAULT IN ONE PLACE is a house rule, and two copies is exactly the state
+// that rots: the server's refusal and the editor's banner drift a word apart and nobody
+// notices, because each half is green on its own. Until the handoff lands (move the three into
+// engine/config beside the shelf's four grammars, which live there for this very reason with
+// oracle N2 pinning them equal, and delete the editor's block), THIS is what holds them
+// together. It pins both halves, two different ways:
+//   the SERVER's by VALUE, over a table of inputs, against the words M13 asserts over HTTP;
+//   the EDITOR's by TEXT, because dinoEdit/books.js imports "/config/…" and no node process
+//   can load it without the dev server's url mapping — so its source is read and compared.
+// Quote style is normalised (the two files differ only in " versus ') and nothing else is.
+{
+  const WANTED = ['andList', 'gamesThat', 'pinVerb', 'frozenEditionSentence', 'pinnedEditionSentence', 'pinnedBookSentence']
+  const sentenceLines = (path) => readFileSync(path, 'utf8').split('\n')
+    .filter(line => WANTED.some(name => line.startsWith(`const ${name} `) || line.startsWith(`const ${name}=`) || line.startsWith(`export const ${name} `) || line.startsWith(`export const ${name}=`)))
+    .map(line => line.replace(/"/g, "'").replace(/\s+/g, ' ').trim())
+  const serverSide = sentenceLines(join(DINO_DIR, 'server', 'books.js'))
+  const editorSide = sentenceLines(join(DINO_DIR, 'dinoEdit', 'books.js'))
+  assert.equal(serverSide.length, WANTED.length, `server/books.js writes all ${WANTED.length} lines, once each`)
+  assert.deepEqual(editorSide, serverSide, 'dinoEdit/books.js\'s copy of the freeze sentences is the server\'s own, word for word — if this fails, the two have drifted and the author reads one wording before the click and another after it')
+  // and the SERVER's half by value, so the words M13 saw over HTTP are the words this file
+  // pins — including the plurals, which are the part a second copy gets wrong first
+  const one  = [{ game: 'dino', name: 'basic', edition: 1 }]
+  const many = [{ game: 'dino', name: 'basic', edition: 1 }, { game: 'space', name: 'basic', edition: 2 }, { game: 'vampire', name: 'basic', edition: 2 }]
+  assert.equal(frozenEditionSentence(one, 2), 'games/dino pins this edition — it is frozen. Cut edition 2 to change it.')
+  assert.equal(frozenEditionSentence(many, 7), 'games/dino, games/space and games/vampire pin this edition — it is frozen. Cut edition 7 to change it.')
+  assert.equal(pinnedEditionSentence(one), 'games/dino pins this edition. Un-pin it first, or delete the whole book.')
+  assert.equal(pinnedEditionSentence(many), 'games/dino, games/space and games/vampire pin this edition. Un-pin it first, or delete the whole book.')
+  assert.equal(pinnedBookSentence(one), 'games/dino pins edition 1 — un-pin it first.')
+  assert.equal(pinnedBookSentence(many), 'games/dino pins edition 1, games/space pins edition 2 and games/vampire pins edition 2 — un-pin them first.')
+  // CHROME SPEAKS TITLES, FAULT PATHS SPEAK FOLDERS (§6): all three name a game by its
+  // FOLDER, because the folder is the thing the author has to go and open
+  assert.ok([frozenEditionSentence(one, 2), pinnedEditionSentence(one), pinnedBookSentence(one)].every(line => line.includes('games/dino')),
+    'a fault path speaks folders — every one of the three names games/<folder>, never a title')
+  ok(`M20 the freeze speaks ONE sentence in two files: server/books.js's ${WANTED.length} lines (the list formatter, the two helpers and the three sentences) are byte-identical to dinoEdit/books.js's copy once quote style is normalised — the editor needs the words before it asks and cannot import them, and that debt is what this check holds together until they move into engine/config; and the server's three are pinned BY VALUE in singular and plural (one game, three games — the half a copy gets wrong first), each naming a game by its FOLDER as §6 requires, which are the same bytes M13 read back over HTTP`)
+}
+
+// ── I5 the home screen's LIBRARY, painted by its own code (NEW, stage 4) ──
+// The Library is where an author meets the shelf, and until stage 4 it was a list that could
+// not be clicked. It now carries the whole lifecycle — Edit, Cut, Rename, Delete, New book —
+// and THE ONE PLACE IN THE EDITOR WHERE THE FREEZE IS A FACT ON SCREEN rather than a refusal
+// after a click. So what it SAYS is the product, and that is what this check reads.
+//
+// It is driven through renderLibrary itself, which is a pure function of two receipts (GET
+// /api/books and GET /api/games) and fetches nothing — only a click does. So one fixture holds
+// a frozen edition, an unpinned one, an unreadable one, a folder the grammar refuses and a
+// book with a namespace problem all at once, which no arrangement of files on disk could.
+{
+  const shelf = {
+    ok: true,
+    books: [
+      { name: 'basic', title: 'Basic', editions: [
+        // edition 1 is pinned by games/dino below; edition 2 is not
+        { edition: 1, title: 'Basic', requires: [], sheets: 7, sectionsAdded: 0, fieldsAdded: 0, things: 0, rows: 0, budget: null, problems: [] },
+        { edition: 2, title: 'Basic', requires: [], sheets: 7, sectionsAdded: 0, fieldsAdded: 0, things: 0, rows: 0, budget: null, problems: [] }
+      ] },
+      { name: 'broken', title: 'Broken', editions: [{ edition: 1, error: 'book.json cannot be read (ENOENT)' }] },
+      { name: 'Bad Name', error: 'lowercase letters, digits and single dashes — rename the folder' },
+      { name: 'sad', title: 'Sad', editions: [{ edition: 1, title: 'Sad', requires: [{ name: 'basic', edition: 1 }],
+        sheets: 0, sectionsAdded: 1, fieldsAdded: 2, things: 3, rows: 4, budget: 10,
+        problems: [{ path: 'types.types[0].id', message: '"x" is not in this book\'s namespace (sad:)' }] }] }
+    ]
+  }
+  const games = [{ name: 'dino', books: ['basic 1'] }]
+  const painted = libraryRun({ shelf, games })
+  assert.deepEqual(painted.warnings, [], 'the Library paints silently')
+  assert.equal(painted.heading, 'Library')
+  assert.deepEqual(painted.cards.map(card => card.title), ['Basic', 'Broken', 'Bad Name', 'Sad'], 'one card per folder, in the listing\'s order — a folder the author made is a folder the author sees')
+  const [basic, broken, badName, sad] = painted.cards
+
+  // ── the FREEZE, as a fact on screen ──
+  // edition 1 is pinned: no Edit, no Delete edition, the border's own sentence, and a door in
+  // (looking at a book a game depends on is the most ordinary thing an author does)
+  assert.deepEqual(basic.rows[0], ['Open read-only → #book/basic/1/rows', 'Cut edition 3 as a copy'],
+    'a PINNED edition offers Open read-only and the cut — and no Edit and no Delete edition at all')
+  assert.deepEqual(basic.frozen, ['games/dino pins this edition — it is frozen. Cut edition 3 to change it.'],
+    'and says WHY, in the border\'s own words, naming the game by its folder (§6) and the number the cut would take')
+  // edition 2 is not pinned: the same book, the other answer
+  assert.deepEqual(basic.rows[1], ['Edit → #book/basic/2/rows', 'Cut edition 3 as a copy', 'Delete edition'],
+    'the very same book one edition along, which nobody pins: Edit, and a Delete edition')
+  // BOTH cuts say edition 3 — one past the HIGHEST folder, which is the number the route
+  // actually makes, so the sentence and the folder can never disagree
+  assert.deepEqual(basic.facts, ['defines ids under basic:', 'edition 1 · requires nothing · 7 sheets', 'edition 2 · requires nothing · 7 sheets'],
+    'the NAMESPACE is on screen — a book\'s hardest rule, and it was nowhere before — above one line per edition')
+  assert.deepEqual(basic.rows[2], ['Rename…', 'Delete book…'], 'and the two whole-book acts, which open a panel rather than a confirm()')
+
+  // ── the broken ones: every folder is shown, with its problem instead of its facts ──
+  assert.deepEqual(broken.facts, ['defines ids under broken:', 'edition 1 · ⚠ book.json cannot be read (ENOENT)'])
+  assert.deepEqual(broken.rows[0], ['Delete edition'], 'an edition that cannot be read offers no Edit and no cut — there is nothing to copy — but may be deleted')
+  assert.deepEqual([badName.facts, badName.rows], [[], []], 'a folder whose NAME the grammar refuses offers nothing at all…')
+  assert.deepEqual(badName.hints, ['lowercase letters, digits and single dashes — rename the folder'], '…and says the one thing to do about it')
+  assert.equal(badName.path, 'books/Bad Name', 'while still naming the folder, so the author can find it')
+  assert.deepEqual(sad.facts, ['defines ids under sad:',
+    'edition 1 · requires Basic 1 · adds 1 section · adds 2 fields · 3 shelf entries · proposes 4 rows, budget 10 · ⚠ 1 problem — types.types[0].id: "x" is not in this book\'s namespace (sad:)'],
+    'an edition that READS but does not validate says everything it brings AND the validator\'s own first sentence — CHROME SPEAKS TITLES, so its requirement is "Basic 1" and not "basic 1"')
+  assert.deepEqual(sad.rows[0], ['Edit → #book/sad/1/rows', 'Cut edition 2 as a copy', 'Delete edition'], 'and it is still editable, which is how it gets fixed')
+
+  // ── New book: the twin of New CYOA, and its picker ──
+  assert.equal(painted.form.heading, 'New book')
+  assert.deepEqual(painted.form.labels.slice(0, 2), [
+    'Title — the folder name is made from it ("Dinosaur Age" → books/dinosaur-age)',
+    'Folder name (optional) — it is also the id namespace: lowercase letters, digits and single dashes'
+  ], 'the form says what the server will do with each answer, including that the folder name IS the namespace')
+  assert.deepEqual(painted.form.offers, ['Basic 2'],
+    'the requires picker offers the LATEST CLEAN edition of each book and nothing else: Basic 2 — not Basic 1, not the unreadable Broken, not the mis-named folder, and not Sad, which reads but does not validate')
+
+  // ── the two empty answers ──
+  const bare = libraryRun({ shelf: { ok: true, books: [] }, games: [] })
+  assert.deepEqual(bare.cards, [])
+  assert.deepEqual(bare.hints, ['No books on the shelf yet — make the first one below.'], 'an empty shelf points at the form instead of showing nothing')
+  assert.equal(bare.form.heading, 'New book', 'and the form is still there — the first book has to be makeable')
+  const unreadable = libraryRun({ shelf: { ok: false, error: 'no answer from the server' }, games: [] })
+  assert.deepEqual(unreadable.cards, [])
+  assert.deepEqual(unreadable.hints, ['Could not read the shelf — no answer from the server'], 'a shelf that cannot be read says so in the receipt\'s own words')
+  assert.equal(unreadable.form, null, 'and offers no New book form — a create whose picker could not be built would be a form that lies')
+  ok(`I5 the home screen's LIBRARY, painted by its own code: ${painted.cards.length} cards from one receipt holding a pinned edition, an unpinned one, an unreadable one, a folder the grammar refuses and a book that reads but does not validate. THE FREEZE IS A FACT ON SCREEN, which is the one thing the editor never said before: a pinned edition offers "Open read-only" and the cut and NOTHING else, with the border's own sentence naming games/dino by its folder and the number the cut will take; the same book one edition along offers Edit and Delete edition. Every card carries the NAMESPACE line ("defines ids under basic:"), a book's hardest rule and nowhere on screen until now. A broken edition offers a delete and no cut, a mis-named folder offers only the sentence that fixes it, and an edition with a namespace problem shows everything it brings plus the validator's own first sentence with its requirement spoken as a TITLE (§6). The New book form says what the server does with each answer, and its picker offers the LATEST CLEAN edition of each book only. An empty shelf points at the form; a shelf that cannot be read says so and offers no form at all`)
+  skip('I5(clicks) the Library\'s buttons — Cut, Delete edition, Rename…, Delete book… and Create all fetch on click, and this child has no server behind it. The routes they call are M13–M21\'s subject, end to end and refusal by refusal; what is owed is the half in between: that the panel\'s PREVIEW (the edition, id and pin counts it shows before Confirm) matches what the route then does')
+}
+
+// ── I6 the SUBJECT TABLE resolves every attachment (NEW, stage 4; spec §2's owed sweep) ──
+// THE SWEEP THE SPEC SAYS IS OWED, and the only thing standing between the editor and a
+// console warning on every paint. V1(e) in the fast half sweeps attachments against
+// FILE_SHEETS and says so out loud: `entry.file` on an attachment is a GAME file name, so all
+// that sweep ever proved is "it resolves FOR A GAME". A book has no rules.json and no themes at
+// all, and resolves an attachment through `SUBJECTS[kind].drawers` instead — a table of ROLES —
+// so the second half of the sweep belongs here, with the table, and it could not live in the
+// fast half because subject.js reads FILE_SHEETS and calls the merge through the absolute
+// "/config/…" urls only the dev server resolves.
+//
+// THE TWO MEANINGS ONE KEYSTROKE APART, which is what this protects (spec §11):
+//   drawers[role] === null  — "this subject has none of that, BY DESIGN". Silent: a book's
+//                             Look card simply does not appear.
+//   drawers[role] undefined — "no subject knows this role". Warn once, by name, FAIL CLOSED.
+// A role an attachment names that NO row answers is the second case happening on every paint,
+// and nothing before this check would have said a word about it.
+{
+  const table = subjectTable()
+  const KINDS = ['game', 'book']
+  assert.deepEqual(Object.keys(table), KINDS, 'the table has a row per kind of subject the page can open, and no "none" row')
+  // THE CAP, said in the spec and worth a check so the next person meets it: 14 columns, and
+  // the 15th is the signal to split into per-concern tables rather than to add a 15th.
+  KINDS.forEach(kind => assert.equal(table[kind].columns.length, 14, `SUBJECTS.${kind} is at the stated cap of 14 columns — the 15th is the signal to split the table, not to widen it`))
+  assert.deepEqual(table.game.columns, table.book.columns, 'and both rows answer for exactly the same columns — a row that skipped one would be a branch somewhere else')
+
+  // THE SWEEP. Every attachment entry on every sheet, for every kind.
+  const attachments = Object.values(SHEETS).flat().filter(entry => entry.type === 'attachment')
+  assert.ok(attachments.length > 0, `there are attachments to sweep (${attachments.length})`)
+  const sheetsOf = { game: FILE_SHEETS, book: BOOK_FILE_SHEETS }
+  let resolved = 0, silent = 0
+  KINDS.forEach(kind => {
+    const { drawers, files } = table[kind]
+    attachments.forEach(entry => {
+      assert.ok(Object.hasOwn(drawers, entry.file), `SUBJECTS.${kind}.drawers has no row for the role "${entry.file}" — cabinetOf would warn once and fail closed on every paint`)
+      const drawer = drawers[entry.file]
+      if (drawer === null) { silent += 1; return }                  // "none of that, by design" — the Look card does not appear
+      assert.ok(files.includes(drawer), `SUBJECTS.${kind}.drawers.${entry.file} names the drawer "${drawer}", which is not one of this subject's own files`)
+      const cabinets = (sheetsOf[kind][drawer] ?? []).filter(cabinet => cabinet.type === 'cabinet' && cabinet.key === entry.cabinet && cabinet.of === entry.of)
+      assert.equal(cabinets.length, 1, `attachment ${entry.file}.${entry.cabinet} (of "${entry.of}") resolves to exactly one cabinet in a ${kind}'s ${drawer}.json`)
+      resolved += 1
+    })
+    // every role a row answers is either null or one of that subject's own files, and every
+    // drawer it names really is on the table the same row declares
+    Object.entries(drawers).forEach(([role, drawer]) => assert.ok(drawer === null || files.includes(drawer),
+      `SUBJECTS.${kind}.drawers.${role} must be null or one of the subject's own files`))
+    files.forEach(file => assert.ok(Object.hasOwn(sheetsOf[kind], file), `SUBJECTS.${kind}.files names "${file}", which its own fileSheets table does not have`))
+  })
+  // the one break this whole mechanism exists for, named rather than implied
+  assert.equal(table.book.drawers.themes, null, 'a BOOK has no themes at all, and `null` says so SILENTLY — groupSchema carries a themes attachment hard-wired to a file a book does not have')
+  assert.equal(table.book.drawers.rules, 'proposals', 'and a book\'s groupRules live in proposals.json — the same key and the same `of` as a game\'s rules.json, measured, which is why the Rules card draws unchanged')
+  assert.equal(table.game.drawers.rules, 'rules')
+
+  // THE REST OF THE TABLE, where a wrong cell is a silent fork rather than a warning
+  assert.deepEqual(table.game.files, FILE_NAMES, 'a game\'s drawers are FILE_NAMES — read from the contract, never typed out')
+  assert.deepEqual(table.book.files, ['book', ...BOOK_FILES], 'and a book\'s are the manifest first, then BOOK_FILES — the order BOOK_FILE_SHEETS is keyed in')
+  assert.deepEqual([table.game.mintsIds, table.book.mintsIds], [false, true], 'a game mints UUIDs and a book mints <book>:<noun>-<n> — the one place the two layers differ in KIND')
+  assert.deepEqual([table.game.keyword, table.book.keyword], ['', 'book'], 'a game is addressed by its own folder name; a book spends its first segment on the literal `book`, which is why RESERVED holds it')
+  assert.deepEqual([table.game.title, table.book.title], ['A Game', 'A Book'], 'CHROME SPEAKS TITLES (§6): a game\'s pageTitle, a book\'s title')
+  // THE FREEZE, from the editor's side: `editable` asked with an empty census, a census naming
+  // a game, and a census that was never taken. NULL MUST READ AS FROZEN — opening an edition
+  // before the answer arrives has to write nothing, which is the only safe direction when the
+  // thing at risk is a folder a game depends on.
+  assert.deepEqual(table.game.editable, [true, true, true], 'a game is always the author\'s to change, whatever any census says')
+  assert.deepEqual(table.book.editable, [true, false, false],
+    'a book edition is editable only when the census says NOBODY pins it — and a census that was never taken (null) reads as FROZEN, so a paint that arrives before the answer writes nothing')
+  ok(`I6 the subject table resolves every attachment (spec §2's owed sweep): over ${KINDS.length} kinds × ${attachments.length} attachment entries, every \`entry.file\` is a ROLE the drawers table answers — ${resolved} resolve to exactly one cabinet with the matching key and \`of\` in a drawer the subject really has, and ${silent} resolve to \`null\`, which is "this subject has none of that, by design" and draws nothing SILENTLY. That is the whole distance between the two meanings one keystroke apart: a role no row answers is \`undefined\`, a warning on every paint, and V1(e) could never have seen it because it sweeps a GAME's file names. Both rows answer for exactly the same 14 columns — the cap the spec states, so the 15th is the signal to split the table — and the cells a wrong value forks silently are pinned too: a game's drawers are FILE_NAMES and a book's the manifest plus BOOK_FILES, a game mints UUIDs and a book <book>:<noun>-<n>, a book's Rules card draws into proposals.json and its Look card does not exist, and \`editable\` says a book edition is the author's ONLY when the freeze census says nobody pins it — a census never taken reads as frozen`)
+}
+
 // ── E10 ignore rules (once) ──
 {
   const lines = readFileSync(join(GIT_ROOT, '.gitignore'), 'utf8').split('\n').map(line => line.trim())
@@ -3837,14 +5126,41 @@ for (const game of games) {
 // ── M9 / M12 scratch only (once, after every server has been stopped) ──
 // Every server above ran over a scratch root, every export went to a scratch
 // folder, and every shelf a tool could write to was a COPY — the hashes taken
-// before the first check say so. M12 is the shelf's half: books/** is authored
-// once and then immutable, so no route, no tool and no test may change a byte.
+// before the first check say so.
+//
+// M12 RE-AIMED (stage 4, §10 step 1). It used to be read as "an edition is frozen",
+// and it never was that: no route, no tool and no test COULD write to a shelf, so
+// byte-identity was free and the check proved nothing about freezing. What it says,
+// and all it ever said, is TEST HYGIENE — NO CHECK IN THIS FILE WRITES THE REAL
+// SHELF. That claim keeps its whole value once the editor can author books, and it
+// is worth keeping: a run that scribbled on books/ would corrupt the owner's data
+// and every T-check's subject at once. The POSITIVE guarantee (a pinned edition is
+// frozen, and the write route refuses it) is a different and narrower promise, and
+// it landed with the first write route, as M13 — a pinned edition refuses a save, a delete of
+// itself and a delete of its book, each naming the pinning game, each leaving every byte.
+//
+// The danger in restating it is that it becomes vacuous: "the shelf did not move"
+// is also true of a run where nothing writes a shelf at all, which is precisely the
+// world this check was born in. So the mechanism is asserted to be IN USE — copies
+// were taken, every server was pointed at one, none of them is the real shelf, and
+// at least one was really written. Had that write gone to books/ instead, the hash
+// below would have moved and this check would be red, which is the property asked of
+// it: it FAILS if a test writes the real shelf, and it fails if nobody writes at all.
 {
   assert.equal(treeHash(join(DINO_DIR, 'games')), realGames, 'games/ is byte-identical to before the run')
   assert.equal(existsSync(realDistDir) ? treeHash(realDistDir) : null, realDist, 'dist/ is byte-identical to before the run')
   ok('M9 the real games/ and dist/ are untouched — every write went to the scratch roots')
-  assert.equal(treeHash(REAL_BOOKS), realBooks, 'books/ is byte-identical to before the run')
-  ok(`M12 the real books/ is untouched: ${listFiles(REAL_BOOKS).length} files, the same sha256s as before the first check — the shelf is read-only`)
+  assert.equal(treeHash(REAL_BOOKS), realBooks, 'no check wrote the real books/ — it is byte-identical to before the run')
+  assert.ok(scratchShelves.length > 0, 'the run took scratch shelves — without them this check would be vacuous')
+  scratchShelves.forEach(dir => {
+    assert.ok(dir.startsWith(WORK + sep), `a scratch shelf lives in the work dir, not at ${dir}`)
+    assert.ok(dir !== REAL_BOOKS && !dir.startsWith(REAL_BOOKS + sep) && !REAL_BOOKS.startsWith(dir + sep), `${dir} is nowhere near the real shelf`)
+  })
+  assert.ok(servedShelves.length > 0, 'the run started servers')
+  servedShelves.forEach(dir => assert.ok(dir.startsWith(WORK + sep), `a server was pointed at ${dir} — every CYOA_BOOKS_DIR is a scratch shelf, never books/`))
+  const writtenShelves = scratchShelves.filter(dir => existsSync(dir) && treeHash(dir) !== realBooks)
+  assert.ok(writtenShelves.length > 0, 'and a scratch shelf was really written — if the writing had gone to books/ the hash above would have moved')
+  ok(`M12 no check writes the real shelf: books/ is ${listFiles(REAL_BOOKS).length} files with the same sha256s as before the first check; ${scratchShelves.length} scratch copies were taken, all ${servedShelves.length} servers were pointed at a shelf inside the work dir and never at books/, and ${writtenShelves.length} of the copies really were written — test hygiene, proven IN USE rather than by nobody trying. An edition being FROZEN is a different and narrower promise and it is M13's`)
 }
 
 const tail = `${skipped.length > 0 ? ` (${skipped.length} skipped: ${skipped.join('; ')})` : ''} (work dir: ${WORK})`

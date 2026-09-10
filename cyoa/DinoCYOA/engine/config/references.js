@@ -291,7 +291,18 @@ const demandProblems = ({ types, things }) => {
 // CHANGED again: and ONE entry that has neither — { path: "content", pointer: "sheet" },
 // the game's own declaration, which belongs to no row and no thing. crossChecks turns
 // all three into { path, message } the same way; only the editor needs the third noun.
-export const danglingReferences = ({ content, types, things }) => {
+// CHANGED once more: `mode` — "game" (a real game on top) or "book" (validateBook, judging
+// one book against the books it requires). ONE question turns on it and it is the row's
+// fourth pointer: `fills` names a section of the sheet THE GAME declares, and a book
+// declares none — it proposes rows and the game decides where their picks land. Asking it
+// in book mode meant every bound proposal came back "fills a section but this game builds
+// no sheet" with no game in sight, so a book could not propose a binding at all, which is
+// exactly what `games/dino`'s four rowOverrides exist to work around. Now the question is
+// asked only where it can be answered: in validateGame, against the game's own sheet,
+// which already happens and does not change. The mode is PASSED, never inferred — a
+// bookless game legitimately carries no `sheet` key (default:"" AND optional:true), so
+// "has it a sheet?" would judge a game to be a book and fail OPEN.
+export const danglingReferences = ({ content, types, things }, mode = "game") => {
   const rowIds   = new Set(rowsIn(content.groups).map(row => row.id))
   const thingIds = new Set(Object.values(things.things).flat().map(thing => thing.id))
   // NEW: the game's declared sheet — the one reference that is not a row's. "" is the
@@ -315,7 +326,10 @@ export const danglingReferences = ({ content, types, things }) => {
     // the same bytes the engine warns with and the editor badges. `sheetType` is
     // undefined when the game declares no sheet, which is exactly the argument
     // checkFills wants for "fills a section but this game builds no sheet".
-    if (!sheetDangles) {
+    // CHANGED: …and only when somebody has DECLARED a sheet to fill — see the mode note
+    // on this function. In book mode there is no declaration to judge against and the
+    // binding travels to whatever game pins the book.
+    if (mode === "game" && !sheetDangles) {
       const fills = checkFills(row, sheetType)
       if (fills) found.push({ row, path, pointer: "fills", what: fills })
     }

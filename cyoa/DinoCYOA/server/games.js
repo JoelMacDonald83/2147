@@ -7,7 +7,7 @@
 import { readdir, readFile, mkdir, writeFile, rm } from "fs/promises"
 import { existsSync } from "fs"
 import { join } from "path"
-import { SCHEMA_VERSION, SHEETS, FILE_SHEETS } from "../engine/config/schema.js"
+import { FILE_SHEETS } from "../engine/config/schema.js"
 import { FILE_NAMES, problemText } from "../engine/config/validate.js"
 // CHANGED: validateSet moved to merge.js (judging a set needs the merge, and
 // merge.js already imports validate.js — the other direction would be a cycle).
@@ -15,75 +15,35 @@ import { FILE_NAMES, problemText } from "../engine/config/validate.js"
 // the facts count what PLAYS, and the seed is checked against the books it pins.
 import { mergeLayers, validateGame } from "../engine/config/merge.js"
 // NEW: the shelf as functions (books.js). It never imports this file back.
-import { readBooks } from "./books.js"
+// CHANGED (stage 4): pinsOf comes with it — the freeze census below reads a game's
+// pins, and books.js already had the one reader of them (the asset search path).
+import { readBooks, pinsOf } from "./books.js"
+// CHANGED (stage 4): the name/title grammar and the seed walk moved to two neutral
+// modules, because a BOOK author needs both and books.js may never import this file.
+// Nothing about either changed — see names.js's and seed.js's headers.
+import { isGameName, slugOf } from "./names.js"
+import { serialize, seedFrom } from "./seed.js"
 // export.mjs runs its CLI only when it is argv[1] and its --verify child only when
 // argv[2] says so — importing it runs nothing (the oracles have imported it since v4)
 import { MANIFEST, TOOL } from "../tools/export.mjs"
 
 // ───────────── names ─────────────
-// A game name is a folder under games/ AND one segment of three URLs
-// (/games/<name>/, /dist/<name>/, /api/games/<name>/…). ONE grammar decides
-// both: lowercase a–z and 0–9, single dashes between runs, 1–40 characters,
-// nothing else. So a name can never be "..", never hold a slash or a "%",
-// never be "Dino" (macOS would find dino/ for it; a Linux host would not).
-export const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-export const NAME_MAX = 40
-// the one word the editor's hash keeps for a screen that is not a game (#home)
-export const RESERVED = ["home"]
-export const isGameName = (name) => typeof name === "string" && name.length <= NAME_MAX && NAME.test(name)
-
-// "Space Pirates!" → "space-pirates". Accents are stripped (é → e), every run
-// of anything that is not a letter or digit becomes one dash, end dashes go.
-export const slugOf = (title) => title.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-
-// what is wrong with a new game's title, as [{ path, message }] — [] means fine
-export const titleProblems = (title) => {
-  if (typeof title !== "string" || title.trim() === "") return [{ path: "title", message: "must be a non-empty string" }]
-  const name = slugOf(title)
-  if (name === "") return [{ path: "title", message: "gives no folder name (it needs a letter or a digit)" }]
-  if (name.length > NAME_MAX) return [{ path: "title", message: `folder name "${name}" is longer than ${NAME_MAX} characters` }]
-  if (RESERVED.includes(name)) return [{ path: "title", message: `"${name}" is a name the editor keeps for itself` }]
-  return []
-}
+// CHANGED (stage 4): MOVED to ./names.js, unchanged, and re-exported from here so
+// every importer that already reads them from this path — oracle N2 pins
+// BOOK_NAME.source === NAME.source from here — keeps reading the same objects. The
+// move is the whole point: these are the SHELF's rules too, and the shelf may not
+// import this file.
+export { NAME, NAME_MAX, RESERVED, isGameName, slugOf, titleProblems } from "./names.js"
 
 // a game exists when its folder holds data/content.json — the same test the
 // export tool makes (readTexts). A name the grammar refuses never reaches join().
 export const gameExists = (gamesDir, name) => isGameName(name) && existsSync(join(gamesDir, name, "data", "content.json"))
 
 // ───────────── the seed: a newborn set, read from the sheets ─────────────
-// dinoEdit/view.js's newborn() applies one rule to one card: walk the sheet,
-// write every entry's default (a FRESH copy), skip the ones whose default is
-// null. This applies the same rule to a whole FILE. FILE_SHEETS names the top
-// of each file: a "form" is one sheet-shaped object, a "cabinet" and "buckets"
-// start empty (they are keyed by ids that do not exist yet), everything else
-// carries its own default (groups: [], types: [], totalBudget: 10). `version`
-// goes first, so a seed file has exactly the key order migrations.js writes and
-// the oracles (B2) pin. The seed can never drift from the contract, because it
-// is READ from the contract — and createGame checks it with validateGame anyway.
-const bornFrom = (sheet) => {
-  const born = {}
-  sheet.forEach(entry => {
-    if (entry.key === undefined || entry.default === null) return
-    born[entry.key] = structuredClone(entry.default)
-  })
-  return born
-}
-const seedFile = (name) => {
-  const file = { version: SCHEMA_VERSION }
-  FILE_SHEETS[name].forEach(entry => {
-    if (entry.type === "form") file[entry.key] = bornFrom(SHEETS[entry.of])
-    else if (entry.type === "cabinet" || entry.type === "buckets") file[entry.key] = {}
-    // CHANGED: the rule bornFrom already had, learnt one level up — an entry whose
-    // default is null is NOT WRITTEN at birth. things.order is the first of them:
-    // "order: null" is not an empty arrangement, it is a broken file the validator
-    // refuses (the key exists, so `optional` does not save it).
-    else if (entry.default === null) return
-    else if (entry.default !== undefined) file[entry.key] = structuredClone(entry.default)
-    else throw new Error(`No seed for ${name}.${entry.key}: sheet type "${entry.type}" has no default`)   // loud: the sheet grew a shape this walk does not know
-  })
-  return file
-}
+// CHANGED (stage 4): bornFrom and the walk itself MOVED to ./seed.js so a book can be
+// seeded by the same walk (books.js may not import this file). Nothing about the walk
+// changed; `seedFile` is now the one line that says WHICH table a GAME is born from.
+const seedFile = (name) => seedFrom(FILE_SHEETS, name)
 // CHANGED: a newborn may be born ON BOOKS. `pins` lands in content.books (whose
 // own default is [], so a book-less newborn is exactly what v4's was), and the
 // key keeps the place seedFile gave it — assigning to a key that is already there
@@ -97,7 +57,6 @@ export const seedSet = (title, pins = []) => {
 }
 
 // ───────────── listing ─────────────
-const serialize = (obj) => JSON.stringify(obj, null, 2) + "\n"   // the server's on-disk format
 const countRows = (rows) => rows.reduce((n, row) => n + 1 + countRows(row.children ?? []), 0)   // ?? []: a v1 row has no children
 const readJSON = async (path) => JSON.parse(await readFile(path, "utf8"))
 
@@ -140,13 +99,53 @@ export const gameFacts = async (gamesDir, distDir, booksDir, name) => {
     exported
   }
 }
-export const listGames = async (gamesDir, distDir, booksDir) => {
+// every folder under games/, dotfiles skipped, sorted — the listing AND the census
+// walk the same folders, so a game the home screen shows is a game the freeze counts
+const gameFolders = async (gamesDir) => {
   let entries
   try { entries = await readdir(gamesDir, { withFileTypes: true }) }
   catch (error) { if (error.code === "ENOENT") return []; throw error }   // no games folder yet = no games yet
-  const names = entries.filter(entry => entry.isDirectory() && !entry.name.startsWith(".")).map(entry => entry.name).sort()
-  return Promise.all(names.map(name => gameFacts(gamesDir, distDir, booksDir, name)))
+  return entries.filter(entry => entry.isDirectory() && !entry.name.startsWith(".")).map(entry => entry.name).sort()
 }
+export const listGames = async (gamesDir, distDir, booksDir) =>
+  Promise.all((await gameFolders(gamesDir)).map(name => gameFacts(gamesDir, distDir, booksDir, name)))
+
+// ───────────── the freeze census ─────────────
+// NEW (stage 4): WHO PINS THIS BOOK. Freezing is "frozen once a game pins it", so
+// every book-mutating route asks this before it writes, and the answer is the subject
+// of the sentence it refuses with.
+//
+// IT LIVES HERE, and not in books.js, for one hard reason and one soft one. The hard
+// one: books.js may never import this file (this file imports books.js — see the
+// header), and the question reads every game's content.json. The soft one: this file
+// already reads every game's pins to draw the home cards, so the census is the walk
+// listGames does, asked a different question. The shelf half of every refusal is the
+// caller's — books.js writes the sentences, because "frozen", "edition" and "cut" are
+// the shelf's words; what comes back from here is only the FACTS.
+//
+// A pin is reported EXACTLY as the game wrote it, junk included. Judging it here would
+// be a second opinion on a shape validateFile already has a sentence for, and it would
+// fail OPEN: a game pinning `{ name: "basic", edition: "1" }` is a broken game, but it
+// is still a game that names this book, and delete must still refuse.
+const everyPin = async (gamesDir) => {
+  const rows = []
+  for (const game of await gameFolders(gamesDir))
+    for (const pin of await pinsOf(gamesDir, game))
+      if (pin !== null && typeof pin === "object") rows.push({ game, name: pin.name, edition: pin.edition })
+  return rows
+}
+
+// the games pinning ONE edition — [{ game, name, edition }], empty means it is free to
+// edit. The edition is compared exactly: a pin whose edition is not the number this
+// folder is named for does not name this edition at all.
+export const pinnedBy = async (gamesDir, name, edition) =>
+  (await everyPin(gamesDir)).filter(pin => pin.name === name && pin.edition === edition)
+
+// the games pinning ANY edition of one book, each with the edition it names — what
+// "delete the whole book" must refuse on, and what its sentence lists. Matched on the
+// NAME alone, so a pin with a mangled edition still counts as a claim on this book.
+export const pinnedByAnyEdition = async (gamesDir, name) =>
+  (await everyPin(gamesDir)).filter(pin => pin.name === name)
 
 // ───────────── creating ─────────────
 // The seed is built and CHECKED before anything is touched (a seed that does not

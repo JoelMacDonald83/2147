@@ -36,6 +36,12 @@ const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v)   // J
 const describe = (v) =>
   v === undefined ? "absent" : v === null ? "null" : Array.isArray(v) ? "an array"
   : typeof v === "object" ? "an object" : typeof v === "string" ? JSON.stringify(v) : String(v)
+// NEW: the shelf's two grammar sentences, written ONCE. isBookName and isEdition judge a
+// PIN (content.books[i], book.requires[i]) and a MANIFEST (book.json's own name and
+// edition) alike, so both readers below — CHECKERS.pins and RULES.book — say the same
+// words from here. A second phrasing for either would be a second contract.
+const notABookName = (name)    => `${JSON.stringify(name)} is not a book name (lowercase letters, digits and single dashes)`
+const notAnEdition = (edition) => `must be a positive integer (found ${describe(edition)})`
 const quoteKey = (key) => `[${JSON.stringify(key)}]`                                            // cabinet/bucket keys: always ["…"]
 const at = (path, key) => /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : path + quoteKey(key)
 const problem = (out, path, message) => { out.push({ path, message }); return false }
@@ -94,11 +100,11 @@ const CHECKERS = {
       const pinPath = `${path}[${i}]`
       if (!expectType(out, pin, pinPath, "object")) return
       if (expectType(out, pin.name, `${pinPath}.name`, "string")) {
-        if (!isBookName(pin.name)) problem(out, `${pinPath}.name`, `${JSON.stringify(pin.name)} is not a book name (lowercase letters, digits and single dashes)`)
+        if (!isBookName(pin.name)) problem(out, `${pinPath}.name`, notABookName(pin.name))                   // CHANGED: the sentence moved up top — RULES.book says it too
         else if (seen.has(pin.name)) problem(out, pinPath, `${JSON.stringify(pin.name)} appears twice — also at ${seen.get(pin.name)}`)
         else seen.set(pin.name, pinPath)
       }
-      if (!isEdition(pin.edition)) problem(out, `${pinPath}.edition`, `must be a positive integer (found ${describe(pin.edition)})`)
+      if (!isEdition(pin.edition)) problem(out, `${pinPath}.edition`, notAnEdition(pin.edition))             // CHANGED: ditto
       Object.keys(pin).forEach(key => { if (key !== "name" && key !== "edition") problem(out, at(pinPath, key), `unexpected key ${JSON.stringify(key)}`) })
     })
   },
@@ -378,8 +384,33 @@ const RULES = {
     else if (field.type === "lines") problem(out, defaultPath, `a lines field cannot carry a default`)
     else if (field.type === "choice" && Array.isArray(field.options) && field.options.length > 0 && !field.options.includes(value))
       problem(out, defaultPath, `default ${JSON.stringify(value)} is not one of ${field.options.join(", ")}`)
+  },
+  // NEW: book.json's own name and edition, by the shelf's own two grammars. bookSchema
+  // can only say "a string" and "a number", so WITHOUT this entry `{ name: "Basic ",
+  // edition: 1.5 }` is a manifest validateBookFile accepts. That was harmless only while
+  // every book arrived as a FOLDER somebody had already made: merge.js's bookRules
+  // answers `must be "basic" — the folder's name` and server/books.js refuses a folder
+  // that fails isBookName, so the folder was the truth and the manifest merely had to
+  // agree with it. A book written by a MACHINE is judged BEFORE its folder exists, so the
+  // grammar has to be askable of the manifest alone — and asking it here means the editor,
+  // the create route and a hand-written book are all judged by one sentence in one place.
+  // Both halves wait for the shape walk to be satisfied, so a name that is not a string is
+  // ONE sentence ("must be a string"), never two.
+  book: (manifest, path, out) => {
+    if (typeof manifest.name === "string" && !isBookName(manifest.name)) problem(out, `${path}.name`, notABookName(manifest.name))
+    if (isFiniteNumber(manifest.edition) && !isEdition(manifest.edition)) problem(out, `${path}.edition`, notAnEdition(manifest.edition))
   }
 }
+
+// NEW: which sheet IS this file top? A file top that is a registered sheet gets that
+// sheet's RULES too — the same line checkElement runs, for the same reason: the few
+// sentences a sheet cannot say about itself. book.json is the only file like that, and it
+// is the only object in the system that is both a file TOP and a SHEET
+// (BOOK_FILE_SHEETS.book IS SHEETS.book — one object, asserted by identity).
+// Asked by IDENTITY and not by the file's NAME: a file name is a filename and the RULES
+// table is keyed by sheet name, and conflating the two would be a second contract living
+// on a coincidence — `types` the file and `type` the sheet are one letter apart.
+const sheetNameOf = (sheet) => Object.keys(SHEETS).find(name => SHEETS[name] === sheet)
 
 // one file top: the version gate first (an old file has dozens of consequent
 // shape problems; the version line is the one that matters), then the walk.
@@ -390,6 +421,7 @@ const checkFile = (sheet, name, file, gate) => {
   if (!expectType(out, file, name, "object")) return out
   if (gate && file.version !== SCHEMA_VERSION) return [{ path: `${name}.version`, message: `must be ${SCHEMA_VERSION} (found ${describe(file.version)}) — ${gate}` }]
   checkSheet(sheet, file, name, out, { ids: {} }, gate ? ["version"] : [])
+  RULES[sheetNameOf(sheet)]?.(file, name, out)                                   // NEW: a file top that is a sheet is judged by its RULES too (book.json)
   return out
 }
 
@@ -410,8 +442,11 @@ export const validateBookFile = (name, file) => {
 
 // the reference half: exactly references.js's audit, attached to the pointer that dangles
 // (a row's three pointers, and now a thing's placements — the same walk carries both)
-export const crossChecks = (set) =>
-  danglingReferences(set).map(({ path, pointer, what }) => ({ path: `${path}.${pointer}`, message: what }))
+// CHANGED: `mode` is carried straight through to the audit — "game" or "book", the same
+// two words mergeLayers already has. The audit's own note says what turns on it (a row's
+// `fills`); this line only refuses to invent a second name for it.
+export const crossChecks = (set, mode = "game") =>
+  danglingReferences(set, mode).map(({ path, pointer, what }) => ({ path: `${path}.${pointer}`, message: what }))
 
 // CHANGED: validateSet used to live here — the five shapes, then crossChecks. It
 // MOVED to merge.js: a set is only whole once its pinned books are merged in (a

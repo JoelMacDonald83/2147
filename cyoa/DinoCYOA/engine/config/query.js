@@ -38,6 +38,20 @@ export const OPERATORS = {
 // not belong to that kind (a hand-edited file, or a field whose kind changed)
 export const operatorOf = (kind, op) => OPERATORS[kind]?.find(operator => operator.value === op)
 
+// NEW: WHICH OF A QUERY'S KEYS HOLD IDS — the exact twin of visibility.js's
+// GATES[kind].names, for the other compound, and it sits here for the same reason that
+// one sits there: a query is ONE object ONE builder owns end to end, so nothing on the
+// sheet says that `type` is a sheet id and `where.field` a field id. Measured: 4 of the
+// 12 id positions a contract-driven walk was blind to were these two, once in `groups[]`
+// and once in `rowOverrides[..]` — and the two GATES positions beside them were findable
+// precisely BECAUSE `names` exists. A walker that hand-listed the four instead would be
+// the list that silently rots the day the compound grows a key.
+// The key is written the way it is REACHED: "where.field" is one step down through the
+// condition, and a `where` of null simply has no position there. The value is the kind of
+// id, in the same five words schema.js's MINTS speaks.
+// Readers: engine/config/ids.js (the id walk, hence rename and "save as a book").
+export const QUERY_IDS = { type: "sheet", "where.field": "field" }
+
 // NEW: the JSON type where.value must have for each kind (the border checks it).
 // A lines condition names ONE line, so its value is a string, not an array.
 export const WHERE_VALUE_TYPE = { text: "string", number: "number", lines: "string", choice: "string" }   // CHANGED: + choice

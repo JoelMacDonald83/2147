@@ -1,5 +1,9 @@
-import { SCHEMA_VERSION, BOOK_ID, BOOK_FILES, metaSchema, pageThemeSchema, groupRulesSchema, listSectionsOf, thingKeys } from "./schema.js"
+import { SCHEMA_VERSION, BOOK_ID, BOOK_FILES, BOOK_FILE_SHEETS, metaSchema, pageThemeSchema, groupRulesSchema, listSectionsOf, thingKeys } from "./schema.js"
 import { FILE_NAMES, validateFile, validateBookFile, crossChecks } from "./validate.js"
+// NEW: the one walk over every id position (engine/config/ids.js). bookRules reads its
+// DEFINING half — see the note there. ids.js imports schema/query/visibility/demands and
+// nothing else, so it is a leaf under this file and the graph stays acyclic.
+import { eachId } from "./ids.js"
 
 // The MERGE. A game used to be five files and nothing else; now it is the LAST
 // layer of a stack. Under it sit the books it pins, each a folder on the shelf
@@ -543,26 +547,20 @@ const bookRules = (book) => {
     if (!id.startsWith(space)) fault(path, `${quoted(id)} is not in this book's namespace (${space})`)
     else if (!BOOK_ID.test(id)) fault(path, `${quoted(id)} does not fit the id grammar (<book>:<slug>, lowercase, dots and dashes)`)
   }
-  const definesSection = (section, path) => {
-    defines(section.id, `${path}.id`)
-    const inner = section.kind === "list" ? "placement" : "fields"
-    ;(section[inner] ?? []).forEach((field, k) => defines(field.id, `${path}.${inner}[${k}].id`))
-  }
-  const definesRows = (rows, path) => (rows ?? []).forEach((row, i) => {
-    defines(row.id, `${path}[${i}].id`)
-    definesRows(row.children, `${path}[${i}].children`)
-  })
-  ;(book.types?.types ?? []).forEach((type, i) => {
-    defines(type.id, `types.types[${i}].id`)
-    ;(type.sections ?? []).forEach((section, j) => definesSection(section, `types.types[${i}].sections[${j}]`))
-  })
-  Object.entries(book.types?.sectionsFor ?? {}).forEach(([sheetId, list]) =>
-    (list ?? []).forEach((section, i) => definesSection(section, `${bucketAt("types.sectionsFor", sheetId)}[${i}]`)))
-  Object.entries(book.types?.fieldsFor ?? {}).forEach(([sectionId, list]) =>
-    (list ?? []).forEach((field, i) => defines(field.id, `${bucketAt("types.fieldsFor", sectionId)}[${i}].id`)))
-  Object.entries(book.things?.things ?? {}).forEach(([sheetId, list]) =>
-    (list ?? []).forEach((thing, i) => defines(thing.id, `${bucketAt("things.things", sheetId)}[${i}].id`)))
-  definesRows(book.proposals?.groups, "proposals.groups")
+  // CHANGED: the six hand-aimed walks that used to stand here are ONE walk now — ids.js's,
+  // asked for its DEFINING half. "Where a book defines an id" and "where a rename must
+  // rewrite one" were two lists of the same places, kept in step by hand; the day one grew
+  // a position and the other did not, a book would be judged by a rule a rename ignored (or
+  // the reverse) and nothing would say so. Same paths, same order, same two sentences: the
+  // walk goes file by file in table order (types → things → proposals) and, inside a file,
+  // in sheet order, which is exactly the order these lines used to run in.
+  // `defining` is an element's own `id` and nothing else, which is precisely the half a
+  // book OWNS — a bucket's key, a cabinet's key, a query's type and a gate's thing are all
+  // REFERENCES, and a book may reference anything. The phonebook is empty on purpose:
+  // nothing in the defining half needs a type (only a thing's PLACEMENTS do, and those are
+  // references), so bookRules stays a pure function of one loaded layer.
+  eachId({ book: manifest, types: book.types, things: book.things, proposals: book.proposals },
+         [], (position) => { if (position.defining) defines(position.id, position.path) }, BOOK_FILE_SHEETS)
 
   // Arranging a shelf is a HOUSE rule: which of the merged things come first is
   // the game's taste, and a book that shipped one would overrule every game that
@@ -589,5 +587,14 @@ export const validateBook = (book, shelf) => {
   if (rules.length > 0) return rules
   const required = (book.manifest.requires ?? []).map(pin => shelf?.[pin.name]?.[pin.edition] ?? null)
   const { set, faults } = mergeLayers({ books: [...required, book], game: null })
-  return [...faults, ...crossChecks(set)]
+  // CHANGED: the audit is told which MODE it is running in — "book", the same word
+  // mergeLayers uses two lines up. It changes exactly one question: a proposed row's
+  // `fills`. A book may propose a binding (a section id is global across the merged
+  // library, and it needs no local declaration to be meaningful), so asking it here
+  // against an empty game's absent sheet only ever produced "fills a section but this game
+  // builds no sheet" — a refusal aimed at an author who has no sheet to give it. The
+  // question belongs to validateGame, which asks it against the game's own declaration and
+  // is untouched. Passed, never inferred: `sheet` is default:"" AND optional:true, so a
+  // game that legitimately lacks the key would otherwise be judged a book — failing OPEN.
+  return [...faults, ...crossChecks(set, "book")]
 }

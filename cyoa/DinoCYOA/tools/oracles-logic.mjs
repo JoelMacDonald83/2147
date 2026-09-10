@@ -34,6 +34,9 @@
 //   K4  bad additions (F7–F12)      K9  validators (set / game / book)
 //   K5  pins and requires (F1–F5)  K10 the sheet and the binding cross it (NEW)
 //   K11 demands cross it too (NEW, v7)
+//   K12 orphan cabinet keys (NEW, stage 4) — a groupRules/groupThemes/rowOverrides key naming
+//       no row is a LEFTOVER and not a fault, it changes nothing, and a book's rule about
+//       another book's row is the CASCADE rather than the deferred book-over-book override
 // NEW (v6): the PLAYER'S SHEET — engine/config/sheet.js and kept.js, both pure:
 //   P1  sheet walkers               P6  the kept file is canonical
 //   P2  checkFills, six answers     P7  readKept refusals (F1–F5)
@@ -49,6 +52,13 @@
 //   L24 demandText and firstUnmet   L30 the two demand repairs
 //   L25 the subject IS buildSheet   L31 migration v6 → v7 (a pure stamp)
 //
+// NEW (stage 4): THE ID WALK — engine/config/ids.js, the one place that knows where an id
+// sits, and therefore the one rewriter a rename or a "save as a book" may use:
+//   R1  the positions, hand-authored   R4  the tables are level
+//   R2  textual substitution           R5  ANTI-VACUITY: the proof bites
+//   R3  the walker's border            (R6, the census over the REAL tree, is in oracles.mjs
+//                                       — this half never reads the shelf)
+//
 // CHANGED (v7): L26–L29 drive the REAL engine/state.js. gameConfig.js loads at
 // IMPORT time, once per process, so ONE process holds ONE world — the world those
 // four share is built IN MEMORY and served through a fake `fetch` that is put back
@@ -60,9 +70,14 @@
 // merging the layers under it, so it moved out of validate.js.
 
 import assert from 'node:assert/strict'
-import { FIELD_DEFAULTS, fieldDefault, asOption, sheetOfType, placementSheet, fieldsOfType, listSectionsOf, queryableFields, fieldById, thingKeys, sheetKeys, sheetCoreSchema, SCHEMA_VERSION, BOOK_NAME, isBookName, isEdition, BOOK_ID, FILE_SHEETS, BOOK_FILE_SHEETS, SHEETS, fieldDefSchema, coreThingSchema, metaSchema, pageThemeSchema, totalBudgetSchema, contentSchema, typesSchema } from '../engine/config/schema.js'
+import { FIELD_DEFAULTS, fieldDefault, asOption, sheetOfType, placementSheet, fieldsOfType, listSectionsOf, queryableFields, fieldById, thingKeys, sheetKeys, sheetCoreSchema, SCHEMA_VERSION, BOOK_NAME, isBookName, isEdition, BOOK_ID, FILE_SHEETS, BOOK_FILE_SHEETS, SHEETS, fieldDefSchema, coreThingSchema, metaSchema, pageThemeSchema, totalBudgetSchema, contentSchema, typesSchema, MINTS } from '../engine/config/schema.js'
+// NEW: the same module as a NAMESPACE, for V1(a)'s census. A sweep over three
+// hand-named tables can only say "these three cannot grow an unchecked type"; to
+// say "the CONTRACT cannot", it has to be able to see a sheet the contract exports
+// and nobody registered — which is what book authoring is about to add several of.
+import * as SCHEMA_MODULE from '../engine/config/schema.js'
 import { migrateSet } from '../engine/config/migrations.js'
-import { OPERATORS, operatorOf, WHERE_VALUE_TYPE, WHERE_VALUE_DEFAULT, readAs, checkWhere, matchesWhere, filterThings, valuesOf } from '../engine/config/query.js'
+import { OPERATORS, operatorOf, WHERE_VALUE_TYPE, WHERE_VALUE_DEFAULT, readAs, checkWhere, matchesWhere, filterThings, valuesOf, QUERY_IDS } from '../engine/config/query.js'
 import { GATES, SHOW_WHEN_KINDS, idsBelow, computeVisible, dropHidden, checkShowWhen, deadRows } from '../engine/config/visibility.js'
 import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, forgetDemandField, forgetDemanded, danglingReferences } from '../engine/config/references.js'
 import { validateFile, validateBookFile, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES, checkFieldValue, checkCondition } from '../engine/config/validate.js'
@@ -76,7 +91,11 @@ import { GAME_LAYER, bookLabel, emptyGame, orderBooks, mergeLayers, flattenGame,
 // readers and the two repairs. demands.js is a leaf (schema.js + query.js only), so it
 // runs here, in the half that never reads the shelf.
 import { asDemandField, demandFields, demandFieldById, PLACEMENT_OPERATORS, placementOperatorOf, demandOperators, demandOperatorOf, DEMAND_OPS, meetsDemand, firstUnmet, demandsOf, checkDemand, demandText } from '../engine/config/demands.js'
-import { parseHash, hashFor, uiState, TABS } from '../dinoEdit/uiState.js'
+// NEW (stage 4): the id walk — the sixth sibling of query/visibility/sheet/demands/
+// references. It is PURE (schema, query, visibility, demands and nothing else), so the R
+// family below drives it here; the half that needs the real tree is R6, in oracles.mjs.
+import { eachId, rewriteIds, ID_WALKED_TYPES } from '../engine/config/ids.js'
+import { parseHash, hashFor, hashForSubject, uiState, TABS, subjectAt, NO_SUBJECT, ADDRESS_KEYWORDS } from '../dinoEdit/uiState.js'
 import { NAME, NAME_MAX, RESERVED, isGameName, slugOf, titleProblems, seedSet } from '../server/games.js'
 import { EDITION, isEditionName } from '../server/books.js'
 
@@ -842,6 +861,19 @@ const everyProblem = []
   const everySheet = [...Object.values(SHEETS), ...Object.values(FILE_SHEETS), ...Object.values(BOOK_FILE_SHEETS), coreThingSchema]
   const usedTypes = new Set([...everySheet.flatMap(sheet => sheet.map(entry => entry.type)), ...Object.keys(FIELD_DEFAULTS), 'placements'])
   usedTypes.forEach(type => assert.ok(CHECKED_TYPES.includes(type), `CHECKERS has no checker for sheet type "${type}"`))
+  // CHANGED (stage 4): "anywhere" was a hand-typed list of three tables, which is
+  // only "anywhere" for as long as nobody adds a fourth. Book authoring adds sheets;
+  // a sheet that is exported, drawn by the editor and registered in no table would
+  // slip past the sweep above in silence. So the census: every sheet schema.js
+  // EXPORTS must be reachable from the three tables, entry by entry, or this fails
+  // by the constant's own name. It is the anti-vacuity half — the sweep proves the
+  // types are checked, this proves the sweep saw the whole contract.
+  const isSheet = (value) => Array.isArray(value) && value.length > 0 && value.every(entry => entry !== null && typeof entry === 'object' && typeof entry.type === 'string')
+  const swept = new Set(everySheet.flat())
+  const exportedSheets = Object.entries(SCHEMA_MODULE).filter(([, value]) => isSheet(value))
+  assert.ok(exportedSheets.length >= 14, 'the census found the exported sheets')
+  exportedSheets.forEach(([name, sheet]) => sheet.forEach(entry =>
+    assert.ok(swept.has(entry), `schema.js exports ${name}, whose "${entry.key ?? entry.type}" entry is in no table this sweep reads — register it in SHEETS, FILE_SHEETS or BOOK_FILE_SHEETS`)))
   ;['pins', 'flag', 'fieldDefault', 'idLists', 'placements'].forEach(type => assert.ok(CHECKED_TYPES.includes(type), `the v5 checker "${type}"`))
   assert.ok(['section', 'rowOverride', 'book'].every(name => Object.hasOwn(SHEETS, name)), 'the three new sheets are in the phonebook')
   // (b) the four kind tables are one list
@@ -869,18 +901,37 @@ const everyProblem = []
   assert.equal(BOOK_FILE_SHEETS.types, FILE_SHEETS.types, 'a book writes the same shapes a game does')
   assert.equal(BOOK_FILE_SHEETS.things, FILE_SHEETS.things)
   assert.deepEqual(BOOK_FILE_SHEETS.proposals.map(entry => entry.key), ['totalBudget', 'groups', 'groupRules'])
+  // NEW (stage 4, L1): the THIRD identity, which was true and unsaid. proposals is
+  // spread from totalBudgetSchema, so a book's budget entry IS the game's — the same
+  // object, not a copy. Say it, because the moment the editor can author a book
+  // somebody will want to "give the book's budget its own default", and that edit
+  // would silently rewrite the GAME's contract. A book/game difference belongs in the
+  // subject table, never in the sheets; these three lines are what makes that a rule.
+  assert.equal(BOOK_FILE_SHEETS.proposals[0], FILE_SHEETS.rules[0], 'a book\'s budget entry IS the game\'s — never fork it, parameterise the subject')
   // (d) every `of` resolves
   everySheet.flat().filter(entry => entry.type !== 'choice' && entry.of !== undefined).forEach(entry => assert.ok(Object.hasOwn(SHEETS, entry.of), `SHEETS has no sheet named "${entry.of}"`))
   // (e) attachments and cabinets are the two sides of one drawer. CHANGED (v5):
   // one to one in ONE direction only — content.rowOverrides is a cabinet with no
   // attachment, because an override is drawn beside the row it overrides (§7.7),
   // never as a card on the row's own sheet.
+  // CHANGED (stage 4): the SUBJECT is named out loud. `entry.file` on an attachment
+  // is a GAME file name and this sweep only ever asked FILE_SHEETS, so it read as
+  // "an attachment always resolves" when all it ever said was "it resolves for a
+  // game". A book's rules live in proposals.json and it has no themes at all, so a
+  // book resolves an attachment through a DRAWERS table rather than by file name —
+  // sweeping BOOK_FILE_SHEETS here would only prove the break. That second sweep
+  // belongs with the drawers table, and it is I6 in oracles.mjs — it has to live there
+  // because subject.js reads FILE_SHEETS and calls the merge through the absolute
+  // "/config/…" urls only the dev server resolves, so the fast half cannot import it. What
+  // is checked below is therefore the GAME's half, and it says so.
+  // HAND_DRAWN is a table so that a second hand-drawn cabinet is a row and a reason.
+  const HAND_DRAWN = ['content.rowOverrides']    // an override is drawn beside its row (§7.7), never as a card on it
   const attachments = Object.values(SHEETS).flat().filter(entry => entry.type === 'attachment')
   const cabinets = Object.entries(FILE_SHEETS).flatMap(([file, sheet]) => sheet.filter(entry => entry.type === 'cabinet').map(entry => ({ file, ...entry })))
   assert.ok(attachments.length > 0 && cabinets.length > 0)
-  attachments.forEach(a => assert.equal(cabinets.filter(c => c.file === a.file && c.key === a.cabinet && c.of === a.of).length, 1, `attachment ${a.file}.${a.cabinet} has one cabinet`))
+  attachments.forEach(a => assert.equal(cabinets.filter(c => c.file === a.file && c.key === a.cabinet && c.of === a.of).length, 1, `attachment ${a.file}.${a.cabinet} has one cabinet in a GAME's files`))
   const lonely = cabinets.filter(c => !attachments.some(a => a.file === c.file && a.cabinet === c.key && a.of === c.of))
-  assert.deepEqual(lonely.map(c => `${c.file}.${c.key}`), ['content.rowOverrides'], 'exactly one cabinet is drawn by hand')
+  assert.deepEqual(lonely.map(c => `${c.file}.${c.key}`), HAND_DRAWN, 'exactly the hand-drawn cabinets have no card of their own')
   // (f) every author gate but always names its id key; always and never name nothing
   Object.entries(GATES).forEach(([kind, gate]) => {
     if (kind === 'always' || gate.borderOnly) assert.equal(gate.names, undefined, `${kind} names nothing`)
@@ -892,7 +943,7 @@ const everyProblem = []
     set.content.groups[0].children[0].query.where = { field: fieldOfKind[kind], op: OPERATORS[kind][0].value, value: WHERE_VALUE_DEFAULT[kind] }
     assert.deepEqual(validateFile('content', set.content), [], `a newborn ${kind} condition fits the file`)
   })
-  ok(`V1 tables agree: ${usedTypes.size} sheet types all checked (pins, flag, fieldDefault, idLists, placements included); kinds = ${kinds.join('/')} in four tables; ${cabinets.length} cabinets, ${attachments.length} attachments, rowOverrides drawn by hand; gates name their key; newborn conditions fit`)
+  ok(`V1 tables agree: ${usedTypes.size} sheet types all checked (pins, flag, fieldDefault, idLists, placements included) and all ${exportedSheets.length} sheets schema.js exports are reachable from the three tables; a book's types, things and budget entry ARE the game's, by identity; kinds = ${kinds.join('/')} in four tables; ${cabinets.length} cabinets in a GAME's files, ${attachments.length} attachments, ${HAND_DRAWN.length} drawn by hand; gates name their key; newborn conditions fit`)
 }
 
 // ───────────────────────── V2 the healthy set fits ─────────────────────────
@@ -3173,35 +3224,82 @@ const settleRounds = () => {
 }
 
 // ───────────────────────── N1 hash grammar ─────────────────────────
+// CHANGED (stage 4): the expected address is BUILT, never spelled out. Twelve rows
+// used to carry twelve { game, tab, selectedType } literals, so the day the address
+// grows a second KIND of subject — a book, which needs a name AND an edition — all
+// twelve would be rewritten by hand, and a hand rewriting twelve literals to match
+// what the parser now does is how a grammar gets blessed instead of judged. `at()`
+// is the one place the address's SHAPE is written down and SUBJECTS is the one place
+// an open subject is: a new shape is a row here plus one edit inside `at`.
 {
-  // the table of §7: every shape of hash → { game, tab, selectedType }
-  const home = { game: '', tab: 'rows', selectedType: '' }
-  const table = [
-    ['',                 home],
-    ['#',                home],
-    ['#home',            home],
-    ['#home/rows',       home],
-    ['#dino',            { game: 'dino', tab: 'rows',   selectedType: '' }],
-    ['#dino/books',      { game: 'dino', tab: 'books',  selectedType: '' }],     // NEW: the fourth tab
-    ['#dino/types',      { game: 'dino', tab: 'types',  selectedType: '' }],
-    ['#dino/things/abc', { game: 'dino', tab: 'things', selectedType: 'abc' }],
-    ['#dino/rows/abc',   { game: 'dino', tab: 'rows',   selectedType: '' }],     // a type id only means something on Things
-    ['#dino/books/abc',  { game: 'dino', tab: 'books',  selectedType: '' }],
-    ['#dino/nope',       { game: 'dino', tab: 'rows',   selectedType: '' }],     // an unknown tab is Rows
-    ['#dino/things',     { game: 'dino', tab: 'things', selectedType: '' }]
+  // CHANGED (stage 4, integration): the parsed address carries a SUBJECT — kind, name and
+  // edition — because a book needs all three and an edition change must count as a different
+  // subject. This is the one edit inside `at` the previous note promised; every row below is
+  // unchanged, and a book is `atBook`, its twin.
+  const at     = (game, tab = 'rows', selectedType = '') => ({ subject: subjectAt('game', game), tab, selectedType })
+  const atBook = (name, edition, tab = 'rows', selectedType = '') => ({ subject: subjectAt('book', name, edition), tab, selectedType })
+  const HOME = { subject: NO_SUBJECT(), tab: 'rows', selectedType: '' }   // no subject open: the home screen
+  const PARSES = [
+    ['',                 HOME],
+    ['#',                HOME],
+    ['#home',            HOME],
+    ['#home/rows',       HOME],
+    ['#dino',            at('dino')],                     // a bare name is the Rows tab
+    ['#dino/books',      at('dino', 'books')],            // NEW: the fourth tab
+    ['#dino/types',      at('dino', 'types')],
+    ['#dino/things/abc', at('dino', 'things', 'abc')],
+    ['#dino/rows/abc',   at('dino')],                     // a type id only means something on Things
+    ['#dino/books/abc',  at('dino', 'books')],
+    ['#dino/nope',       at('dino')],                     // an unknown tab is Rows
+    ['#dino/things',     at('dino', 'things')],
+    // NEW (stage 4): one EDITION of a book. The literal `book` first segment is what tells
+    // `#basic` (a game called basic) from `#book/basic/1` (the Basic book) — the two folder
+    // grammars are pinned equal by N2, so nothing else could.
+    ['#book/basic/1',            atBook('basic', 1)],                      // a bare book address is Rows
+    ['#book/basic/1/types',      atBook('basic', 1, 'types')],
+    ['#book/basic/1/things/abc', atBook('basic', 1, 'things', 'abc')],
+    ['#book/basic/1/rows/abc',   atBook('basic', 1)],                      // a type id only means something on Things
+    ['#book/basic/1/nope',       atBook('basic', 1)],                      // an unknown tab is Rows
+    ['#book/dinosaur-age/2',     atBook('dinosaur-age', 2)],               // a dashed name survives the split
+    ['#book/basic/0',            atBook('basic', 0)],                      // 0 is no folder's name: it round-trips rather than vanishing
+    ['#book/basic',              atBook('basic', 0)]                       // a truncated address is not a crash
   ]
-  table.forEach(([hash, expected]) => assert.deepEqual(parseHash(hash), expected, `parseHash(${JSON.stringify(hash)})`))
+  PARSES.forEach(([hash, expected]) => assert.deepEqual(parseHash(hash), expected, `parseHash(${JSON.stringify(hash)})`))
   assert.deepEqual(TABS.map(([id]) => id), ['books', 'types', 'things', 'rows'], 'four tabs, Books FIRST — the question before every other one')
-  // round trip: what hashFor writes, parseHash reads back — for every tab
-  uiState.game = 'dino'
-  assert.equal(hashFor('things', 'abc'), '#dino/things/abc')
-  assert.equal(hashFor('types'), '#dino/types')
-  assert.equal(hashFor('books'), '#dino/books')
-  TABS.forEach(([id]) => {
-    const typeId = id === 'things' ? 'abc' : ''
-    assert.deepEqual(parseHash(hashFor(id, typeId)), { game: 'dino', tab: id, selectedType: typeId }, `hashFor(${id}) round-trips`)
+  // round trip: what hashFor writes, parseHash reads back — for every tab of every
+  // OPEN SUBJECT. `open` is how the page is told what it is holding and `writes`
+  // pins the exact bytes hashFor produces (a round trip alone can be symmetrically
+  // wrong); when a subject stops being one string, this is the row that changes.
+  const SUBJECTS = [{
+    what: 'the game dino',
+    open: () => { uiState.subject = subjectAt('game', 'dino') },
+    address: (tab, typeId) => at('dino', tab, typeId),
+    writes: [['things', 'abc', '#dino/things/abc'], ['types', '', '#dino/types'], ['books', '', '#dino/books']]
+  }, {
+    // NEW (stage 4): the second KIND of open subject — exactly the row this table was
+    // restructured to accept. Three segments instead of one, and the same round trip.
+    what: 'edition 2 of the book dinosaur-age',
+    open: () => { uiState.subject = subjectAt('book', 'dinosaur-age', 2) },
+    address: (tab, typeId) => atBook('dinosaur-age', 2, tab, typeId),
+    writes: [['things', 'abc', '#book/dinosaur-age/2/things/abc'], ['types', '', '#book/dinosaur-age/2/types'], ['rows', '', '#book/dinosaur-age/2/rows']]
+  }]
+  SUBJECTS.forEach(subject => {
+    subject.open()
+    subject.writes.forEach(([tab, typeId, hash]) => assert.equal(hashFor(tab, typeId), hash, `${subject.what}: hashFor(${tab})`))
+    TABS.forEach(([id]) => {
+      const typeId = id === 'things' ? 'abc' : ''
+      assert.deepEqual(parseHash(hashFor(id, typeId)), subject.address(id, typeId), `${subject.what}: hashFor(${id}) round-trips`)
+    })
   })
-  ok(`N1 hash grammar: ${table.length} hashes parse as tabled (home, bare game → Rows, unknown tab → Rows, type id only on Things); TABS = books, types, things, rows; hashFor round-trips for ${TABS.length} tabs`)
+  // NEW (stage 4): hashForSubject writes the address of a subject the page is NOT holding —
+  // the home screen's Open, a newborn's landing, every per-book link in the Library. It must
+  // agree with hashFor for the SAME subject, or the Library would send an author somewhere
+  // the tab strip would then disagree with.
+  SUBJECTS.forEach(subject => {
+    subject.open()
+    TABS.forEach(([id]) => assert.equal(hashForSubject(uiState.subject, id), hashFor(id), `${subject.what}: hashForSubject agrees with hashFor on ${id}`))
+  })
+  ok(`N1 hash grammar: ${PARSES.length} hashes parse as tabled (home, bare game → Rows, unknown tab → Rows, type id only on Things); TABS = books, types, things, rows; hashFor writes and parseHash reads back every one of ${TABS.length} tabs, for ${SUBJECTS.length} kinds of open subject, and hashForSubject agrees with hashFor on every one`)
 }
 
 // ───────────────────────── N2 names ─────────────────────────
@@ -3240,6 +3338,27 @@ const settleRounds = () => {
   // NEW: the SHELF's grammars. BOOK_NAME is the game-name grammar, written in
   // schema.js so engine/config never imports server/ — so the two must be equal.
   assert.equal(BOOK_NAME.source, NAME.source, 'a book name is a game name')
+  // CHANGED (stage 4): what that equality COSTS, said out loud. Because a book name
+  // IS a game name, no address whose first segment is a bare name can tell `#basic`
+  // the game from `#basic` the book — the first segment has to be a KEYWORD, and a
+  // keyword is only safe while no author can create a folder that shadows it.
+  // RESERVED is that guarantee and it was only ever implied here: 'home' is refused
+  // above because it happens to sit in RESERVED, not because anything says the
+  // address keeps it. One table, both halves — so a second keyword (`book`, §6) is a
+  // row here and a row in RESERVED, and forgetting the second half fails HERE rather
+  // than the day somebody creates a game called "book" and shadows the route.
+  // CHANGED (stage 4, integration): IMPORTED, not re-declared. This block was written to
+  // pin the editor's keyword list against the server's RESERVED, and a local literal pins
+  // nothing — it agreed with RESERVED and with neither of them, so `book` was added to the
+  // address (uiState ADDRESSES) and to no folder guard, and the deepEqual below passed while
+  // a game called "book" could still be created and shadow every book address. A check that
+  // restates its subject cannot fail with it.
+  ADDRESS_KEYWORDS.forEach(word => {
+    assert.ok(isGameName(word) && isBookName(word), `"${word}" is a legal folder name for BOTH — which is exactly why it must be reserved`)
+    assert.ok(RESERVED.includes(word), `the address keeps "${word}", so no game may be created with that folder name`)
+    assert.equal(titleProblems(word)[0]?.message, `"${word}" is a name the editor keeps for itself`, `and the refusal at "title" says so for "${word}"`)
+  })
+  assert.deepEqual(RESERVED, ADDRESS_KEYWORDS, 'RESERVED is exactly what the address keeps — nothing else has a claim on an author\'s folder name')
   yes.forEach(name => assert.equal(isBookName(name), true, `${JSON.stringify(name)} is a book name`))
   no.forEach(name  => assert.equal(isBookName(name), false, `${JSON.stringify(name)} is not a book name`))
   assert.ok(isBookName('dinosaur-age'))
@@ -3252,7 +3371,7 @@ const settleRounds = () => {
   // BOOK_ID: <book>:<slug>, lowercase, dots and dashes
   ;['basic:character', 'basic:character.identity.concept', 'dinosaur-age:row-lairs', 'stats:based-on'].forEach(id => assert.equal(BOOK_ID.test(id), true, `${id} is a book id`))
   ;['Basic:x', 'basic:', 'basic', 'basic:.x', 'basic:X', 'a8d09a0f-f269-4a04-a173-d694dc36b105', ''].forEach(id => assert.equal(BOOK_ID.test(id), false, `${JSON.stringify(id)} is not a book id`))
-  ok(`N2 names: ${slugs.length} slugs; ${fine.length} fine titles, ${refused.length} refused at "title"; isGameName ${yes.length} yes / ${no.length} no; BOOK_NAME.source === NAME.source; isEdition and isEditionName both sides; BOOK_ID 4 yes / 7 no`)
+  ok(`N2 names: ${slugs.length} slugs; ${fine.length} fine titles, ${refused.length} refused at "title"; isGameName ${yes.length} yes / ${no.length} no; BOOK_NAME.source === NAME.source, so the address needs keywords and RESERVED is exactly the ${ADDRESS_KEYWORDS.length} it keeps; isEdition and isEditionName both sides; BOOK_ID 4 yes / 7 no`)
 }
 
 // ───────────────────────── N3 the seed ─────────────────────────
@@ -3282,6 +3401,32 @@ const settleRounds = () => {
   assert.deepEqual(seed.things.things, {})
   assert.deepEqual(seed.rules.groupRules, {})
   FILE_NAMES.forEach(name => assert.equal(seed[name].version, SCHEMA_VERSION, `${name} stamped ${SCHEMA_VERSION}`))
+  // CHANGED (stage 4): the literals above pin WHAT a newborn holds; this sweep pins
+  // WHERE IT CAME FROM, which is the property the design actually claims — "the seed
+  // can never drift from the contract, because it is READ from the contract". Entry
+  // by entry, off the sheet: an entry's default is written, as its own value and as a
+  // FRESH copy; an entry whose default is null is NOT written at birth; the file
+  // holds the stamp and its sheet's keys in the sheet's order, and nothing else. It
+  // catches `content.sheet` — a key three literals above mention and none of them
+  // checks — and it is the check a SECOND seeder joins by adding a row, instead of
+  // hand-typing a second set of defaults beside these. (A book's row will differ in
+  // one column that has no game counterpart: its manifest is the one file in the
+  // project that must carry NO version key, so `stamped` becomes part of the row.)
+  const SEEDERS = [{ what: 'a game', files: FILE_SHEETS, made: seed, stamped: FILE_NAMES }]
+  SEEDERS.forEach(({ what, files, made, stamped }) => {
+    Object.entries(files).forEach(([name, sheet]) => {
+      sheet.forEach(entry => {
+        const where = `${name}.${entry.key}`
+        if (entry.default === null) { assert.equal(Object.hasOwn(made[name], entry.key), false, `${what}: ${where} has default null, so it is not written at birth`); return }
+        assert.ok(Object.hasOwn(made[name], entry.key), `${what}: ${where} is on the sheet, so the seed writes it`)
+        if (entry.default === undefined) return                 // a form, a cabinet or buckets: born from the sheet it names, or empty
+        assert.deepEqual(made[name][entry.key], entry.default, `${what}: ${where} is the sheet's own default, not a second spelling of it`)
+        if (typeof entry.default === 'object') assert.notEqual(made[name][entry.key], entry.default, `${what}: ${where} is a FRESH copy — a default that leaked its object would tie every newborn together`)
+      })
+      assert.deepEqual(Object.keys(made[name]), [...(stamped.includes(name) ? ['version'] : []), ...sheet.filter(entry => entry.default !== null).map(entry => entry.key)],
+        `${what}: ${name} holds the stamp and its sheet's keys, in the sheet's order, and nothing else`)
+    })
+  })
   assert.doesNotMatch(JSON.stringify(seed), UUID, 'a newborn mints no ids')
   // NEW: a newborn may be born ON BOOKS — the pin lands, and the key keeps its place
   const pinned = seedSet('T', [{ name: 'basic', edition: 1 }])
@@ -3296,7 +3441,534 @@ const settleRounds = () => {
   assert.notEqual(twin.content.books, seed.content.books, 'books is a fresh array per seed')
   assert.notEqual(twin.themes.page, seed.themes.page, 'page is a fresh object per seed')
   assert.notEqual(seedSet('T', [{ name: 'basic', edition: 1 }]).content.books[0], pinned.content.books[0], 'and the pins are cloned, not held')
-  ok(`N3 the seed: fits, migrates to itself, no cross problems; key orders canonical with no \`order\`; meta/page/budget read from the sheets; every file stamped ${SCHEMA_VERSION}; no uuid; a pinned newborn validates against its book; two seeds share no object`)
+  ok(`N3 the seed: fits, migrates to itself, no cross problems; key orders canonical with no \`order\`; meta/page/budget read from the sheets, and every entry of all ${Object.keys(FILE_SHEETS).length} file sheets swept for it — its own default, a fresh copy, in the sheet's order, \`default: null\` unwritten; every file stamped ${SCHEMA_VERSION}; no uuid; a pinned newborn validates against its book; two seeds share no object`)
+}
+
+// ───────── K12 orphan cabinet keys (NEW, stage 4; gap 8) ─────────
+// THE QUESTION, asked honestly: a `groupRules` / `groupThemes` / `rowOverrides` key that names
+// no row draws a fault from NOBODY. The cabinet checker never validates the key (validate.js
+// only walks the SLOT against its sheet) and the merge simply does not find a row. Is that a
+// bug worth a check, for games and for books alike?
+//
+// THE ANSWER, and the reason it is not "make it a fault": this codebase has already decided
+// the class. V4 above lists five editor-legitimate LEFTOVER states and asserts every one of
+// them validates to [] — a things bucket keyed by a sheet the game no longer pins is KEPT, not
+// refused (merge F12 exempts the game layer for exactly this reason), because an author who
+// un-pins a book mid-edit must not lose what they wrote. An orphan cabinet slot is the same
+// shape of thing: a min/max or a background whose row went away. Refusing it would mean a
+// save the author cannot complete without being told to throw work away, which is the
+// opposite of what the leftover rule exists for.
+//
+// So what IS owed is the other half, and it is what this check is: THE SILENCE MUST BE
+// HARMLESS AND IT MUST BE PINNED. Harmless = the orphan reaches the merged set and changes
+// nothing a reader sees; pinned = if someone makes it do something, or makes it a fault,
+// this check says so rather than the behaviour changing quietly. And the author is not left
+// alone with it: the editor SURFACES the one they can act on — renderOrphanOverrides
+// (dinoEdit/view.js) paints `rowOverrides["x"] — no pinned book proposes this row` with a
+// Forget button beside it. That is the right place for a leftover: on screen, not at the
+// border. THE HANDOFF this check records: there is no such notice for an orphan groupRules or
+// groupThemes key, in a game or in a book, and a min the author set that silently does nothing
+// is worth the same one line.
+//
+// The third case is the one that LOOKS like an orphan and is not, so it is asked here too: a
+// BOOK's proposals.groupRules keyed by ANOTHER book's row. That is not an override and not a
+// leftover — it is the CASCADE (a book proposes, the game decides), the `proposed` channel
+// names who proposed it, and two books disagreeing is F13 said out loud. Asserted so nobody
+// reads it as the book-over-book override this stage deferred.
+{
+  const orphanGame = () => {
+    const set = seedSet('Orphans')
+    set.content.groups = [{ id: 'r-1', label: 'One', query: { type: '', where: null }, fills: '', showWhen: { kind: 'always' }, children: [] }]
+    set.rules.groupRules = { 'r-1': { min: 1 }, 'gone': { min: 2, max: 4 } }
+    set.themes.groupThemes = { 'nobody': { background: '#eee' } }
+    set.content.rowOverrides = { 'vanished': { label: 'A row that is not there' } }
+    return set
+  }
+  const tidy = (set) => {                                    // the same set with the three orphans taken out by hand
+    const clean = structuredClone(set)
+    delete clean.rules.groupRules.gone
+    clean.themes.groupThemes = {}
+    clean.content.rowOverrides = {}
+    return clean
+  }
+  // (a) A GAME: not a fault, by the same rule V4 states for every other leftover
+  const set = orphanGame()
+  assert.deepEqual(validateGame({ own: set, books: [] }), [], 'an orphan groupRules / groupThemes / rowOverrides key is not a fault — it is a LEFTOVER, the class V4 already decided')
+  assert.deepEqual(validateSet(set), [], 'and validateSet says the same')
+  // (b) …and HARMLESS: the merged rows, their rules and their themes are what the tidy set
+  // gives, to the byte. This is the half that turns red if an orphan ever starts doing
+  // something — which is the only way the silence could hurt.
+  const withOrphans = mergeLayers({ books: [], game: set })
+  const without     = mergeLayers({ books: [], game: tidy(set) })
+  assert.deepEqual(withOrphans.set.content.groups, without.set.content.groups, 'the merged rows are identical — no orphan reached a row')
+  assert.deepEqual(withOrphans.faults, [], 'and the merge says nothing about them either')
+  assert.deepEqual(withOrphans.set.rules.groupRules['r-1'], without.set.rules.groupRules['r-1'], 'the row that IS there kept its own rule')
+  assert.deepEqual(Object.keys(withOrphans.set.rules.groupRules).filter(id => id !== 'gone'), Object.keys(without.set.rules.groupRules),
+    'the orphan slot travels through the merge and sits beside the real one, changing nothing')
+  // (c) A BOOK: the same silence, over proposals.groupRules, which is the cabinet a book has
+  const bookLayer = (name, requires, proposals) => {
+    const manifest = { name, title: name, edition: 1, requires }
+    return { pin: { name, edition: 1 }, manifest, types: null, things: null, proposals: { version: SCHEMA_VERSION, ...proposals } }
+  }
+  const row = (id) => ({ id, label: id, query: { type: '', where: null }, fills: '', showWhen: { kind: 'always' }, children: [] })
+  const orphanBook = bookLayer('bk', [], { groups: [row('bk:row-one')], groupRules: { 'bk:row-one': { min: 1 }, 'bk:gone': { min: 2 } } })
+  assert.deepEqual(validateBook(orphanBook, { bk: { 1: orphanBook } }), [],
+    'a BOOK\'s orphan proposals.groupRules key is not a fault either — the same leftover, in the cabinet a book has')
+  const bookMerge = mergeLayers({ books: [orphanBook], game: null })
+  assert.deepEqual(bookMerge.faults, [])
+  assert.deepEqual(bookMerge.set.content.groups.map(merged => merged.id), ['bk:row-one'], 'and it proposes exactly the one row it wrote')
+  // (d) THE LOOK-ALIKE: a book's rule about ANOTHER book's row is the cascade, not an override
+  const base = bookLayer('base', [], { groups: [row('base:row-x')], groupRules: {} })
+  const over = bookLayer('over', [{ name: 'base', edition: 1 }], { groups: [], groupRules: { 'base:row-x': { min: 9, max: 9 } } })
+  const shelf = { base: { 1: base }, over: { 1: over } }
+  assert.deepEqual(validateBook(over, shelf), [], 'a book MAY propose a rule for a row another book proposed — that is the cascade')
+  const cascaded = mergeLayers({ books: [base, over], game: null })
+  assert.deepEqual(cascaded.faults, [])
+  assert.deepEqual(cascaded.set.rules.groupRules['base:row-x'], { min: 9, max: 9 }, 'the proposal lands…')
+  assert.equal(cascaded.proposed.rules['base:row-x'].min.from, 'over 1', '…and the `proposed` channel NAMES who proposed it, so it is never silent')
+  // and two books disagreeing is F13 said out loud, not a quiet win for one of them
+  const alsoBase = bookLayer('base', [], { groups: [row('base:row-x')], groupRules: { 'base:row-x': { min: 1 } } })
+  const bothMerge = mergeLayers({ books: [alsoBase, over], game: null })
+  assert.deepEqual(bothMerge.faults.map(problemText),
+    ['rules.groupRules["base:row-x"].min: base 1 and over 1 propose different values for min of row base:row-x — this game must set its own (using 1, the first)'],
+    'two books proposing different values for one row\'s min is F13, by name, with the winner said out loud')
+  assert.deepEqual(bothMerge.set.rules.groupRules['base:row-x'], { min: 1, max: 9 }, 'and the cascade resolves per KEY: base\'s min, over\'s max')
+  ok('K12 orphan cabinet keys: a groupRules / groupThemes / rowOverrides key naming no row is NOT a fault, in a GAME or in a BOOK — it is the LEFTOVER class V4 already decided, because refusing it would tell an author to throw work away to finish a save; and it is HARMLESS, pinned by the merged rows, rules, themes and faults being identical to the same set with the three orphans removed by hand, so an orphan that ever started doing something would turn this red. The look-alike is asked too: a book proposing a rule for a row ANOTHER book proposed is the CASCADE and not the deferred book-over-book override — it lands, `proposed` names who proposed it, and two books disagreeing is F13 by name resolving per key. The handoff: the editor surfaces an orphan rowOverride with a Forget button (renderOrphanOverrides) and has no such notice for an orphan groupRules or groupThemes key')
+}
+
+// ───────── R1–R5 the id walk: engine/config/ids.js (NEW, stage 4) ─────────
+// THE FAMILY IS SPLIT ACROSS THE TWO FILES, and the split is this file's own promise:
+// the logic half NEVER READS THE SHELF, so the three sources of the rename proof cannot
+// all live here. R1–R5 are the two that need no disk — HAND-AUTHORED fixtures and
+// TEXTUAL SUBSTITUTION over them — plus the anti-vacuity pass that proves they bite.
+// R6, in oracles.mjs, is the SHAPE CENSUS over the real books/** and games/**: the same
+// three sources asked of 300-odd real ids, where the T-checks' subject already lives.
+//
+// WHY THE SHAPE OF THIS PROOF IS NOT THE OBVIOUS ONE. All three design judges found every
+// proposed rename proof VACUOUS for one reason: each generated its fixture FROM THE TABLES
+// THE WALKER READS, so a wrong marker passed with the fixture agreeing. Nothing below is
+// derived from MINTS, QUERY_IDS, GATES or any sheet:
+//   (b) the fixtures and their position lists are TYPED OUT, in walk order, including the
+//       six shapes no file on disk holds (a gate on a thing, a section added to another
+//       book's sheet, an override's query and its gate, a demand's field and its thing
+//       value) and five LOOK-ALIKES that must NOT be visited;
+//   (c) the substitution renames every id a hand-written JSON census found — two regexes
+//       typed out here — and asserts the old string survives nowhere in the serialised
+//       bytes. That catches a missed position WITHOUT knowing where positions are, which
+//       is exactly the property a table-driven proof cannot have.
+// The residual weakness, said out loud because it is real: a string neither regex calls an
+// id is invisible to the census AND to the substitution. (b)'s hand-typed lists are what
+// covers that, and R6 asserts the census's grammar IS schema.js's BOOK_ID — after the
+// census has done its work, so it never read it.
+{
+  // ── the census: no contract, two regexes, typed out here ──
+  // A namespaced id is `<book>:<slug>`; a game mints uuids; and the v3→v4 migration minted
+  // a section id as `<the type's uuid>.identity`, which is why the second carries a dotted
+  // tail. That third shape was FOUND BY THIS CENSUS over the real tree (R6) — without the
+  // tail, eight vampire uuids survived the substitution, not because the walk missed a
+  // position but because the census had not called that string an id. Exactly the failure
+  // mode a hand-listed proof cannot have, working as intended.
+  const NAMESPACED = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:[.-][a-z0-9]+)*$/
+  const UUID_ID    = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]+(?:[.-][a-z0-9]+)*)*$/
+  const idShaped   = (value) => typeof value === 'string' && (NAMESPACED.test(value) || UUID_ID.test(value))
+  // one spelling for a path, so the two halves are comparable: validate.js's own `at` rule,
+  // retyped rather than imported
+  const at   = (path, key) => /^[A-Za-z_$][\w$]*$/.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`
+  const norm = (path) => path.replace(/\["([A-Za-z_$][\w$]*)"\]/g, '.$1')
+  // every id-shaped string in a parsed file, as VALUES and as object KEYS, with its path.
+  // It knows nothing about sheets, entries, files or kinds: it walks JSON.
+  const censusOf = (root, value) => {
+    const found = []
+    const walk = (path, node) => {
+      if (typeof node === 'string') { if (idShaped(node)) found.push({ path: norm(path), id: node }); return }
+      if (Array.isArray(node)) { node.forEach((item, i) => walk(`${path}[${i}]`, item)); return }
+      if (node !== null && typeof node === 'object') Object.entries(node).forEach(([key, item]) => {
+        const here = at(path, key)
+        if (idShaped(key)) found.push({ path: norm(here), id: key })          // the KEY itself is an id
+        walk(here, item)
+      })
+    }
+    walk(root, value)
+    return found
+  }
+  const idsIn = (files) => [...new Set(Object.entries(files)
+    .flatMap(([name, file]) => file === null || file === undefined ? [] : censusOf(name, file)).map(entry => entry.id))].sort()
+
+  // ── the fixtures, typed out ──
+  // a real game's own rows are uuids; the fixture uses two, so the substitution renames
+  // them like every other id rather than skipping a shape it cannot recognise
+  const R1 = '11111111-2222-4333-8444-555555555555'
+  const R2 = '66666666-7777-4888-8999-aaaaaaaaaaaa'
+  const fixtureGame = () => ({
+    content: {
+      version: SCHEMA_VERSION,
+      meta: { pageTitle: 'P', heroTitle: 'H' },
+      books: [{ name: 'bk', edition: 1 }],
+      sheet: 'bk:hero',
+      groups: [
+        { id: R1, label: 'One',
+          query: { type: 'bk:hero', where: { field: 'bk:hero.stats.might', op: 'gt', value: 1 } },
+          fills: 'bk:hero.gear',
+          showWhen: { kind: 'thingPicked', thing: 'bk:sword' },                // † no game on disk gates on a thing
+          children: [
+            { id: R2, label: 'Two', query: { type: 'bk:item', where: null }, fills: '',
+              showWhen: { kind: 'anyInRow', row: R1 }, children: [] }
+          ] }
+      ],
+      rowOverrides: {
+        'bk:row-proposed': {                                                   // † no override on disk carries a query or a gate
+          label: 'L',
+          query: { type: 'bk:item', where: { field: 'bk:item.kit.tag', op: 'is', value: 'plain' } },
+          fills: 'bk:hero.gear',
+          showWhen: { kind: 'thingPicked', thing: 'bk:shield' }
+        }
+      }
+    },
+    rules: { version: SCHEMA_VERSION, totalBudget: 10, groupRules: { [R1]: { min: 1 } } },
+    themes: { version: SCHEMA_VERSION, page: { bodyBackground: '#fff', fontFamily: 'x', heroImage: '', statusBackground: '#000', statusColor: '#fff' },
+              groupThemes: { [R2]: { background: '#eee' } } },
+    types: {
+      version: SCHEMA_VERSION,
+      types: [
+        { id: 'bk:hero', label: 'Hero', sections: [
+          { id: 'bk:hero.stats', key: 'stats', caption: 'Stats', kind: 'fields',
+            fields: [{ id: 'bk:hero.stats.might', key: 'might', caption: 'Might', type: 'number' }] },
+          { id: 'bk:hero.gear', key: 'gear', caption: 'Gear', kind: 'list', of: 'bk:item',
+            placement: [{ id: 'bk:hero.gear.quantity', key: 'quantity', caption: 'Qty', type: 'number', default: 1 }] }
+        ] },
+        { id: 'bk:item', label: 'Item', sections: [
+          { id: 'bk:item.kit', key: 'kit', caption: 'Kit', kind: 'fields',
+            fields: [{ id: 'bk:item.kit.tag', key: 'tag', caption: 'Tag', type: 'text' }] }
+        ] }
+      ],
+      sectionsFor: { 'bk:item': [                                              // † no book on disk adds a section
+        { id: 'bk:item.extra', key: 'extra', caption: 'Extra', kind: 'fields',
+          fields: [{ id: 'bk:item.extra.note', key: 'note', caption: 'Note', type: 'text' }] }
+      ] },
+      fieldsFor: { 'bk:hero.stats': [{ id: 'bk:hero.stats.grace', key: 'grace', caption: 'Grace', type: 'number' }] }
+    },
+    things: {
+      version: SCHEMA_VERSION,
+      things: {
+        'bk:hero': [
+          { id: 'bk:champ', name: 'Champ', cost: 1, imageURL: 'champ.png', might: 2, grace: 3,
+            gear: [{ thing: 'bk:sword', quantity: 1 }],
+            demands: [                                                         // † no file on disk holds one
+              { field: 'bk:hero.gear', op: 'holds', value: 'bk:shield' },      //   a LIST slot: the value IS a thing id
+              { field: 'bk:hero.gear', op: 'any', value: '' },                 //   valueless: the value is NOT a position
+              { field: 'bk:item.kit.tag', op: 'is', value: 'plain' }           //   a FIELD slot: the value is author text
+            ] }
+        ],
+        'bk:item': [
+          { id: 'bk:sword', name: 'Sword', cost: 1, imageURL: '', tag: 'sharp' },
+          { id: 'bk:shield', name: 'Shield', cost: 2, imageURL: '', tag: 'round' }
+        ]
+      },
+      order: { 'bk:item': ['bk:shield', 'bk:sword'] }
+    }
+  })
+
+  // HAND-TYPED, in the order the walk must produce them. [path, defining].
+  const fixtureGamePositions = [
+    ['content.sheet', false],
+    ['content.groups[0].id', true],
+    ['content.groups[0].query.type', false],
+    ['content.groups[0].query.where.field', false],
+    ['content.groups[0].fills', false],
+    ['content.groups[0].showWhen.thing', false],
+    ['content.groups[0].children[0].id', true],
+    ['content.groups[0].children[0].query.type', false],
+    ['content.groups[0].children[0].fills', false],
+    ['content.groups[0].children[0].showWhen.row', false],
+    ['content.rowOverrides["bk:row-proposed"]', false],
+    ['content.rowOverrides["bk:row-proposed"].query.type', false],
+    ['content.rowOverrides["bk:row-proposed"].query.where.field', false],
+    ['content.rowOverrides["bk:row-proposed"].fills', false],
+    ['content.rowOverrides["bk:row-proposed"].showWhen.thing', false],
+    [`rules.groupRules["${R1}"]`, false],
+    [`themes.groupThemes["${R2}"]`, false],
+    ['types.types[0].id', true],
+    ['types.types[0].sections[0].id', true],
+    ['types.types[0].sections[0].fields[0].id', true],
+    ['types.types[0].sections[1].id', true],
+    ['types.types[0].sections[1].of', false],
+    ['types.types[0].sections[1].placement[0].id', true],
+    ['types.types[1].id', true],
+    ['types.types[1].sections[0].id', true],
+    ['types.types[1].sections[0].fields[0].id', true],
+    ['types.sectionsFor["bk:item"]', false],
+    ['types.sectionsFor["bk:item"][0].id', true],
+    ['types.sectionsFor["bk:item"][0].fields[0].id', true],
+    ['types.fieldsFor["bk:hero.stats"]', false],
+    ['types.fieldsFor["bk:hero.stats"][0].id', true],
+    ['things.things["bk:hero"]', false],
+    ['things.things["bk:hero"][0].id', true],
+    ['things.things["bk:hero"][0].demands[0].field', false],
+    ['things.things["bk:hero"][0].demands[0].value', false],
+    ['things.things["bk:hero"][0].demands[1].field', false],
+    ['things.things["bk:hero"][0].demands[2].field', false],
+    ['things.things["bk:hero"][0].gear[0].thing', false],
+    ['things.things["bk:item"]', false],
+    ['things.things["bk:item"][0].id', true],
+    ['things.things["bk:item"][1].id', true],
+    ['things.order["bk:item"]', false],
+    ['things.order["bk:item"][0]', false],
+    ['things.order["bk:item"][1]', false]
+  ]
+
+  const fixtureBook = () => ({
+    book: { name: 'bk', title: 'Book', edition: 1, requires: [] },
+    types: fixtureGame().types,
+    things: fixtureGame().things,
+    proposals: {
+      version: SCHEMA_VERSION,
+      totalBudget: 10,
+      groups: [
+        { id: 'bk:row-one', label: 'One',
+          query: { type: 'bk:hero', where: { field: 'bk:hero.stats.might', op: 'gt', value: 1 } },
+          fills: 'bk:hero.gear',                                               // §7(a): a book MAY propose a binding
+          showWhen: { kind: 'thingPicked', thing: 'bk:sword' },
+          children: [{ id: 'bk:row-two', label: 'Two', query: { type: 'bk:item', where: null },
+                       showWhen: { kind: 'anyInRow', row: 'bk:row-one' }, children: [] }] }
+      ],
+      groupRules: { 'bk:row-one': { min: 1 } }
+    }
+  })
+
+  // HAND-TYPED again, for the BOOK table. Note what differs and why: no content, no themes,
+  // `proposals` where `content` was — and `things.order` still REACHABLE, because
+  // BOOK_FILE_SHEETS.things IS FILE_SHEETS.things (L1, one object), even though bookRules
+  // forbids a book shipping one.
+  const fixtureBookPositions = [
+    ['types.types[0].id', true],
+    ['types.types[0].sections[0].id', true],
+    ['types.types[0].sections[0].fields[0].id', true],
+    ['types.types[0].sections[1].id', true],
+    ['types.types[0].sections[1].of', false],
+    ['types.types[0].sections[1].placement[0].id', true],
+    ['types.types[1].id', true],
+    ['types.types[1].sections[0].id', true],
+    ['types.types[1].sections[0].fields[0].id', true],
+    ['types.sectionsFor["bk:item"]', false],
+    ['types.sectionsFor["bk:item"][0].id', true],
+    ['types.sectionsFor["bk:item"][0].fields[0].id', true],
+    ['types.fieldsFor["bk:hero.stats"]', false],
+    ['types.fieldsFor["bk:hero.stats"][0].id', true],
+    ['things.things["bk:hero"]', false],
+    ['things.things["bk:hero"][0].id', true],
+    ['things.things["bk:hero"][0].demands[0].field', false],
+    ['things.things["bk:hero"][0].demands[0].value', false],
+    ['things.things["bk:hero"][0].demands[1].field', false],
+    ['things.things["bk:hero"][0].demands[2].field', false],
+    ['things.things["bk:hero"][0].gear[0].thing', false],
+    ['things.things["bk:item"]', false],
+    ['things.things["bk:item"][0].id', true],
+    ['things.things["bk:item"][1].id', true],
+    ['things.order["bk:item"]', false],
+    ['things.order["bk:item"][0]', false],
+    ['things.order["bk:item"][1]', false],
+    ['proposals.groups[0].id', true],
+    ['proposals.groups[0].query.type', false],
+    ['proposals.groups[0].query.where.field', false],
+    ['proposals.groups[0].fills', false],
+    ['proposals.groups[0].showWhen.thing', false],
+    ['proposals.groups[0].children[0].id', true],
+    ['proposals.groups[0].children[0].query.type', false],
+    ['proposals.groups[0].children[0].showWhen.row', false],
+    ['proposals.groupRules["bk:row-one"]', false]
+  ]
+
+  const walkFixture = (files, fileSheets) => {
+    const seen = []
+    eachId(files, files.types.types, (position) => seen.push([norm(position.path), position.defining]), fileSheets)
+    return seen
+  }
+  const serializeJSON = (value) => JSON.stringify(value, null, 2) + '\n'        // the server's one on-disk format
+
+  // ── (b) the hand-authored half, as a function so R5 can run it under sabotage ──
+  const DAGGERED = ['content.groups[0].showWhen.thing', 'types.sectionsFor["bk:item"][0].id',
+                    'content.rowOverrides["bk:row-proposed"].query.type', 'content.rowOverrides["bk:row-proposed"].showWhen.thing',
+                    'things.things["bk:hero"][0].demands[0].field', 'things.things["bk:hero"][0].demands[0].value']
+  // the look-alikes, which is where a walker that GUESSED would be caught
+  const NEVER = ['things.things["bk:hero"][0].demands[1].value',   // a VALUELESS op takes no thing id
+                 'things.things["bk:hero"][0].demands[2].value',   // a FIELD slot's value is author text, not an id
+                 'content.groups[0].query.where.value',            // a filter's value is author text
+                 'content.meta.pageTitle', 'themes.page.fontFamily']
+  const proveHandAuthored = () => {
+    const game = walkFixture(fixtureGame(), FILE_SHEETS)
+    assert.deepEqual(game, fixtureGamePositions, 'the hand-typed GAME positions, in the hand-typed order')
+    const book = walkFixture(fixtureBook(), BOOK_FILE_SHEETS)
+    assert.deepEqual(book, fixtureBookPositions, 'the hand-typed BOOK positions, in the hand-typed order')
+    DAGGERED.forEach(path => assert.ok(game.some(([found]) => found === path), `the fixture exercises ${path}`))
+    NEVER.forEach(path => assert.ok(!game.some(([found]) => found === path), `${path} is NOT an id position`))
+    assert.equal(game.filter(([, defining]) => defining).length, 16, '16 of the game fixture\'s positions DEFINE an id')
+    assert.equal(book.filter(([, defining]) => defining).length, 16, 'and 16 of the book fixture\'s')
+    // the census and the walk agree about WHERE, over fixtures built by hand: every
+    // id-shaped string in them sits at a path eachId reaches. R6 asks this of real data.
+    ;[['fixture/game', fixtureGame(), FILE_SHEETS], ['fixture/book', fixtureBook(), BOOK_FILE_SHEETS]].forEach(([what, files, fileSheets]) => {
+      const reached = new Set(walkFixture(files, fileSheets).map(([path]) => path))
+      const missed = Object.entries(files).flatMap(([name, file]) => censusOf(name, file))
+        .filter(({ path }) => !reached.has(path)).map(({ path, id }) => `${what} ${path} = ${JSON.stringify(id)}`)
+      assert.deepEqual(missed, [], `${what}: every id-shaped string sits where eachId reaches:\n${missed.join('\n')}`)
+    })
+    return { game, book }
+  }
+  const { game: gamePositions, book: bookPositions } = proveHandAuthored()
+  ok(`R1 the id walk, hand-authored: ${gamePositions.length} positions in a game and ${bookPositions.length} in a book, each deep-equal to a list typed out BY HAND in walk order; the ${DAGGERED.length} shapes no file on disk holds (a gate on a thing, a section added to another book's sheet, an override's query and its gate, a demand's field and its thing value) are all exercised, ${NEVER.length} look-alikes are NOT visited, 16 positions define an id in each — and a hand-written JSON census of the same fixtures finds no id-shaped string at a path eachId misses`)
+
+  // ── (c) textual substitution, the half that needs no knowledge of where positions are ──
+  const SUBJECTS_R = () => [{ what: 'fixture/game', files: fixtureGame(), fileSheets: FILE_SHEETS },
+                            { what: 'fixture/book', files: fixtureBook(), fileSheets: BOOK_FILE_SHEETS }]
+  const proveSubstitution = () => {
+    let renamed = 0, bytes = 0
+    SUBJECTS_R().forEach(({ what, files, fileSheets }) => {
+      const ids = idsIn(files)                                                 // from the CENSUS, never from the walker
+      const map = Object.fromEntries(ids.map((id, i) => [`${id}`, `zz${i}:t`]))
+      const text = serializeJSON(rewriteIds(files, files.types.types, map, fileSheets))
+      const survivors = ids.filter(id => text.includes(id))
+      assert.deepEqual(survivors, [], `${what}: ${survivors.length} old id(s) still in the bytes after a total rename: ${survivors.join(', ')}`)
+      renamed += ids.length; bytes += text.length
+    })
+    return { renamed, bytes }
+  }
+  const proveRoundTrip = () => {
+    SUBJECTS_R().forEach(({ what, files, fileSheets }) => {
+      const ids = idsIn(files)
+      const forward = Object.fromEntries(ids.map((id, i) => [id, `zz${i}:t`]))
+      const back    = Object.fromEntries(ids.map((id, i) => [`zz${i}:t`, id]))
+      const there = rewriteIds(files, files.types.types, forward, fileSheets)
+      // the phonebook for the way back is the RENAMED phonebook — a rename moves the
+      // sheets too, and the merged types are not part of the files being rewritten.
+      const thereTypes = there.types.types
+      const home = rewriteIds(there, thereTypes, back, fileSheets)
+      assert.deepEqual(eachId(files, files.types.types, () => {}, fileSheets).unknownSheets, [], `${what}: the phonebook covers the way out`)
+      assert.deepEqual(eachId(there, thereTypes, () => {}, fileSheets).unknownSheets, [], `${what}: and the renamed phonebook covers the way back`)
+      assert.equal(serializeJSON(home), serializeJSON(files), `${what}: A→B→A is byte-identical`)
+    })
+  }
+  {
+    const { renamed, bytes } = proveSubstitution()
+    proveRoundTrip()
+    // purity, said separately and by identity of bytes
+    const before = serializeJSON(fixtureGame())
+    const held = fixtureGame()
+    rewriteIds(held, held.types.types, { 'bk:hero': 'zz:hero' }, FILE_SHEETS)
+    assert.equal(serializeJSON(held), before, 'rewriteIds never touches its input')
+    // key ORDER — the half a delete-then-assign rewriter breaks, and the reason A→B→A
+    // comes home: the shelf's bytes are pinned (T1's serialize(JSON.parse(text)) === text)
+    const files = fixtureGame()
+    const keysBefore = Object.keys(files.things.things)
+    const first = rewriteIds(files, files.types.types, { 'bk:hero': 'zz:hero' }, FILE_SHEETS)
+    assert.deepEqual(Object.keys(first.things.things), ['zz:hero', keysBefore[1]], 'the renamed bucket key kept its PLACE, first of two')
+    assert.deepEqual(Object.keys(first.types.types[0]), ['id', 'label', 'sections'], 'an element\'s own key order survives')
+    const second = rewriteIds(files, files.types.types, { 'bk:item': 'zz:item' }, FILE_SHEETS)
+    assert.deepEqual(Object.keys(second.things.things), [keysBefore[0], 'zz:item'], 'and the SECOND key stays second')
+    assert.deepEqual(Object.keys(second.things.order), ['zz:item'], 'things.order\'s key is rewritten too')
+    ok(`R2 textual substitution: 2 sets, ${renamed} distinct ids (found by the census, not by the walker) renamed to fresh tokens, and NOT ONE of the old strings survives anywhere in the ${bytes} serialised bytes — a position the walk missed would leave its id behind without this check knowing where positions are; A→B→A is byte-identical both ways with the phonebook renamed too; rewriteIds leaves the caller's own bytes untouched; a renamed cabinet/bucket key keeps its exact place (first stays first, second stays second) and an element's key order is untouched`)
+  }
+
+  // ── R3 the walker's border ──
+  {
+    assert.throws(() => eachId(fixtureBook(), [], () => {}), /No file sheet for "book"/,
+      'a BOOK set passed without its table THROWS rather than walking half of it')
+    assert.throws(() => eachId({ nope: {} }, [], () => {}), /No file sheet for "nope"/, 'and so does a file nobody named')
+    // TOTAL over junk: the merge and the border both run on unvalidated files (loadData
+    // calls the merge on whatever is on disk), so this walk may never throw on shape
+    const junk = { content: { version: SCHEMA_VERSION, meta: 3, books: 'x', sheet: 7, groups: [null, 5, { id: 1 }], rowOverrides: [] },
+                   rules: 9, themes: null, types: { version: SCHEMA_VERSION, types: [{ id: 'a:b', label: 'L', sections: 'x' }], sectionsFor: 2, fieldsFor: { 'a:b': 'x' } },
+                   things: { version: SCHEMA_VERSION, things: { 'a:b': [null, { id: 'a:c', demands: 'x' }] }, order: { 'a:b': [null, 3, 'a:c'] } } }
+    const seen = []
+    const answer = eachId(junk, [{ id: 'a:b', label: 'L', sections: [] }], (position) => seen.push(position.path))
+    assert.ok(seen.length > 0 && !seen.includes(undefined), 'junk produces positions, never a throw')
+    assert.deepEqual(answer.unknownSheets, [], 'and a bucket whose sheet IS in the phonebook is not reported as unknown')
+    const blind = eachId({ things: { version: SCHEMA_VERSION, things: { 'a:gone': [{ id: 'a:x', bag: [{ thing: 'a:y' }] }] } } }, [], () => {})
+    assert.deepEqual(blind.unknownSheets, ['a:gone'], 'a bucket whose sheet is NOT in the phonebook is NAMED in the answer — a writer must refuse on it')
+    // and a rewrite is total over the same junk, and over a map that is not one-to-one
+    assert.doesNotThrow(() => rewriteIds(junk, [], { 'a:b': 'z:b' }), 'rewriteIds is total over the same junk')
+    assert.equal(rewriteIds({ types: { version: SCHEMA_VERSION, types: [{ id: 'a:b', label: 'L', sections: [] }], sectionsFor: {}, fieldsFor: {} } }, [],
+      { 'a:b': null }).types.types[0].id, 'a:b', 'a map whose value is not a string leaves the position alone')
+    ok(`R3 the walker's border: a file its table does not name THROWS (so a book set cannot be half-walked by the game's table), it is TOTAL over ${Object.keys(junk).length} files of junk and never throws on shape, a things bucket whose sheet is missing from the phonebook is NAMED in the answer instead of silently skipped, and rewriteIds is total over the same junk and over a map that names a non-string`)
+  }
+
+  // ── R4 the tables are level ──
+  // A sheet that grows an entry type with a CHECKER and no id WALKER gains an id position
+  // nobody walks — found at the first file that holds one, which is too late. And a MINTS
+  // row that names no sheet, or a kind nobody else speaks, is the same rot one table along.
+  {
+    assert.deepEqual(CHECKED_TYPES.filter(type => !ID_WALKED_TYPES.includes(type)), [], 'every checked sheet type has an id walker')
+    assert.deepEqual(ID_WALKED_TYPES.filter(type => !CHECKED_TYPES.includes(type)), [], 'and no walker names a type the border does not check')
+    // MINTS is a table ABOUT the sheets: every key must BE a sheet, and the sheet's
+    // elements must be the kind of thing that carries an `id` (no sheet entry is keyed
+    // 'id' — that is the whole reason MINTS exists)
+    Object.keys(MINTS).forEach(sheetName => {
+      if (sheetName === 'thing') return                                        // a thing's sheet is built per TYPE (buildSheets), so it has no name in SHEETS
+      assert.ok(Object.hasOwn(SHEETS, sheetName), `MINTS names the sheet "${sheetName}"`)
+      assert.deepEqual(SHEETS[sheetName].filter(entry => entry.key === 'id'), [], `SHEETS.${sheetName} has no \`id\` entry — MINTS is the table ABOUT the sheets, not an entry on them`)
+    })
+    // ONE vocabulary for "what kind of id is this": MINTS' values, QUERY_IDS' values and
+    // GATES' `names` must all be drawn from the same five words, or `kind` means two things
+    const KINDS = ['sheet', 'section', 'field', 'row', 'thing']
+    const spoken = [...Object.values(MINTS), ...Object.values(QUERY_IDS), ...Object.values(GATES).map(gate => gate.names).filter(Boolean)]
+    assert.deepEqual([...new Set(spoken)].filter(kind => !KINDS.includes(kind)), [], `every id kind is one of ${KINDS.join('/')}`)
+    assert.deepEqual(Object.keys(QUERY_IDS), ['type', 'where.field'], 'QUERY_IDS names a query\'s two id keys, written the way they are REACHED')
+    ok(`R4 the tables are level: all ${ID_WALKED_TYPES.length} sheet-entry types have both a CHECKER and an id WALKER, so a new kind cannot gain an id position nobody walks; every MINTS key is a sheet in SHEETS (bar \`thing\`, whose sheet is built per type) and no such sheet carries an \`id\` entry; and all ${new Set(spoken).size} id kinds MINTS, QUERY_IDS and GATES speak are the same ${KINDS.length} words`)
+  }
+
+  // ── R5 ANTI-VACUITY: the proof bites ──
+  // A proof that cannot fail is not a proof. The two marker tables are the whole reason the
+  // walk can find the 12 positions the contract was blind to, so each is BROKEN HERE — in
+  // memory, never on disk — and R1's and R2's own bodies are asserted to go RED. Then the
+  // table is put back and they are asserted green again, so a sabotage that failed to
+  // restore could not leave the rest of this file passing for the wrong reason.
+  {
+    // The rows that decide whether a POSITION EXISTS: `element()` visits an element's own
+    // `id` only for a sheet MINTS names, and the two compounds' positions come entirely
+    // from QUERY_IDS and from GATES' `names`. Break one and the walk goes blind there.
+    const SABOTAGE = [
+      { what: 'MINTS.group (a row\'s own id)', table: MINTS, key: 'group' },
+      { what: 'MINTS.type (a sheet\'s own id)', table: MINTS, key: 'type' },
+      { what: 'MINTS.section', table: MINTS, key: 'section' },
+      { what: 'MINTS.fieldDef (a field\'s own id)', table: MINTS, key: 'fieldDef' },
+      { what: 'QUERY_IDS.type (a row\'s query)', table: QUERY_IDS, key: 'type' },
+      { what: 'QUERY_IDS["where.field"]', table: QUERY_IDS, key: 'where.field' },
+      { what: "GATES.thingPicked.names (a gate on a thing)", table: GATES.thingPicked, key: 'names' },
+      { what: "GATES.anyInRow.names (a gate on a row)", table: GATES.anyInRow, key: 'names' }
+    ]
+    SABOTAGE.forEach(({ what, table, key }) => {
+      const held = table[key]
+      delete table[key]
+      try {
+        assert.throws(proveHandAuthored, assert.AssertionError, `R1 must FAIL with ${what} missing`)
+        assert.throws(proveSubstitution, assert.AssertionError, `R2 must FAIL with ${what} missing`)
+      } finally { table[key] = held }
+    })
+    // MINTS.thing is the ONE row that is NOT load-bearing for a position, and the reason is
+    // worth stating rather than leaving as a hole in the list above: a thing's sheet is
+    // built per TYPE (buildSheets), so it has no name in SHEETS and `element()` never looks
+    // it up — `thing()` visits the id itself and reads MINTS.thing only for the `kind` it
+    // reports. So the sabotage that proves THAT row is alive is a different one: the
+    // position stays and the kind goes undefined.
+    const kindAt = (path) => { let found; eachId(fixtureGame(), fixtureGame().types.types, (position) => { if (norm(position.path) === path) found = position.kind }, FILE_SHEETS); return found }
+    assert.equal(kindAt('things.things["bk:item"][0].id'), 'thing', 'a thing\'s id reports the kind MINTS.thing names')
+    assert.equal(kindAt('things.order["bk:item"][0]'), 'thing', 'and so does an arrangement\'s entry')
+    assert.equal(kindAt('content.groups[0].id'), 'row')
+    assert.equal(kindAt('content.groups[0].query.where.field'), 'field')
+    assert.equal(kindAt('types.types[0].sections[1].placement[0].id'), 'field', 'a placement field is a field, by its own sheet')
+    {
+      const held = MINTS.thing
+      delete MINTS.thing
+      try {
+        assert.deepEqual(walkFixture(fixtureGame(), FILE_SHEETS), fixtureGamePositions, 'the POSITIONS do not move — a thing\'s sheet has no name in SHEETS')
+        assert.equal(kindAt('things.things["bk:item"][0].id'), undefined, 'but the KIND it reported is gone, so the row is not dead weight')
+      } finally { MINTS.thing = held }
+    }
+    // put back, and green again — so a sabotage that failed to restore could not leave the
+    // rest of this file passing for the wrong reason
+    proveHandAuthored()
+    proveSubstitution()
+    proveRoundTrip()
+    ok(`R5 the proof bites: each of the ${SABOTAGE.length} marker rows the contract was blind without (MINTS' four sheet names, QUERY_IDS' two, GATES' \`names\` for both gate kinds) is deleted IN MEMORY one at a time, and with it gone BOTH R1 (the hand-typed positions) and R2 (the textual substitution) FAIL — then it is put back and all three pass again. MINTS.thing is the one row that moves no position (a thing's sheet has no name in SHEETS), so it is proved alive the other way: deleting it leaves every position and takes the \`kind\` with it. A proof that cannot fail is not a proof, and this is the check that says this one can`)
+  }
 }
 
 // oracles.mjs imports this file, so a BLOCKED check must not end the process

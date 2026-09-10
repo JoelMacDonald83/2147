@@ -420,3 +420,28 @@ export const BOOK_FILE_SHEETS = {
   proposals: [...totalBudgetSchema, { key: "groups", type: "collection", of: "group", default: [] }, { key: "groupRules", type: "cabinet", of: "groupRules" }]
 }
 export const BOOK_FILES = ["types", "things", "proposals"]
+
+// NEW: WHICH SHEET CARRIES AN ID, AND WHAT KIND OF ID IT IS.
+// The sheets are silent about ids: `newborn` mints `{ id: crypto.randomUUID() }` as an
+// element's FIRST key and no sheet above mentions `id` at all. So a walk driven by the
+// contract cannot see eight of the places an id lives — measured, not guessed: of the 32
+// id positions in this data, 12 were blind to the contract and 8 of them for this one
+// reason (the other 4 are query.js's QUERY_IDS).
+// THE FIX IS NOT AN `id` ENTRY ON THE SHEETS. `newborn` writes every entry's default and
+// the validator checks every entry, so an entry would change what is BORN and what is
+// JUDGED — a data-visible change to fix a metadata problem. This is a table ABOUT the
+// sheets instead, which is the same move visibility.js's GATES[kind].names already made.
+// One row per ID SPACE — validate.js's checkId spaces, which are the SHEET's name for
+// every element drawn from a sheet, plus `thing`, whose sheet is built per TYPE
+// (buildSheets) and therefore has no name in SHEETS. The VALUE is the kind of id, and
+// the kinds are the same five words QUERY_IDS and GATES' `names` already speak:
+// sheet, section, field, row, thing.
+// Two readers, one table: engine/config/ids.js asks WHICH sheets carry an id (its walk
+// is blind without this), and a book's id minter asks WHAT KIND — the noun in
+// `<book>:<kind>-<n>`, which is why an id must never be derived from a caption.
+// A sheet that is NOT here has no id of its own, and that is a fact rather than an
+// omission: `meta` and `pageTheme` are forms at a fixed key, `book` is a manifest, and a
+// cabinet slot (`groupRules`, `groupTheme`, `rowOverride`) is named by the id of the
+// ELEMENT it hangs off — which is why a cabinet's KEY is an id position and its slot is
+// not.
+export const MINTS = { group: "row", type: "sheet", section: "section", fieldDef: "field", thing: "thing" }

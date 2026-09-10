@@ -3,12 +3,24 @@
 // like a tab, but it is not a tab: no game is open, so nothing here reads
 // editorState. Every fact on a card comes from GET /api/games and GET /api/books
 // — what is on disk right now.
-import { listGames, createGame, listBooks } from './saveData.js'
-import { hashForGame, HOME_HASH } from './uiState.js'
+import { listGames, createGame, listBooks, extractBook } from './saveData.js'
+import { hashForGame, HOME_HASH, hashForSubject, subjectAt } from './uiState.js'
 import { SCHEMA_VERSION } from '/config/schema.js'
+// CHANGED (stage 4): the Library MOVED OUT, into library.js. It used to be three functions
+// here and its own comment said "nothing here is clickable in Stage 1"; it is now the whole
+// lifecycle of a book — open, cut, rename, delete, and the form that makes one — which is as
+// much screen as the games list above it. What stays here is the games half and the shape of
+// the page: games, then the Library, then the two New forms.
+import { renderLibrary } from './library.js'
+// NEW: what would travel into a book, and what would not — counted before anything is
+// written (previews.js).
+import { extractPreview } from './previews.js'
 
 const editorEl = document.querySelector('#editor')
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
+// "entries", not plural()'s "entrys" — the shelf's own word for a thing on a shelf, spelled
+// the way books.js's factsOf already spells it
+const entries = (n) => `${n} ${n === 1 ? 'entry' : 'entries'}`
 const el = (tag, className = '', text) => {
   const node = document.createElement(tag)
   if (className) node.className = className
@@ -40,7 +52,11 @@ const factsText = (game) => {
 // one card per folder: title · facts · Open Play Export [status] (Preview).
 // A folder that is not a game (a bad name, no data/content.json) is shown with
 // its problem and nothing to click — loud, not hidden.
-const buildCard = (game, actions) => {
+// CHANGED (stage 4): and "Save as a book", which is the third thing this screen can do with
+// what is on disk. It sits here and not in the open editor for the same reason Export does:
+// the route reads the game's FILES, so the only honest place to offer it is the screen that
+// holds nothing in memory to disagree with them.
+const buildCard = (game, actions, repaint) => {
   const cardEl = el('section', 'editor-section game-card')
   cardEl.appendChild(el('h2', '', game.error ? game.name : (game.title || '(untitled)')))
   if (game.error) { cardEl.appendChild(el('p', 'wall-hint', game.error)); return cardEl }
@@ -58,52 +74,100 @@ const buildCard = (game, actions) => {
     statusEl.textContent = exportText(receipt)
     previewEl.hidden = !receipt.ok
   })
-  rowEl.append(openEl, playEl, exportEl, statusEl, previewEl)
+  const extractEl = el('button', 'link-button', 'Save as a book')
+  extractEl.type = 'button'
+  extractEl.title = "Lifts this game's OWN sheets, entries and rows onto the shelf as a new book"
+  extractEl.addEventListener('click', () => openExtractPanel(game, cardEl, repaint))
+  rowEl.append(openEl, playEl, exportEl, statusEl, previewEl, extractEl)
   cardEl.appendChild(rowEl)
   return cardEl
 }
 
-// ───────────────────────── the Library ─────────────────────────
+// ───────────────────────── "Save as a book" ─────────────────────────
 
-// NEW: what is on the shelf, one card per book, one line per edition. A book is
-// a folder, not a game: nothing here is clickable in Stage 1 — the Books tab
-// inside a game is where a book is pinned. This screen answers "what could I
-// build on?", and it answers it about the DISK, so a folder that is not a book
-// is listed with its problem rather than quietly skipped.
-const editionLine = (edition, titles) => {
-  if (edition.error) return `edition ${edition.edition} · ⚠ ${edition.error}`
-  const facts = [`edition ${edition.edition}`]
-  // a requirement is written in the shelf's own terms (the folder's name); the
-  // Library speaks the titles, which is what the author will look for
-  facts.push(edition.requires.length === 0 ? 'requires nothing' : `requires ${edition.requires.map(pin => `${titles.get(pin.name) ?? pin.name} ${pin.edition}`).join(', ')}`)
-  if (edition.sheets > 0) facts.push(plural(edition.sheets, 'sheet'))
-  if (edition.sectionsAdded > 0) facts.push(`adds ${plural(edition.sectionsAdded, 'section')}`)
-  if (edition.fieldsAdded > 0) facts.push(`adds ${plural(edition.fieldsAdded, 'field')}`)
-  if (edition.things > 0) facts.push(`${edition.things} shelf ${edition.things === 1 ? 'entry' : 'entries'}`)
-  const proposes = [edition.rows > 0 ? plural(edition.rows, 'row') : null, edition.budget !== null && edition.budget !== undefined ? `budget ${edition.budget}` : null].filter(Boolean)
-  if (proposes.length > 0) facts.push(`proposes ${proposes.join(', ')}`)
-  if (edition.problems?.length > 0) return `${facts.join(' · ')} · ⚠ ${plural(edition.problems.length, 'problem')} — ${edition.problems[0].path}: ${edition.problems[0].message}`
-  return facts.join(' · ')
-}
+// NEW (stage 4): a game's own layer, lifted onto the shelf. The preview is not a courtesy —
+// it is the only place an author can learn that HALF OF WHAT THEY SEE IS NOT THEIRS TO MOVE.
+// Measured on the real games: games/dino's own layer is 8 Characters + 2 Places and FOUR
+// rowOverrides, and the overrides are the whole of its row taste — a book may not override
+// another book's row, so for dino `left` is the longer half of the answer. games/space has no
+// layer at all and is refused with a sentence rather than making an empty book.
+//
+// The preview's `left` is the EDITOR's reading of the game's files; the receipt's `left` is
+// the route's own, and that is the one printed after the write. Both are shown, in that
+// order, because the author decides on the first and learns from the second.
+let openPanel = null
+const openExtractPanel = (game, holderEl, repaint) => {
+  openPanel?.remove()
+  const panelEl = el('section', 'shelf-panel')
+  panelEl.appendChild(el('h3', '', `Save games/${game.name} as a book`))
+  const bodyEl = el('div', 'shelf-panel-body')
+  panelEl.appendChild(bodyEl)
+  holderEl.appendChild(panelEl)
+  openPanel = panelEl
+  const close = () => { panelEl.remove(); if (openPanel === panelEl) openPanel = null }
 
-const buildBookCard = (book, titles) => {
-  const cardEl = el('section', 'editor-section book-card')
-  const headEl = el('div', 'book-head')
-  headEl.appendChild(el('h2', '', book.title || book.name))
-  headEl.appendChild(el('span', 'book-path', `books/${book.name}`))
-  cardEl.appendChild(headEl)
-  if (book.error) { cardEl.appendChild(el('p', 'wall-hint', book.error)); return cardEl }
-  ;(book.editions ?? []).forEach(edition => cardEl.appendChild(el('p', 'book-facts', editionLine(edition, titles))))
-  return cardEl
-}
+  bodyEl.appendChild(el('p', 'shelf-fact', 'reading what is on disk…'))
+  extractPreview(game.name).then(preview => {
+    bodyEl.innerHTML = ''
+    if (preview.error) { bodyEl.appendChild(el('p', 'shelf-refusal', preview.error)); return }
+    if (preview.nothing) {
+      bodyEl.appendChild(el('p', 'shelf-refusal', preview.nothing))
+      const refusedEl = el('div', 'game-actions')
+      refusedEl.appendChild(buildClose(close))
+      bodyEl.appendChild(refusedEl)
+      return
+    }
+    const { types, things, rows } = preview.moved
+    bodyEl.appendChild(el('p', 'shelf-fact', `MOVES — ${plural(types, 'sheet')}, ${entries(things)} and ${plural(rows, 'row')} of its own, every id rewritten into the new book's namespace.`))
+    if (preview.left.length === 0) bodyEl.appendChild(el('p', 'shelf-fact', 'STAYS — nothing: this game has nothing that cannot travel.'))
+    preview.left.forEach(sentence => bodyEl.appendChild(el('p', 'shelf-refusal', `STAYS — ${sentence}`)))
+    bodyEl.appendChild(el('p', 'field-note', 'It publishes what is SAVED on disk. Save the game first if it is open in another tab.'))
+    // THE TWO THINGS THE ROUTE REFUSES THAT A COUNT CANNOT SEE. It runs validateGame over
+    // the game as it is on DISK before it lifts anything, so a game that could not be SAVED
+    // cannot be lifted either — and this preview reads the game through loadGame, which
+    // MIGRATES in memory, so it would happily count a v4 game's world and then watch the
+    // route refuse it in validate.js's own words. Both facts are already on the card above;
+    // they are repeated here because this is where the author is about to click.
+    const blocked = []
+    if (game.version !== SCHEMA_VERSION) blocked.push(`games/${game.name} is at schema v${game.version} — open it and Save to migrate it first. A book is NEVER migrated, so one born from stale shapes would be stale for ever.`)
+    if (game.faults > 0) blocked.push(`games/${game.name} has ${plural(game.faults, 'book fault')} — the route lifts nothing out of a game that does not fit, because what it owns cannot all be found.`)
+    blocked.forEach(sentence => bodyEl.appendChild(el('p', 'shelf-refusal', sentence)))
 
-const renderLibrary = (receipt) => {
-  editorEl.appendChild(el('h2', 'library-heading', 'Library'))
-  if (!receipt.ok) { editorEl.appendChild(el('p', 'wall-hint', `Could not read the shelf — ${receipt.error}`)); return }
-  if (receipt.books.length === 0) { editorEl.appendChild(el('p', 'wall-hint', 'No books on the shelf yet.')); return }
-  const titles = new Map(receipt.books.map(book => [book.name, book.title || book.name]))
-  receipt.books.forEach(book => editorEl.appendChild(buildBookCard(book, titles)))
+    const titleLabelEl = el('label', 'field')
+    titleLabelEl.appendChild(el('span', '', "Title — what the shelf calls it"))
+    const titleEl = el('input'); titleEl.value = game.title || game.name
+    titleLabelEl.appendChild(titleEl)
+    const nameLabelEl = el('label', 'field')
+    nameLabelEl.appendChild(el('span', '', 'Folder name — also the id namespace every id in the book starts with: lowercase letters, digits and single dashes'))
+    const nameEl = el('input'); nameEl.value = game.name
+    nameLabelEl.appendChild(nameEl)
+    bodyEl.append(titleLabelEl, nameLabelEl)
+
+    const actionsEl = el('div', 'game-actions')
+    const statusEl = el('span', 'game-status')
+    const saveEl = buildSave(async () => {
+      statusEl.textContent = 'writing…'
+      const receipt = await extractBook(game.name, nameEl.value.trim(), titleEl.value)
+      if (!receipt.ok) {
+        statusEl.textContent = receipt.error
+        if (receipt.problems) console.table(receipt.problems)
+        return
+      }
+      statusEl.textContent = `books/${receipt.name}/${receipt.edition} — ${plural(receipt.moved?.types ?? 0, 'sheet')}, ${entries(receipt.moved?.things ?? 0)}, ${plural(receipt.moved?.rows ?? 0, 'row')}`
+      ;(receipt.left ?? []).forEach(sentence => bodyEl.appendChild(el('p', 'shelf-refusal', `STAYED — ${sentence}`)))
+      repaint.forget()
+      const openRowEl = el('div', 'game-actions')
+      openRowEl.appendChild(buildOpen(hashForSubject(subjectAt('book', receipt.name, receipt.edition), 'types')))
+      bodyEl.appendChild(openRowEl)
+    })
+    if (blocked.length > 0) { saveEl.disabled = true; saveEl.title = 'the refusals above have to be answered first' }
+    actionsEl.append(saveEl, buildClose(close), statusEl)
+    bodyEl.appendChild(actionsEl)
+  })
 }
+const buildClose = (onClick) => { const node = el('button', 'link-button', 'Cancel'); node.type = 'button'; node.addEventListener('click', onClick); return node }
+const buildSave  = (onClick) => { const node = el('button', 'save-button', 'Save as a book'); node.type = 'button'; node.addEventListener('click', onClick); return node }
+const buildOpen  = (href) => { const node = el('a', 'save-button', 'Open the book'); node.href = href; return node }
 
 // ───────────────────────── the New form ─────────────────────────
 
@@ -152,6 +216,12 @@ const buildNewForm = (shelf) => {
   return formEl
 }
 
+// CHANGED (stage 4): the Library is a screen that CHANGES the shelf now, so two things
+// travel into it. `repaint` is how a mutation gets back here — `forget()` throws the cached
+// shelf answer away (a book mutation makes it a lie, for the game-side Books tab too) and
+// `now()` does that and paints this whole screen again from the disk. And the GAMES listing
+// goes in as data: the freeze census ("which games pin this edition") is read from it, and
+// fetching it twice on one screen would be two answers about one disk.
 export const renderHome = async (actions) => {
   editorEl.innerHTML = ''
   editorEl.appendChild(el('p', 'wall-hint', 'Loading the list…'))
@@ -160,9 +230,10 @@ export const renderHome = async (actions) => {
   const [receipt, shelf] = await Promise.all([listGames(), listBooks()])
   editorEl.innerHTML = ''
   if (!receipt.ok) { editorEl.appendChild(el('p', 'wall-hint', `Could not list the CYOAs — ${receipt.error}`)); return }
+  const repaint = { forget: () => actions.forgetShelf(), now: () => { actions.forgetShelf(); renderHome(actions) } }
   if (receipt.games.length === 0) editorEl.appendChild(el('p', 'wall-hint', 'No CYOAs yet — make the first one below.'))
-  receipt.games.forEach(game => editorEl.appendChild(buildCard(game, actions)))
-  renderLibrary(shelf)
+  receipt.games.forEach(game => editorEl.appendChild(buildCard(game, actions, repaint)))
+  renderLibrary(editorEl, shelf, receipt.games, repaint)
   editorEl.appendChild(buildNewForm(shelf))
 }
 

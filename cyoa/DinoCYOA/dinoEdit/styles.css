@@ -491,3 +491,29 @@ button {
 .book-card--skipped { border-color: #d97070; background: #fdf3f3; }
 .checkbox-field { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .checkbox-field span { font-size: 0.9rem; }
+
+/* NEW (stage 4): the shelf's own screen furniture — the panel a dangerous button opens, and
+   the one word an edition line needs that a game's card has no counterpart for.
+   .shelf-panel is a PANEL and not a confirm(): every one of these three questions (rename,
+   delete, save-as-a-book) has a count to show that is not known until the disk has been read,
+   and confirm() can only show a string handed to it before the reading was done. */
+.shelf-panel {
+  max-width: 1100px;
+  margin: 10px 0 4px;
+  padding: 12px 16px;
+  border: 1px solid #c9b98a;
+  border-left: 4px solid #c9b98a;
+  border-radius: 6px;
+  background: #fdfaf0;
+}
+.shelf-panel h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.shelf-panel .field { margin-bottom: 10px; }
+.shelf-panel-body { display: flex; flex-direction: column; gap: 6px; }
+.shelf-fact { margin: 0; font-size: 0.85rem; color: #5a554c; }
+/* a refusal, and a "stays behind" — the same colour, because both are the honest half of an
+   answer the author would otherwise assume went their way */
+.shelf-refusal { margin: 0; font-size: 0.85rem; color: #b34a4a; }
+.shelf-preview { display: flex; flex-direction: column; gap: 4px; }
+/* FROZEN, on the edition's own line. Not red: a pinned edition is not broken, it is working
+   exactly as promised — a game depends on it and it may not change under that game. */
+.shelf-frozen { color: #6f6a60; font-size: 0.8rem; font-style: italic; }

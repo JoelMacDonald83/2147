@@ -1,4 +1,8 @@
-import { editorState, buildSheets, remerge } from './state.js'
+// CHANGED (stage 4): `S` comes with editorState — this page's row of the SUBJECT table
+// (dinoEdit/subject.js). Everything below that used to spell "a game" — which drawer holds
+// the rows, which cabinet an attachment points at, what origins calls the layer the author
+// owns, what mints an id, whether a repair may write at all — asks it instead.
+import { editorState, buildSheets, remerge, S } from './state.js'
 // SHEETS is not imported from schema.js. Part of the phonebook depends on the
 // loaded TYPES (one sheet per type), so state.js builds it — see buildSheets —
 // and render() asks for a fresh one before every paint.
@@ -14,8 +18,9 @@ import { editorState, buildSheets, remerge } from './state.js'
 // and the sheet declaration belongs in the Page card beside the title and the budget.
 import {
   contentSchema, typesSchema, metaSchema, pageThemeSchema, totalBudgetSchema,
-  rowOverrideSchema, groupRulesSchema, groupThemeSchema, FILE_SHEETS,
-  queryableFields, fieldById, asOption, placementSheet, listSectionsOf, fieldsOfType, coreThingSchema
+  rowOverrideSchema, groupRulesSchema, groupThemeSchema, FILE_SHEETS, bookSchema,
+  queryableFields, fieldById, asOption, placementSheet, listSectionsOf, fieldsOfType, coreThingSchema,
+  MINTS   // NEW: which sheet mints which KIND of id — the noun in a book's <book>:<noun>-<n>
 } from '/config/schema.js'
 // NEW: the player's sheet, as vocabulary — the leaf the engine, the validator and
 // this screen all read. Same discipline as query.js and visibility.js above: the
@@ -46,13 +51,22 @@ import { SHOW_WHEN_KINDS, checkShowWhen, deadRows, idsBelow } from '/config/visi
 import { rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, forgetDemandField, forgetDemanded } from '/config/references.js'
 // NEW: the merge's two names the screen speaks — which layer is "the game" and
 // how a book layer is labelled ("basic 1") — plus the sentence maker for a fault.
-import { GAME_LAYER, bookLabel } from '/config/merge.js'
+// CHANGED: GAME_LAYER is not spelled here any more — which label means "mine" is the
+// subject table's answer (see `mine` below), because a book's own layer is never the game
+// layer. bookLabel still is: it is how a loaded layer is matched to an origin.
+import { bookLabel } from '/config/merge.js'
 import { problemText } from '/config/validate.js'
 // NEW: the screen's own memory — tab, rail type, open cards. See uiState.js.
 import { uiState, TABS, hashFor } from './uiState.js'
 // NEW: the fourth tab, in its own file — it is the only tab that talks to the
 // server while a game is open, so it keeps its own company.
-import { renderBooksTab } from './books.js'
+// NEW on this line: bookTitle — the ONE way "Dinosaur Age 2" is spelled, wherever a book
+// is named in chrome (§6). The Books tab owns the words for a book because it is the tab
+// that reads the shelf.
+// NEW on this line (stage 4): the two the read-only banner needs — the freeze's own sentence
+// and the number a cut would take. Both live in books.js, beside everything else that reads
+// the shelf.
+import { renderBooksTab, bookTitle, frozenEditionSentence, nextEditionOf } from './books.js'
 
 // The phonebook for THIS paint. render() refills it first thing, so every
 // card, newborn and cascade below reads the same, current sheets. It is a
@@ -71,16 +85,51 @@ const typeById = (id) => editorState.merged.types.types.find(type => type.id ===
 const bucketOf = (type) => editorState.merged.things.things[type.id] ?? []
 const plural = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`
 
+// NEW: a miss warns ONCE, BY NAME. The file's existing misses (renderField's "No builder
+// for type", render's "No painter for tab") sit on a path that runs once per paint, so
+// warning every time is the same as warning once. A missing DRAWER does not: it is reached
+// from an attachment entry on every row of every paint, so the plain warn would bury the
+// console under one true sentence repeated a thousand times. The sentence is the key, so
+// two different misses both get said.
+const warned = new Set()
+const warnOnce = (sentence) => {
+  if (warned.has(sentence)) return
+  warned.add(sentence)
+  console.warn(sentence)
+}
+
 // NEW: the three that read the game's OWN drawer, because a WRITE only ever
 // goes there. ownBucketOf is the array a Remove splices and an Add pushes into;
 // ownThing hands back the REAL object behind a merged clone, so a card built for
 // an own thing edits the thing that gets saved — never the copy the merge made.
 const ownBucketOf = (type) => editorState.things.things[type.id] ?? []
 const ownThing    = (id)   => Object.values(editorState.things.things).flat().find(thing => thing.id === id)
+// NEW: the subject's OWN row tree — content.groups for a game, proposals.groups for a book.
+// The reference repairs (REMOVE_HOOKS, CHANGE_HOOKS) all walk it, and every one of them is
+// the same repair either way: a removed field leaves a book's proposed row exactly as it
+// leaves a game's own one. So this is the table's answer and not a second set of hooks.
+const ownRows = () => S().rows(editorState)
+// NEW: the label origins gives THE LAYER THE AUTHOR IS EDITING. For a game that is the
+// constant GAME_LAYER, as it always was; for a book it is that book's own layer label
+// ("dinosaur-age 2"), because in book mode the subject is the last BOOK layer and no layer
+// is ever labelled GAME_LAYER. CHANGED: this is the parameter the whole ownership story
+// turns on — isOwn, the badges and the lock all compared against a constant before, which
+// would have drawn every one of a book author's own cards read-only.
+// Named `ownLayer` and not `mine` on purpose: renderBudgetLine and ruleLine already have a
+// local `mine` (this game's value for a key a book proposed), and two meanings of one word
+// in one file is how a shadowed helper becomes a bug nobody can see.
+const ownLayer = () => S().label(editorState)
+// NEW: how the subject refers to ITSELF on a badge — the first cell of the DOM-side half of
+// the subject table (see subject.js's header: the words and the painters stay here, because
+// a table that mixed them could not be driven by a pure check). The rest of that table is
+// SCREEN, below the Rows tab, where the painters it names are already written.
+const selfWord = () => SCREEN[editorState.subject.kind].self
+
 // NEW: "may this be edited?" — one question, asked of the merge's origins map.
-// Everything the game defined is the game's to change; everything a book defined
-// is read-only here and is changed by publishing a new edition of that book.
-const isOwn = (id) => editorState.origins.get(id) === GAME_LAYER
+// Everything the subject defined is the subject's to change; everything a book
+// underneath defined is read-only here and is changed by publishing a new edition of
+// that book.
+const isOwn = (id) => editorState.origins.get(id) === ownLayer()
 
 // NEW: the type the PLAYER builds, or undefined — the SUBJECT of every demand on this
 // screen, and the one thing a demand is ever about. Asked at draw time because the
@@ -96,10 +145,15 @@ const thingName = (id) =>
 
 // NEW: a layer label as the author's own words. The merge speaks in folder
 // terms ("basic 1"); a badge should say what the Library says ("Basic 1").
+// CHANGED (§6): the one naming rule — CHROME SPEAKS TITLES, FAULT PATHS SPEAK FOLDERS.
+// "Dinosaur Age 2" is built by the ONE function that builds it everywhere (books.js's
+// bookTitle, which the Library and the Books tab now share); the raw layer label
+// ("dinosaur-age 2") is a fault-path word and is only ever the last resort, for a layer
+// this page never loaded and therefore has no title for.
 const titleOf = (label) => {
-  if (label === GAME_LAYER) return 'this game'
+  if (label === ownLayer()) return selfWord()
   const layer = editorState.books.find(book => book !== null && bookLabel(book.manifest) === label)
-  return layer ? `${layer.manifest.title} ${layer.manifest.edition}` : label
+  return layer ? bookTitle(layer.manifest.title, layer.manifest.edition) : label
 }
 // NEW: the small grey pill that says where a card came from. Nothing for
 // something this game owns and can edit — a badge on every own card is noise.
@@ -108,8 +162,8 @@ const titleOf = (label) => {
 const badge = (id, always = false) => {
   const label = editorState.origins.get(id)
   if (label === undefined) return null
-  if (label === GAME_LAYER && !always) return null
-  return el('span', 'origin-badge', label === GAME_LAYER ? 'this game' : `from ${titleOf(label)}`)
+  if (label === ownLayer() && !always) return null
+  return el('span', 'origin-badge', label === ownLayer() ? selfWord() : `from ${titleOf(label)}`)
 }
 
 // NEW: a small node maker for the cards added in this stage. The field builders
@@ -492,7 +546,12 @@ demands: (entry, target) => {
   const addBtn = el('button', 'add-button', '+ Add demand')
   if (type === undefined) {
     addBtn.disabled = true
-    addBtn.title = 'this game builds no sheet — say what the player builds on the Rows tab'
+    // CHANGED (stage 4, gap 14): the REASON is a cell of the screen table, because it is a
+    // different reason. A game without a sheet has a fix one tab away; a BOOK has no fix at
+    // all — a demand's whole vocabulary comes from `content.sheet` and a book may not declare
+    // one. Saying "say what the player builds on the Rows tab" to a book author would point
+    // at a dropdown that is not there.
+    addBtn.title = SCREEN[editorState.subject.kind].noSheet
   } else if (demandFields(type).length === 0) {
     addBtn.disabled = true
     addBtn.title = 'this sheet has no fields or lists to demand anything of'
@@ -607,11 +666,18 @@ collection: (entry, target) => {
 // handler. This is the same pair the group card used to write by hand, with
 // the cabinet address now coming from the sheet.
 attachment: (entry, target) => {
-  const slot = {
-    peek:   () => cabinetOf(entry)[target.id],
-    ensure: () => (cabinetOf(entry)[target.id] ??= {})
-  }
   const bagEl = document.createDocumentFragment()
+  // CHANGED (spec §2): the cabinet is asked for ONCE, here, rather than on every peek. Two
+  // reasons and both matter: a subject that HAS no such cabinet (a book has no themes)
+  // draws nothing at all rather than an empty card, and the role's one warning is said
+  // once per card instead of once per keystroke. The drawer object is never replaced during
+  // a paint, so holding it for the card's lifetime is the same object peek would have found.
+  const cabinet = cabinetOf(entry)
+  if (cabinet === undefined) return bagEl
+  const slot = {
+    peek:   () => cabinet[target.id],
+    ensure: () => (cabinet[target.id] ??= {})
+  }
   SHEETS[entry.of].forEach(inner => {
     bagEl.appendChild(renderField(inner, slot))
   })
@@ -833,13 +899,15 @@ const OPTION_SOURCES = {
   // one idea. And withCurrent, for the reason every other select here has it: a
   // hand-written binding that does NOT fit is SHOWN, labelled, never silently swapped
   // for the first option; the row's header carries checkFills' sentence beside it.
-  fillableSections: (row)     => {
-    const type = playerSheetType()        // CHANGED: the same one question, asked in one place
-    if (!type) return [{ value: '', label: '— this game builds no sheet —' }]
-    const fits = fillableSections(type, row?.query?.type ?? '')
-      .map(section => ({ value: section.id, label: `${section.caption} — ${sheetLabel(section.of)} entries` }))
-    return withCurrent([{ value: '', label: '— nothing —' }, ...fits], row?.fills ?? '', 'does not fit this row')
-  }
+  // CHANGED (stage 4, spec §7a): WHERE the candidates come from is the screen table's answer,
+  // because a book and a game are asking two different questions. A GAME asks "which section
+  // of the sheet MY PLAYER BUILDS does this row fill" — one declared type, and a row that
+  // filled anything else would be a fault the game has to fix. A BOOK has no declaration and
+  // never will (only a game chooses one), but a `fills` names a SECTION id and a section id
+  // is global across the merged library — so a book's candidates are every fitting list
+  // section on every merged sheet. That is not a loophole, it is the decision: dino would not
+  // need its four rowOverrides if Dinosaur Age could propose them.
+  fillableSections: (row)     => SCREEN[editorState.subject.kind].fillable(row)
 }
 
 // what to call an element of a sheet on a button. Most sheets are named by
@@ -862,9 +930,18 @@ const sheetLabel = (sheetName) =>
 // ("Gear"). Total on purpose — it falls back to the bare id, because it is drawn on
 // cards that must paint whatever the file says, including a binding to a section a
 // book upgrade took away. The ⚠ beside it is checkFills' job, never this one's.
+// CHANGED (stage 4): asked of the whole MERGED library rather than of the declared player
+// sheet. A section id is global — that is the very reason a book may propose a `fills`
+// (§7a) — and a book has no declaration to look it up in, so "fills Gear" read as
+// "fills basic:character.gear" on every book's row. The player sheet is IN the merged types
+// for a game, so a game's answer does not change; what changes is that there is now an answer
+// for a subject that declares nothing.
 const sectionCaption = (sectionId) => {
-  const type = playerSheetType()          // CHANGED: the same one question, asked in one place
-  return (type ? sectionById(type, sectionId) : undefined)?.caption ?? sectionId
+  for (const type of editorState.merged.types.types) {
+    const section = sectionById(type, sectionId)
+    if (section) return section.caption
+  }
+  return sectionId
 }
 
 // CHANGED: an entry may only EXIST while a sibling says so (`showIf`). A
@@ -923,15 +1000,70 @@ export const render = (actions) => {
   const paint = TAB_PAINTERS[uiState.tab]
   if (!paint) { console.warn(`No painter for tab "${uiState.tab}"`); return }
   paint()
+  // NEW (stage 4): FROZEN IS A READ-ONLY MODE, NOT A HIDDEN SCREEN. An author must be able
+  // to LOOK at an edition a game pins — it is the most ordinary thing they do — so the whole
+  // screen is painted exactly as an editable one and then turned off, the way lockCard
+  // already turns off one borrowed card. After the paint, so nothing in any painter has to
+  // know, and so a painter added later is covered by being painted at all.
+  if (!S().editable(editorState)) lockScreen()
 }
+
+// NEW: the read-only mode. Everything inside #editor is disabled except the card TOGGLES
+// (folding is looking, and a book a game pins is mostly read for what is inside it), and the
+// one sentence at the top says who pins it and offers the only thing that CAN be done: cut
+// the next edition. The banner is prepended AFTER the lock so its own button stays alive —
+// the same ordering lockCard uses for a badge, for the same reason.
+// `pinnedBy: null` means the census was never answered, which SUBJECTS.book.editable reads as
+// frozen: unknown is the one case where guessing editable would write into a shelf folder, so
+// it falls closed and says so in plain words rather than naming a game it does not know.
+const lockScreen = () => {
+  editorEl.querySelectorAll('input, select, textarea, button').forEach(controlEl => {
+    if (!controlEl.classList.contains('card-toggle')) controlEl.disabled = true
+  })
+  const bannerEl = el('section', 'notices')
+  // the NUMBER the cut would take is the shelf's answer, and a save just before this may have
+  // thrown the shelf away (every book mutation does — see actions.forgetShelf). Asking here is
+  // the same thing the Books tab does on a null shelf, and readShelf repaints when it lands;
+  // until then the banner says what it is doing rather than a number it would have to guess.
+  if (editorState.shelf === null) {
+    currentActions.readShelf()
+    bannerEl.appendChild(el('p', 'notice-line', 'Read-only — reading the shelf…'))
+    editorEl.prepend(bannerEl)
+    return
+  }
+  const next = nextEditionOf(shelfEditions())
+  // `frozen` is the BORDER's own sentence, kept word for word when the border is what said it
+  // (a 409 on a save this screen believed was allowed). `pinnedBy` is the screen's own census;
+  // an unasked one (null) reads as frozen and says exactly that, rather than naming a game it
+  // does not know.
+  const lineEl = el('p', 'notice-line', editorState.frozen
+    ?? (Array.isArray(editorState.pinnedBy)
+      ? frozenEditionSentence(editorState.pinnedBy, next)
+      : 'Read-only — the editor could not ask which games pin this edition, so it is treating it as frozen.'))
+  lineEl.appendChild(smallButton(`Cut edition ${next} as a copy`, () => currentActions.cutEdition()))
+  bannerEl.appendChild(lineEl)
+  editorEl.prepend(bannerEl)
+}
+// this book's editions, as the shelf listing names them — the one place the next edition's
+// NUMBER comes from, so "Cut edition 3" and the folder the cut makes cannot disagree.
+const shelfEditions = () =>
+  (editorState.shelf?.ok ? editorState.shelf.books : []).find(book => book.name === editorState.subject.name)?.editions ?? []
 
 const repairBuckets = () => {
   // A type born this session has no bucket yet. Giving it an empty one is the
   // ONE write render() is allowed: it repairs an invariant (every type has a
   // bucket), never touches what an author wrote, and migrated data always
   // arrives with its buckets, so a no-edit save stays byte-identical.
-  // The game's OWN types only: a book's shelf is not this game's to create, and
-  // the merge already gives every merged sheet a bucket to read.
+  // The subject's OWN types only: a borrowed book's shelf is not this subject's to
+  // create, and the merge already gives every merged sheet a bucket to read.
+  // CHANGED (stage 4): gated, and this is the ONLY change it needed — three designs said
+  // this function had to be rewritten for a book and it does not, because
+  // `editorState.types.types` and `editorState.things.things` are a book's OWN drawers
+  // under the very same names (BOOK_FILE_SHEETS.types IS FILE_SHEETS.types). What it needed
+  // is the gate: rendering a FROZEN edition must write nothing at all, or opening a book a
+  // game pins would dirty it just by being looked at — and the "a file that was only looked
+  // at is saved back unchanged" rule is load-bearing for a shelf an oracle hashes.
+  if (!S().editable(editorState)) return
   editorState.types.types.forEach(type => { editorState.things.things[type.id] ??= [] })
 }
 
@@ -1037,7 +1169,10 @@ const renderThingsTab = () => {
       // the ▲▼ pair goes on AFTER buildCard, on purpose: lockCard disables every
       // control inside a book's card, and arranging the shelf is the game's
       // right even over a book's things — the order lives in the game's file.
-      cardEl.querySelector('.group-header')?.appendChild(arrangeButtons(shownType.id, at, shelf.length))
+      // CHANGED (stage 4): …and ONLY the game's. `things.order` in a book is a fault the
+      // merge refuses outright ("a book may not arrange a shelf"), so for a book the pair is
+      // not drawn at all — see SCREEN.arranges.
+      if (SCREEN[editorState.subject.kind].arranges) cardEl.querySelector('.group-header')?.appendChild(arrangeButtons(shownType.id, at, shelf.length))
       paneEl.appendChild(cardEl)
     })
     // "+ Add" writes on CLICK: the bucket for this sheet is created only when
@@ -1049,7 +1184,7 @@ const renderThingsTab = () => {
     const addBtn = el('button', 'add-button', `+ Add ${shownType.label}`)
     addBtn.addEventListener('click', () => {
       const source = shelf.find(thing => thing.id === startFrom)   // undefined for "— blank —", and for a source the shelf lost
-      const born = source === undefined ? newborn(shownType.id) : newbornFrom(source)
+      const born = source === undefined ? newborn(shownType.id) : newbornFrom(source, shownType.id)
       ;(editorState.things.things[shownType.id] ??= []).push(born)
       uiState.expanded.add(born.id)
       rerender()
@@ -1097,7 +1232,8 @@ const renderShelfHeading = (type) => {
   headEl.appendChild(el('h2', '', type.label))
   const originBadge = badge(type.id)
   if (originBadge) headEl.appendChild(originBadge)
-  if (editorState.things.order?.[type.id] !== undefined) {
+  // CHANGED (stage 4): a book may not hold one at all, so there is never one to reset
+  if (SCREEN[editorState.subject.kind].arranges && editorState.things.order?.[type.id] !== undefined) {
     headEl.appendChild(smallButton('Reset order', () => {
       delete editorState.things.order[type.id]
       if (Object.keys(editorState.things.order).length === 0) delete editorState.things.order   // no empty key on disk
@@ -1174,7 +1310,13 @@ const renderRail = (types, shownType) => {
 // holds a collection of "group", so the nesting lives in the data, not here.
 // Before any card is drawn, the paint context every row one-liner reads is
 // filled once, over the MERGED tree (see rowSummary).
+// CHANGED (stage 4): three of its parts come from the SCREEN table, because three of them
+// are the GAME's alone. A book proposes rows; it never overrides one (book-over-book override
+// is deferred), it cannot hide one, and it has no rowOverrides file to leave an orphan in. So
+// what a row another layer proposed looks like, and whether this subject can hide it, are
+// cells — and everything else on the tab, including the whole own-row walk, is the same code.
 const renderRowsTab = () => {
+  const screen = SCREEN[editorState.subject.kind]
   const mergedRows = rowsIn(editorState.merged.content.groups)
   const offered = {}
   mergedRows.forEach(row => { offered[row.id] = offeredBy(row) })
@@ -1189,29 +1331,116 @@ const renderRowsTab = () => {
     // NEW: the proposed rows this game has hidden. They are gone from the merged
     // tree, so a row still waiting on one would otherwise read "names a row that
     // does not exist" — true, but not the sentence that helps.
-    hiddenRows: new Set(proposedFlat().filter(row => overrideOf(row.id)?.hidden === true).map(row => row.id)),
+    hiddenRows: new Set(proposedFlat().filter(row => screen.hides(row.id)).map(row => row.id)),
     sheetType,
     // NEW: the audit's own ONE-CAUSE rule (references.js), applied where it belongs.
     // When the declared TYPE is gone, every bound row would ALSO report "fills a
     // section but this game builds no sheet" — one cause, five sentences. The Page
     // card carries the single sentence that matters; the rows stay quiet until the
     // declaration is fixed.
-    sheetDangles: sheetId !== '' && sheetType === undefined
+    sheetDangles: sheetId !== '' && sheetType === undefined,
+    // NEW (stage 4): may this subject judge a row's binding at all? Only a game can — see
+    // rowSummary. The dangling-declaration silence is folded in here so rowSummary asks ONE
+    // question rather than two that have to be kept in the same order.
+    judgesFills: screen.judgesFills && !(sheetId !== '' && sheetType === undefined)
   }
-  renderPageCard()
-  editorState.proposed.rows.forEach(entry => editorEl.appendChild(buildProposedRowCard(entry)))
-  renderOrphanOverrides()
+  screen.pageCard()
+  // CHANGED: the rows the LAYERS UNDERNEATH proposed. In book mode the merge puts the
+  // subject book in the `books` list — that is what book mode IS — so `proposed.rows` holds
+  // the subject's own rows too, and they are drawn below as the editable own-row walk. One
+  // filter rather than a branch: for a game no proposal is ever from the game layer, so it
+  // removes nothing and the game's screen is unchanged.
+  editorState.proposed.rows
+    .filter(entry => entry.from !== ownLayer())
+    .forEach(entry => editorEl.appendChild(screen.borrowedRow(entry)))
+  screen.orphans()
+  // CHANGED: the collection walk's target is the drawer the `content` ROLE names — the
+  // game's content.json, or a book's proposals.json. contentSchema's one entry is the
+  // `groups` collection and BOOK_FILE_SHEETS.proposals carries the same key, so the row
+  // walk moves to a book with this one word and nothing else.
   contentSchema.forEach(entry => {
-    editorEl.appendChild(renderField(entry, editorState.content))
+    editorEl.appendChild(renderField(entry, drawerOf('content')))
   })
 }
 
-// NEW: one painter per tab, dispatched like everything else
+// NEW: one painter per tab, dispatched like everything else.
+// UNCHANGED by stage 4, and that is the measured claim of §1 rather than a hope: all four
+// painters serve a BOOK as written. Books is the same tab over a different pin list (its own
+// file says so); Types and Things read `editorState.merged`, write `editorState.types` /
+// `editorState.things`, and a book's drawers carry those exact two names because
+// BOOK_FILE_SHEETS.types IS FILE_SHEETS.types; Rows walks the drawer the `content` ROLE names.
 const TAB_PAINTERS = {
   books:  () => renderBooksTab(currentActions),
   types:  renderTypesTab,
   things: renderThingsTab,
   rows:   renderRowsTab
+}
+
+// NEW (stage 4): THE DOM-SIDE HALF OF THE SUBJECT TABLE — the words and the painters.
+// subject.js holds the pure half (drawers, merge, validate, the address) so the fast oracles
+// can drive it with no browser; this half cannot be driven that way and so lives here, keyed
+// by the same `kind`. Five cells, and every one of them is a thing only a GAME can do:
+//
+//   self          what a badge calls the subject's own layer
+//   pageCard      a game's page is its title, its player sheet, its budget and its look; a
+//                 book has NONE of those four — its "page" is its manifest plus the one
+//                 budget it may PROPOSE. Two cards, not one card with four empty halves.
+//   borrowedRow   a game OVERRIDES what a book proposes (that is the whole cascade); a book
+//                 may not override another book's row — book-over-book is deferred — so it
+//                 reads one instead.
+//   hides         `hidden` is a rowOverride key, so hiding a proposed row is the game's alone.
+//   orphans       an override left behind by an un-pinned book is a game's leftover. A book
+//                 has no rowOverrides file, so it can never have one.
+//   arranges      `things.order` is the game's taste over a merged shelf, and merge.js refuses
+//                 one in a book outright ("a book may not arrange a shelf"). So the ▲▼ pair
+//                 and [Reset order] are REMOVED for a book, not disabled: a control whose
+//                 every use would be a fault is not a control.
+//   noSheet       why a demand cannot be added — see the demands builder (gap 14).
+const SCREEN = {
+  game: {
+    self:        'this game',
+    pageCard:    () => renderPageCard(),
+    borrowedRow: (entry) => buildProposedRowCard(entry),
+    hides:       (rowId) => overrideOf(rowId)?.hidden === true,
+    orphans:     () => renderOrphanOverrides(),
+    arranges:    true,
+    judgesFills: true,
+    noSheet:     'this game builds no sheet — say what the player builds on the Rows tab',
+    // the LIST sections of the declared player sheet whose `of` is this row's query type. A
+    // binding built from this dropdown can never mismatch, the same discipline the query
+    // builder keeps by only offering fields that exist. (Measured: on today's dino every row
+    // has exactly ONE fitting section, so binding a row is one click.)
+    // withCurrent, for the reason every other select here has it: a hand-written binding that
+    // does NOT fit is SHOWN, labelled, never silently swapped for the first option; the row's
+    // header carries checkFills' sentence beside it.
+    fillable: (row) => {
+      const type = playerSheetType()      // the same one question, asked in one place
+      if (!type) return [{ value: '', label: '— this game builds no sheet —' }]
+      const fits = fillableSections(type, row?.query?.type ?? '')
+        .map(section => ({ value: section.id, label: `${section.caption} — ${sheetLabel(section.of)} entries` }))
+      return withCurrent([{ value: '', label: '— nothing —' }, ...fits], row?.fills ?? '', 'does not fit this row')
+    }
+  },
+  book: {
+    self:        'this book',
+    pageCard:    () => renderBookCard(),
+    borrowedRow: (entry) => buildRequiredRowCard(entry),
+    hides:       () => false,
+    orphans:     () => {},
+    arranges:    false,
+    // a book never judges a binding: checkFills' sentence is "this GAME builds no sheet", and
+    // references.js's book mode skips the same check for the same reason (spec §7a).
+    judgesFills: false,
+    noSheet:     'a book cannot say what the player builds, so there is no sheet to demand anything of — only a game declares one',
+    // every fitting list section on every MERGED sheet — this book's own and its
+    // requirements'. The label names the sheet it is on, because a book is choosing across
+    // several and "Gear" alone would not say whose.
+    fillable: (row) => {
+      const fits = editorState.merged.types.types.flatMap(type =>
+        fillableSections(type, row?.query?.type ?? '').map(section => ({ value: section.id, label: `${section.caption} — on ${type.label}` })))
+      return withCurrent([{ value: '', label: '— nothing —' }, ...fits], row?.fills ?? '', 'does not fit this row')
+    }
+  }
 }
 
 // ─────────────────── page-wide settings card ───────────────────
@@ -1258,6 +1487,81 @@ const renderPageCard = () => {
     })
   }
   editorEl.appendChild(cardEl)
+}
+
+// ─────────────────── the book's card: the manifest, and the one proposal ───────────────────
+
+// NEW (stage 4): a BOOK's answer to the Page card, and it is deliberately not the same card
+// with empty halves. A book has no meta, no themes.json and no player-sheet declaration — and
+// "do not draw an empty one" is the rule: three blank boxes that can never be filled teach
+// that a book is a crippled game, when the truth is that a page belongs to whoever shows it.
+//
+// What a book HAS that a game does not is a MANIFEST, so that is the card: the title the
+// shelf calls it, the namespace every id in it starts with, and the single budget it may
+// PROPOSE. Its `requires` is on the Books tab, beside the other question about what it stands
+// on; its name and edition are the FOLDER's, shown here as the facts they are rather than as
+// boxes — changing either is a Library act (a rename, a cut), not a keystroke.
+const MANIFEST_FIELDS = ['title']     // the one entry of book.json an author edits HERE
+
+const bookSummary = () => {
+  const budget = editorState.proposals.totalBudget
+  return {
+    text: `Book · "${editorState.book.title}" · ${editorState.subject.name} ${editorState.subject.edition} · ${budget === undefined ? 'proposes no budget' : `proposes budget ${budget}`}`,
+    // the manifest's own faults, in the banner's words — a title or a requires list the
+    // border will refuse is worth seeing on the folded card too.
+    warnings: editorState.faults.some(fault => fault.path.startsWith('book')) ? ['see the faults above'] : []
+  }
+}
+
+const renderBookCard = () => {
+  const cardEl = el('section', 'editor-section')
+  const open = uiState.expanded.has('page')
+  cardEl.appendChild(buildHeader('page', bookSummary(), open))
+  if (open) {
+    bookSchema.filter(entry => MANIFEST_FIELDS.includes(entry.key)).forEach(entry => {
+      cardEl.appendChild(renderField(entry, editorState.book))
+    })
+    cardEl.appendChild(renderProposedBudgetLine())
+    // THE FOLDER IS THE TRUTH — merge.js's bookRules refuses a manifest that disagrees with
+    // it, and this is the one place an author can read what the folder therefore decided.
+    cardEl.appendChild(el('p', 'field-note', `books/${editorState.subject.name}/${editorState.subject.edition} — the folder is the truth: the name and the edition come from it, and every id this book defines starts with "${editorState.subject.name}:". Renaming the folder is a Library act, and a new edition is a new folder.`))
+  }
+  editorEl.appendChild(cardEl)
+}
+
+// NEW: the budget a book PROPOSES. It is the same optionalNumber the game's budget line
+// draws, and everything around it is different: a book never decides, so there is no
+// [reset] and no ⚠ to settle — the most a book can do is propose a number and say what the
+// books under it proposed, which is the disagreement only a GAME can end.
+const renderProposedBudgetLine = () => {
+  const [entry] = totalBudgetSchema
+  const slot = { peek: () => editorState.proposals, ensure: () => editorState.proposals }
+  const lineEl = el('div', 'override-line')
+  lineEl.appendChild(renderField({ ...entry, caption: 'Propose a budget', repaintOnEdit: true }, slot))
+  const others = editorState.books.filter(layer => layer !== null && layer.proposals?.totalBudget !== undefined)
+  lineEl.appendChild(others.length === 0
+    ? el('span', 'field-note', '· blank = this book proposes none, and the game decides')
+    : el('span', 'proposal', `${others.map(layer => `${titleOf(bookLabel(layer.manifest))} proposes ${layer.proposals.totalBudget}`).join(', ')} — a game decides between them`))
+  return lineEl
+}
+
+// NEW: a row one of the books UNDERNEATH proposed, read-only. A game gets
+// buildProposedRowCard here — the whole override cascade — and a book gets this, because a
+// book may not override another book's row (book-over-book override is deferred). It is not
+// nothing, though: the row's id is TAKEN in the shared id space (merge F6 is
+// first-definition-wins and would silently skip a second definition), and its entries show up
+// on this book's shelves. So the card says what the row is and whose it is, and no more.
+const buildRequiredRowCard = ({ row, from }) => {
+  const merged = mergedRowById(row.id) ?? row
+  const open = uiState.expanded.has(row.id)
+  const { text, warnings } = rowSummary(merged)
+  const cardEl = el('section', 'editor-section proposed-row locked')
+  cardEl.appendChild(buildHeader(row.id, { text: `proposed by ${titleOf(from)} · ${text}`, warnings }, open))
+  if (open) {
+    cardEl.appendChild(el('p', 'field-note', `${titleOf(from)} proposes this row and its id "${row.id}" is taken — a book may not override another book's row, so there is nothing to set here. A game that pins both can override it.`))
+    row.children.forEach(child => cardEl.appendChild(buildRequiredRowCard({ row: child, from })))
+  }
+  return cardEl
 }
 
 // NEW: the ONE line that says what the PLAYER builds — a type from the MERGED
@@ -1563,7 +1867,9 @@ const offeredBy = (row) => {
 // CHANGED: a type is counted in SECTIONS now (its fields live inside them), and
 // its things are counted as the ones THIS GAME holds — a book's shelf is the
 // book's, and the Things tab is where the merged count belongs.
-const typeSummary = (type) => ({ text: `${type.label} · ${plural(type.sections.length, 'section')} · ${plural(ownBucketOf(type).length, 'thing')} in this game`, warnings: [] })
+// CHANGED (stage 4): "in this game" was a literal on every type card, and a BOOK's Types tab
+// draws the same cards. selfWord is the table's answer.
+const typeSummary = (type) => ({ text: `${type.label} · ${plural(type.sections.length, 'section')} · ${plural(ownBucketOf(type).length, 'thing')} in ${selfWord()}`, warnings: [] })
 // NEW: a section reads as what it holds — fixed slots, or entries from a shelf.
 const sectionSummary = (section) => ({
   text: section.kind === 'list'
@@ -1612,11 +1918,14 @@ const cannotJudge = (thing) => {
   const demands = demandsOf(thing)
   if (demands.length === 0) return null
   const type = playerSheetType()
-  if (type === undefined) return 'demands something, but this game builds no sheet — it is not offered'
+  // CHANGED (stage 4): `selfWord` rather than the words "this game" — the same sentence is
+  // drawn over a BOOK's shelf, where every entry a required book ships is on screen and a
+  // book has no declaration of its own to blame.
+  if (type === undefined) return `demands something, but ${selfWord()} builds no sheet — it is not offered`
   for (const demand of demands) {
     const field = demandFieldById(type, demand.field)
     const problem = field === undefined
-      ? `names a field that is not on this game's sheet (${demand.field})`
+      ? `names a field that is not on ${selfWord()}'s sheet (${demand.field})`
       : checkDemand(demand, field, field.section ? shelfIdsOf(field) : null)
     if (problem) return `a demand ${problem}`     // ONE sentence per entry, as the border says one per thing
   }
@@ -1677,7 +1986,12 @@ const rowSummary = (row) => {
   // and the server's refusal are the same bytes, never written twice. It is silent
   // for a row that fills nothing (every v5 row is that row) and silent while the
   // declaration itself dangles (rowsContext.sheetDangles).
-  const fillsProblem = rowsContext.sheetDangles ? null : checkFills(row, rowsContext.sheetType)
+  // CHANGED (stage 4): …and silent in a BOOK, for the reason references.js's own book mode is
+  // (danglingReferences takes a `mode` and skips this very check): "fills a section but this
+  // game builds no sheet" is a question only a GAME can answer, so a book that binds a row is
+  // not doing anything wrong and must not be told it is. One decision, in two tables, and the
+  // editor's badge is the border's answer wherever the border has one.
+  const fillsProblem = rowsContext.judgesFills ? checkFills(row, rowsContext.sheetType) : null
   if (fillsProblem) warnings.push(fillsProblem)
   else if ((row.fills ?? '') !== '') parts.push(`fills ${sectionCaption(row.fills)}`)
   const slot = editorState.merged.rules.groupRules[row.id]
@@ -1740,15 +2054,29 @@ const thingLabel = (thingId) =>
 
 // ───────────────────────── side cabinets ─────────────────────────
 
-// the cabinet an attachment entry points at: <file>.<cabinet>, e.g.
-// rules.groupRules. schema.js only knows the file's NAME; this is the ONE line
-// that turns that name into the editor's object (editorState is keyed by the
-// same file names). The attachment builder and cascadeDelete both ask here.
+// CHANGED (stage 4, spec §2): `entry.file` stops naming a FILE and starts naming a ROLE.
+// This was one line — `editorState[entry.file][entry.cabinet]` — and it was keyed by the
+// GAME's five file names with a comment saying "it reads the game's OWN file, always".
+// groupSchema carries two attachment entries hard-wired to file "rules" and file "themes",
+// and a BOOK has neither file: its group rules live in proposals.groupRules and it proposes
+// no look at all. So the name is looked up in the subject's `drawers` table, and the answer
+// has three shapes — which is the codebase's own null-vs-undefined split, already used by
+// `default: null` and readJSON:
+//   a drawer name   the cabinet, as before
+//   null            THIS SUBJECT HAS NONE OF THAT, BY DESIGN — undefined, silently. The Look
+//                   card simply does not appear on a book's row, and a per-paint console
+//                   warning about a thing that is working correctly is noise.
+//   undefined       NO SUBJECT KNOWS THIS ROLE — a sheet grew an attachment nobody has a
+//                   drawer for. Warned ONCE by name and failed closed (nothing drawn,
+//                   nothing deleted), because the alternative is a TypeError mid-paint.
 // The cabinet object itself must already be in the loaded file — a missing one
 // is a border (migration) problem, never something to create while drawing.
-// It reads the game's OWN file, always: a cabinet is where a house rule lives,
-// and a house rule is the game's.
-const cabinetOf = (entry) => editorState[entry.file][entry.cabinet]
+const drawerOf = (role) => {
+  const drawer = S().drawers[role]
+  if (drawer === undefined) { warnOnce(`No drawer for "${role}" in a ${editorState.subject.kind}`); return undefined }
+  return drawer === null ? undefined : editorState[drawer]
+}
+const cabinetOf = (entry) => drawerOf(entry.file)?.[entry.cabinet]
 
 // when an element leaves, everything the side cabinets hold about it leaves
 // too — and so does everything they hold about every element INSIDE it, or
@@ -1764,7 +2092,11 @@ const cabinetOf = (entry) => editorState[entry.file][entry.cabinet]
 const cascadeDelete = (sheetName, element) => {
   SHEETS[sheetName].forEach(entry => {
     if (entry.type === 'attachment') {
-      delete cabinetOf(entry)[element.id]
+      // CHANGED (spec §2): a role this subject does not play has nothing to clear — and
+      // `delete undefined[id]` is a TypeError, so the guard is not politeness. Same
+      // three-way answer the attachment builder reads: a cabinet, or nothing to do.
+      const cabinet = cabinetOf(entry)
+      if (cabinet !== undefined) delete cabinet[element.id]
     }
     if (entry.type === 'collection') {
       (element[entry.key] ?? []).forEach(child => cascadeDelete(entry.of, child))
@@ -1814,18 +2146,22 @@ const REMOVE_HOOKS = {
   type: (type) => {
     // its own things go, and every gate and every PLACEMENT on them — before the bucket does
     ownBucketOf(type).forEach(thing => {
-      say(forgetThing(editorState.content.groups, thing.id))
+      say(forgetThing(ownRows(), thing.id))
       say(forgetPlaced(editorState.things, editorState.merged.types.types, thing.id))
     })
     delete editorState.things.things[type.id]
     forgetShelfOrder(type.id)      // an arrangement of a shelf that is gone is fault F15, and unsaveable
-    say(forgetType(editorState.content.groups, type.id))
+    say(forgetType(ownRows(), type.id))
     // NEW: if this type WAS the sheet the player builds, this game builds no sheet
     // now — and every row bound to one of its list sections loses its binding. Two
     // repairs and not one, on purpose: forgetPlayerSheet deliberately does not walk
     // the rows, because a row names a SECTION and not a type. So the sections are
     // asked for by name, one at a time, and each keeps its own sentence.
-    say(forgetPlayerSheet(editorState.content, type.id))
+    // CHANGED: through the `content` ROLE, which makes this repair TOTAL rather than
+    // game-only: forgetPlayerSheet's first line is `if ((content.sheet ?? "") !== typeId)
+    // return []`, and a book's rows drawer (proposals) has no `sheet` key at all — so a
+    // book asking the question gets the right answer, [], with no branch anywhere.
+    say(forgetPlayerSheet(drawerOf('content'), type.id))
     listSectionsOf(type).forEach(section => forgetBinding(section.id))
     // NEW: and every demand that asked about one of its slots. A demand may name a
     // FIELD or a LIST section — demandFields offers exactly those two — so exactly
@@ -1836,26 +2172,26 @@ const REMOVE_HOOKS = {
     if (uiState.selectedType === type.id) uiState.selectedType = ''            // the Things pane falls back to the first type at paint
   },
   fieldDef: (field) => {
-    say(forgetField(editorState.content.groups, field.id))
+    say(forgetField(ownRows(), field.id))
     say(forgetDemandField(editorState.things, field.id))     // NEW: and every demand that asked about it
   },
   // NEW: a section takes its fields with it, so every condition built on one goes too
   // — and every BINDING that named it, because nothing can fill a section that is gone.
   section:  (section) => {
     (section.fields ?? []).forEach(field => {
-      say(forgetField(editorState.content.groups, field.id))
+      say(forgetField(ownRows(), field.id))
       say(forgetDemandField(editorState.things, field.id))   // NEW: its fields' demands go with them
     })
     forgetBinding(section.id)
     say(forgetDemandField(editorState.things, section.id))   // NEW: and every demand about the SECTION itself
   },
   thing:    (thing) => {
-    say(forgetThing(editorState.content.groups, thing.id))
+    say(forgetThing(ownRows(), thing.id))
     say(forgetPlaced(editorState.things, editorState.merged.types.types, thing.id))
     say(forgetDemanded(editorState.things, thing.id))        // NEW: "Fireball requires Mage" outlives neither
     forgetArranged(thing.id)
   },
-  group:    (row)   => idsBelow(row).forEach(id => say(forgetRow(editorState.content.groups, id)))   // the row AND its subtree
+  group:    (row)   => idsBelow(row).forEach(id => say(forgetRow(ownRows(), id)))   // the row AND its subtree
 }
 // a thing's sheet is filed under its type's id, so it is found by asking
 // "is this sheet name a type?" — the same test cardStyleOf makes
@@ -1889,15 +2225,21 @@ const forgetShelfOrder = (sheetId) => {
 // left holding nothing is dropped by dropOverride's own rule.
 const forgetOverrideFills = (sectionId) => {
   const changed = []
-  Object.keys(editorState.content.rowOverrides).forEach(rowId => {
-    if (editorState.content.rowOverrides[rowId].fills !== sectionId) return
+  // CHANGED: this is reached from forgetBinding, which every REMOVE_HOOK calls, so it is
+  // SHARED machinery and has to be total. A book proposes; it never overrides — its rows
+  // drawer holds no rowOverrides cabinet, and the ABSENCE of the key is the answer (the
+  // same thing `default: null` means), so there is nothing to walk and nothing to say.
+  const cabinet = drawerOf('content').rowOverrides
+  if (cabinet === undefined) return changed
+  Object.keys(cabinet).forEach(rowId => {
+    if (cabinet[rowId].fills !== sectionId) return
     dropOverride(rowId, 'fills')
     changed.push({ row: mergedRowById(rowId) ?? { label: rowId }, what: 'fills nothing now — the section it filled changed or was removed' })
   })
   return changed
 }
 const forgetBinding = (sectionId) => {
-  say(forgetFills(editorState.content.groups, sectionId))
+  say(forgetFills(ownRows(), sectionId))
   say(forgetOverrideFills(sectionId))
 }
 
@@ -1935,7 +2277,7 @@ const forgetUnfitFills = (content) => {
 // optionsFrom names an option source. The choice builder runs it after writing.
 const CHANGE_HOOKS = {
   fieldKindChanged: (field) => {
-    say(forgetField(editorState.content.groups, field.id))   // the old kind's operators and values no longer fit
+    say(forgetField(ownRows(), field.id))   // the old kind's operators and values no longer fit
     say(forgetDemandField(editorState.things, field.id))     // NEW: and neither do a demand's — the same reason, one storey down
     // NEW: a choice needs options and no other kind may carry them. An empty
     // list is unsaveable ("a choice needs at least one option") — loudly wrong
@@ -1952,7 +2294,7 @@ const CHANGE_HOOKS = {
       delete section.placement
       section.fields ??= []
     } else {
-      (section.fields ?? []).forEach(field => say(forgetField(editorState.content.groups, field.id)))
+      (section.fields ?? []).forEach(field => say(forgetField(ownRows(), field.id)))
       delete section.fields
       section.of ??= OPTION_SOURCES.sheets()[0]?.value ?? ''
       section.placement ??= []
@@ -1998,6 +2340,48 @@ const say = (changed) => changed.forEach(entry => {
 
 // ───────────────────────── newborns ─────────────────────────
 
+// NEW (spec §3): WHAT MINTS AN ID, which is the one place the two layers genuinely differ
+// in KIND rather than in address. A game's ids are UUIDs and stay UUIDs. A book may only
+// DEFINE ids under its own name and they must fit BOOK_ID — merge.js's bookRules refuses a
+// UUID in a book with a sentence that already exists — so a book mints
+// `<book>:<noun>-<smallest free ordinal>`: dinosaur-age:row-3, basic:field-7.
+//
+// THE NOUN COMES FROM MINTS (schema.js), NEVER FROM THE CAPTION. A caption gets renamed and
+// an id must not follow it: a book's id is a permanent public reference — a game's
+// rowOverrides are keyed by it and another book may point at it — so an id that tracked the
+// label would break every reference the first time an author fixed a typo. (It is also the
+// hand-authored shelf's own style: "dinosaur-age:row-companions" is a slug, not a caption.)
+//
+// THE FRESHNESS RULE, and it is the one hazard here: the smallest free ordinal is read from
+// `editorState.origins`, which remerge() rebuilds at the top of EVERY paint. So a mint is
+// the first birth in this project that depends on the merge being current, and the rule is
+// the file's existing one — WRITE ON CLICK, NEVER ON PAINT — now covering ids too:
+// `newborn` may only be called from a click handler. Every caller is one (the collection
+// builder's "+ Add", the Things pane's "+ Add", the template copy) and each mints ONCE and
+// then rerenders, which is what keeps two ids from one handler out of the question.
+// A bulk mint (rename, "save as a book") cannot use this at all: it runs on the SERVER,
+// where origins is not in hand, and checks the whole shelf instead (spec §3).
+const nounFor = (sheetName) =>
+  Object.hasOwn(MINTS, sheetName) ? MINTS[sheetName]            // a named sheet: row, sheet, section, field
+  : isTypeSheet(sheetName) ? MINTS.thing                        // a thing's sheet is built per TYPE and has no name in SHEETS
+  : undefined
+const mintId = (sheetName) => {
+  if (!S().mintsIds) return crypto.randomUUID()
+  const noun = nounFor(sheetName)
+  if (noun === undefined) {
+    // fail closed, by name, at the border rather than here: a UUID in a book is refused by
+    // bookRules' own sentence ("is not in this book's namespace"), which is the sentence
+    // that already exists for exactly this. Minting a wrong-but-legal-looking id would be
+    // the silent version.
+    warnOnce(`No id noun for sheet "${sheetName}" — add a row to MINTS (schema.js)`)
+    return crypto.randomUUID()
+  }
+  const space = `${editorState.subject.name}:${noun}-`
+  let n = 1
+  while (editorState.origins.has(`${space}${n}`)) n += 1        // the smallest FREE ordinal, over the merged world
+  return `${space}${n}`
+}
+
 // a brand-new element, born from its sheet: a forever-id first, then each
 // entry's default in sheet order — the same key order the old literals had and
 // the saved files have. Three kinds of entry are skipped: attachment entries
@@ -2013,7 +2397,7 @@ const say = (changed) => changed.forEach(entry => {
 // (No rules/themes slots are born on purpose: the game's hydration defaults
 // cover absent entries, and editing min/max/background creates them — ensure.)
 const newborn = (sheetName) => {
-  const born = { id: crypto.randomUUID() }
+  const born = { id: mintId(sheetName) }
   SHEETS[sheetName].forEach(entry => {
     if (entry.key === undefined) return                            // attachment: nothing lives in the element
     if (entry.showIf && born[entry.showIf.key] !== entry.showIf.value) return   // NEW: not this shape
@@ -2039,7 +2423,10 @@ const newborn = (sheetName) => {
 //     (the cascade, the repairs, the validation, the canonical save order).
 // Spread FIRST, then override: `id` and `name` already exist on the source, so the copy
 // keeps the source's key order rather than inventing a second one.
-const newbornFrom = (source) => ({ ...structuredClone(source), id: crypto.randomUUID(), name: `${source.name} copy` })
+// CHANGED: the fresh id is minted the same way a newborn's is — a copy made inside a BOOK
+// lands in the book's own namespace, so it goes through mintId too. The source's sheet is
+// its TYPE's, which is the sheet name the caller already has.
+const newbornFrom = (source, sheetName) => ({ ...structuredClone(source), id: mintId(sheetName), name: `${source.name} copy` })
 
 // ───────────────────────── cards ─────────────────────────
 
@@ -2118,7 +2505,7 @@ const lockCard = (cardEl, ownerLabel, showBadge) => {
   })
   if (!showBadge) return
   const headerEl = cardEl.querySelector('.group-header')
-  if (headerEl) headerEl.prepend(el('span', 'origin-badge', ownerLabel === GAME_LAYER ? 'this game' : `from ${titleOf(ownerLabel)}`))
+  if (headerEl) headerEl.prepend(el('span', 'origin-badge', ownerLabel === ownLayer() ? selfWord() : `from ${titleOf(ownerLabel)}`))
 }
 
 // NEW: whose card is being walked right now. A nested card compares its own
@@ -2142,7 +2529,7 @@ const buildCard = (sheetName, element, list) => {
   const style  = cardStyleOf(sheetName)
   const open   = !style.summary || uiState.expanded.has(element.id)
   const owner  = editorState.origins.get(element.id)
-  const locked = owner !== GAME_LAYER
+  const locked = owner !== ownLayer()
   const parent = cardOwner
 
   const cardEl = document.createElement('section')

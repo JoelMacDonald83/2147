@@ -11,17 +11,34 @@ import { validateFile, problemText } from "../engine/config/validate.js";
 // twin anyway: a game is the last layer of a stack, so content.json is judged
 // WITH the books it pins (validateGame) — the merge's faults arrive as problems
 // in the same { path, message } shape every other refusal already speaks.
-import { validateGame } from "../engine/config/merge.js";
+// CHANGED (stage 4): validateBook comes too. A book's save route needs NO new
+// validator — validateBook is validateGame's twin and already judges one book's shapes,
+// its namespace rules and a real merge against the books it requires.
+import { validateGame, validateBook } from "../engine/config/merge.js";
+// NEW: the shelf's name grammar, for the two url segments that name a book. One grammar
+// for the folder and the url, exactly as isGameName is for a game.
+import { isBookName } from "../engine/config/schema.js";
 // NEW: the publisher, IMPORTED, not spawned. Its CLI only runs when the file is
 // argv[1] (the oracles import it the same way), so this line runs nothing. A
 // refusal arrives as an ExportRefusal carrying .problems — the same list the
 // save route already speaks — instead of printed lines this file would parse.
 import { exportGame, ExportRefusal } from "../tools/export.mjs";
 // NEW: the games folder as functions — names, the list, the seed, the claim (games.js).
-import { isGameName, gameExists, listGames, titleProblems, slugOf, createGame } from "./games.js";
+// CHANGED (stage 4): pinnedBy / pinnedByAnyEdition — THE FREEZE CENSUS. "Frozen once a
+// game pins it" is a cross-root question (it reads every game's content.json), and it
+// lives in games.js because books.js may never import games.js.
+import { isGameName, gameExists, listGames, titleProblems, slugOf, createGame, pinnedBy, pinnedByAnyEdition } from "./games.js";
 // NEW: the books folder as functions — the shelf's grammar, the loader the merge
 // eats, the listing the Library paints, the asset search path (books.js).
-import { bookDir, bookFile, readBooks, listBooks, latestEdition, assetPath, pinProblems } from "./books.js";
+// CHANGED (stage 4): and its WRITE half — the seed, the atomic edition write, the
+// lifecycle, and the three sentences of the freeze. Every sentence below that refuses a
+// book route is imported, never re-worded.
+import {
+  bookDir, bookFile, readBook, readBooks, listBooks, latestEdition, nextEdition, shelfOf, assetPath, pinProblems,
+  isEditionName, ShelfRefusal, newBookName, bookNameProblems, seedBook,
+  createBook, writeBook, cutEdition, deleteEdition, deleteBook, renameBook, extractBook,
+  frozenEditionSentence, pinnedEditionSentence, pinnedBookSentence
+} from "./books.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -113,9 +130,150 @@ const checkContent = async (dir, content) => {
 // CHANGED: the shelf goes with it — the facts count the MERGED game (games.js).
 const handleList = async (res) => sendJSON(res, 200, { ok: true, games: await listGames(GAMES_DIR, DIST_DIR, BOOKS_DIR) })
 
+// ───────────── the shelf's write half: one chain, one status table ─────────────
+// L3 — NEW BEHAVIOUR GOES BEHIND NEW ROUTES. handleSave's game path below is untouched
+// except for routing: wrapping the WORKING content.json save in new concurrency behaviour
+// would put the editor's whole save at risk for a book feature.
+//
+// ONE IN-PROCESS CHAIN, SCOPED TO THE SHELF. Every book-mutating route runs through it,
+// and so does GET /api/books — listBooks reads every edition TWICE per call with no cache
+// (shelfOf, then editionFacts), so a write landing between those two passes hands the
+// Library facts judged against a shelf that no longer exists. It is not a lock on the
+// filesystem and does not pretend to be: two servers over one shelf is not a thing this
+// project has ever had (the export route already assumes one author, one machine).
+let shelfQueue = Promise.resolve()
+const onShelf = (work) => {
+  const done = shelfQueue.then(work, work)       // the previous caller's failure must not cancel the next
+  shelfQueue = done.then(() => {}, () => {})     // …and must not surface as an unhandled rejection
+  return done
+}
+
+// A ShelfRefusal's `code` → the status, said ONCE here rather than at every throw, which
+// is what lets books.js refuse in the shelf's own words while knowing nothing about HTTP.
+// The receipt is the shape every other refusal in this file already speaks.
+const REFUSAL_STATUS = { exists: 409, pinned: 409, frozen: 409, missing: 404, refused: 400 }
+const sendRefusal = (res, refusal) => {
+  console.log(`Refused: ${refusal.message}`)
+  refusal.problems.forEach(problem => console.log(`  ${problemText(problem)}`))
+  const body = { ok: false, error: refusal.message }
+  if (refusal.problems.length > 0) body.problems = refusal.problems
+  sendJSON(res, Object.hasOwn(REFUSAL_STATUS, refusal.code) ? REFUSAL_STATUS[refusal.code] : 400, body)
+}
+
+// the border for a whole book, in one call: shapes, the namespace rules, and a real merge
+// against the books it requires — validateBook, the twin of the validateGame that guards
+// content.json. Nothing is written on a refusal, and the sentence is the validator's own.
+const checkBook = async (name, edition, files) => {
+  const layer = { pin: { name, edition }, manifest: files.book, types: files.types, things: files.things, proposals: files.proposals }
+  const problems = validateBook(layer, await shelfOf(BOOKS_DIR))
+  if (problems.length > 0) throw new ShelfRefusal("refused", `books/${name}/${edition} does not fit the schema`, problems)
+}
+
 // NEW: GET /api/books — the whole shelf, loudly: every folder, every edition,
 // and what is wrong with the ones that are wrong (books.js).
-const handleBooks = async (res) => sendJSON(res, 200, { ok: true, books: await listBooks(BOOKS_DIR) })
+// CHANGED (stage 4): on the chain, so it never straddles a write (see onShelf).
+const handleBooks = async (res) => sendJSON(res, 200, { ok: true, books: await onShelf(() => listBooks(BOOKS_DIR)) })
+
+// NEW: POST /api/books { title, name?, requires? } — a new book, at edition 1.
+// The folder name is made from the title by the SAME rule a game's is (slugOf, reserved
+// words and all), or taken as given; either way the grammar's own sentence comes from
+// validate.js, so a bad name is refused once, in the words the editor already prints.
+const handleBookCreate = async (req, res) => {
+  let parsed
+  try { parsed = JSON.parse(await readBody(req)) } catch { return sendJSON(res, 400, { ok: false, error: "Body is not valid JSON" }) }
+  const { name, problems } = newBookName({ title: parsed?.title, name: parsed?.name })
+  if (problems.length > 0) return sendJSON(res, 400, { ok: false, error: `${problems[0].path} does not make a book name`, problems })
+  const title = parsed.title.trim()
+  const files = seedBook(name, title, 1, parsed.requires ?? [])
+  await checkBook(name, 1, files)                  // before the claim: a refusal makes no folder
+  await createBook(BOOKS_DIR, files)               // EEXIST is books.js's "already on the shelf" refusal
+  console.log(`Created books/${name}/1 ("${title}")`)
+  sendJSON(res, 201, { ok: true, name, edition: 1 })
+}
+
+// NEW: POST /api/books/<n>/<e>/save — THE WHOLE BOOK, in ONE request, written atomically.
+// A game posts five files with content.json LAST because content.json carries every
+// cross-reference; a book has four files and no such last one, so that ordering has no
+// analogue here. One route taking all four is simpler AND stronger: the half-saved book
+// does not exist as a case.
+const handleBookSave = async (req, res, name, edition) => {
+  let parsed
+  try { parsed = JSON.parse(await readBody(req)) } catch { return sendJSON(res, 400, { ok: false, error: "Body is not valid JSON" }) }
+  if (await readBook(BOOKS_DIR, { name, edition }) === null) return sendJSON(res, 404, { ok: false, error: `Unknown book ${JSON.stringify(name)} ${edition}` })
+  // THE FREEZE. A game pinning this edition means its world cannot change underneath it —
+  // the promise the whole merge design rests on — so the answer is a cut, not a write.
+  const by = await pinnedBy(GAMES_DIR, name, edition)
+  if (by.length > 0) return sendJSON(res, 409, { ok: false, error: frozenEditionSentence(by, await nextEdition(BOOKS_DIR, name)) })
+  const files = { book: parsed?.book, types: parsed?.types ?? null, things: parsed?.things ?? null, proposals: parsed?.proposals ?? null }
+  await checkBook(name, edition, files)
+  await writeBook(BOOKS_DIR, name, edition, files)
+  console.log(`Saved books/${name}/${edition}`)
+  sendJSON(res, 200, { ok: true })
+}
+
+// NEW: POST /api/books/<n>/<e>/cut — edition N+1 as a copy of this one. This is the
+// answer the freeze refusal points at, so it is allowed while the source is pinned.
+const handleBookCut = async (res, name, edition) => {
+  const cut = await cutEdition(BOOKS_DIR, name, edition)
+  console.log(`Cut books/${name}/${cut} from ${edition}`)
+  sendJSON(res, 201, { ok: true, edition: cut })
+}
+
+// NEW: POST /api/books/<n>/<e>/delete — one edition, and the book folder with it when it
+// was the last one (or the Library would show a book with no editions).
+const handleBookDeleteEdition = async (res, name, edition) => {
+  const by = await pinnedBy(GAMES_DIR, name, edition)
+  if (by.length > 0) return sendJSON(res, 409, { ok: false, error: pinnedEditionSentence(by) })
+  await deleteEdition(BOOKS_DIR, name, edition)
+  console.log(`Deleted books/${name}/${edition}`)
+  sendJSON(res, 200, { ok: true })
+}
+
+// NEW: POST /api/books/<n>/delete — the whole book, every edition. Refused while any game
+// pins ANY edition of it, and the refusal names every game and every edition.
+const handleBookDelete = async (res, name) => {
+  const by = await pinnedByAnyEdition(GAMES_DIR, name)
+  if (by.length > 0) return sendJSON(res, 409, { ok: false, error: pinnedBookSentence(by) })
+  await deleteBook(BOOKS_DIR, name)
+  console.log(`Deleted books/${name}`)
+  sendJSON(res, 200, { ok: true })
+}
+
+// NEW: POST /api/books/<n>/rename { to } — the name is the id NAMESPACE, so this rewrites
+// every id in every edition, every reference to one in every game that pins it, and every
+// pin that names it (books.js: `rewritten: { ids, pins }`). The grammar is asked of `to`
+// HERE, before any path is built from it.
+const handleBookRename = async (req, res, name) => {
+  let parsed
+  try { parsed = JSON.parse(await readBody(req)) } catch { return sendJSON(res, 400, { ok: false, error: "Body is not valid JSON" }) }
+  const problems = bookNameProblems(parsed?.to, "to")
+  if (problems.length > 0) return sendJSON(res, 400, { ok: false, error: "to does not make a book name", problems })
+  if (parsed.to === name) return sendJSON(res, 400, { ok: false, error: `books/${name} is already called that` })
+  const pinners = (await pinnedByAnyEdition(GAMES_DIR, name)).map(pin => pin.game)
+  const rewritten = await renameBook(BOOKS_DIR, GAMES_DIR, name, parsed.to, pinners)
+  console.log(`Renamed books/${name} → books/${parsed.to} (${rewritten.ids} ids, ${rewritten.pins} pins)`)
+  sendJSON(res, 200, { ok: true, name: parsed.to, rewritten })
+}
+
+// NEW: POST /api/games/<g>/extract { name, title } — "SAVE AS A BOOK". The game's own
+// layer is lifted into books/<name>/1/, every id re-minted into the new namespace, and the
+// game left pinning it (books.js). It is a BOOK-mutating route, so it runs on the shelf's
+// chain with the rest; it lives under /api/games because the subject is the GAME — the
+// book does not exist yet to be addressed.
+// The name/title step is POST /api/books's, verbatim: one rule, one place, and the
+// receipt's `left` is the honest half — every sentence naming something that could not
+// travel, because a feature that silently drops four of games/dino's four row facts has
+// lied to its author.
+const handleGameExtract = async (req, res, game) => {
+  let parsed
+  try { parsed = JSON.parse(await readBody(req)) } catch { return sendJSON(res, 400, { ok: false, error: "Body is not valid JSON" }) }
+  const { name, problems } = newBookName({ title: parsed?.title, name: parsed?.name })
+  if (problems.length > 0) return sendJSON(res, 400, { ok: false, error: `${problems[0].path} does not make a book name`, problems })
+  const { moved, left } = await extractBook(BOOKS_DIR, GAMES_DIR, game, name, parsed.title.trim())
+  console.log(`Extracted games/${game} → books/${name}/1 (${moved.types} types, ${moved.things} things, ${moved.rows} rows; ${left.length} stayed)`)
+  left.forEach(sentence => console.log(`  left: ${sentence}`))
+  sendJSON(res, 201, { ok: true, name, edition: 1, moved, left })
+}
 
 // NEW: POST /api/games { title } — the folder name is made from the title HERE
 // (slugOf: one rule, one place — the receipt says which), refused by name before
@@ -219,7 +377,35 @@ const handleExport = (res, name) => {
 
 // NEW: the three URL shapes that carry a game name. The name is [^/]+ here and
 // isGameName (games.js) decides what it may be — one grammar for the folder and the URL.
-const API  = /^\/api\/games\/([^/]+)\/(save\/([^/]+)|export)$/
+// CHANGED (WP-6): + extract, the third thing a game can be asked to do.
+const API  = /^\/api\/games\/([^/]+)\/(save\/([^/]+)|export|extract)$/
+// NEW (§8): the shelf's write routes, ALL under /api/books — so every existing assertion
+// about the static /books/… path survives verbatim and that drawer stays GET-only. Two
+// shapes, because two of them are about a BOOK and three are about one EDITION of it.
+// Name and edition are [^/]+ here; books.js's grammar decides what they may be, BEFORE
+// either becomes a path component.
+const BOOK_EDITION_API = /^\/api\/books\/([^/]+)\/([^/]+)\/(save|cut|delete)$/
+const BOOK_API         = /^\/api\/books\/([^/]+)\/(rename|delete)$/
+// one row per route, never a branch: own keys only, for the reason SAVABLE_FILES has it —
+// "constructor" is a name every plain object inherits and a lookup that found one would
+// call it.
+const EDITION_ROUTES = {
+  save:   (req, res, name, edition) => handleBookSave(req, res, name, edition),
+  cut:    (req, res, name, edition) => handleBookCut(res, name, edition),
+  delete: (req, res, name, edition) => handleBookDeleteEdition(res, name, edition)
+}
+const BOOK_ROUTES = {
+  rename: (req, res, name) => handleBookRename(req, res, name),
+  delete: (req, res, name) => handleBookDelete(res, name)
+}
+// NEW (WP-6): and the GAME's two non-save actions, as the same kind of table. `save` is
+// not a row because it is the only one carrying a TARGET (the file name), so it stays the
+// default — L3: handleSave's path is touched for routing and for nothing else. Extract
+// writes the shelf, so it goes on the shelf's chain; export writes dist/ and does not.
+const GAME_ROUTES = {
+  export:  (req, res, name) => handleExport(res, name),
+  extract: (req, res, name) => onShelf(() => handleGameExtract(req, res, name))
+}
 const PLAY = /^\/games\/([^/]+)(\/.*)?$/
 const DIST = /^\/dist\/([^/]+)(\/.*)?$/
 // NEW: the shelf, in a url. Two paths lead to the same file: /books/… (the
@@ -258,12 +444,37 @@ const server = createServer(async (req, res) => {
       if (req.url === "/api/games" && req.method === "GET") return await handleList(res)
       if (req.url === "/api/games" && req.method === "POST") return await handleCreate(req, res)
       if (req.url === "/api/books" && req.method === "GET") return await handleBooks(res)   // NEW: the shelf
+      if (req.url === "/api/books" && req.method === "POST") return await onShelf(() => handleBookCreate(req, res))   // NEW
+      // NEW: the shelf's five write routes. The grammar is the guard and it runs FIRST: a
+      // name or an edition it refuses is a 404 and never reaches the disk, exactly as a
+      // game name never does. Every one of them runs on the shelf's chain.
+      const shelved = req.method === "POST" ? req.url.match(BOOK_EDITION_API) : null
+      if (shelved) {
+        const [, name, edition, action] = shelved
+        if (!isBookName(name) || !isEditionName(edition)) return sendJSON(res, 404, { ok: false, error: `Unknown book ${JSON.stringify(name)} ${edition}` })
+        if (!Object.hasOwn(EDITION_ROUTES, action)) return sendJSON(res, 404, { ok: false, error: "Unknown route" })
+        return await onShelf(() => EDITION_ROUTES[action](req, res, name, Number(edition)))
+      }
+      const booked = req.method === "POST" ? req.url.match(BOOK_API) : null
+      if (booked) {
+        const [, name, action] = booked
+        if (!isBookName(name)) return sendJSON(res, 404, { ok: false, error: `Unknown book ${JSON.stringify(name)}` })
+        if (!Object.hasOwn(BOOK_ROUTES, action)) return sendJSON(res, 404, { ok: false, error: "Unknown route" })
+        return await onShelf(() => BOOK_ROUTES[action](req, res, name))
+      }
       const api = req.method === "POST" ? req.url.match(API) : null
       if (!api) return sendJSON(res, 404, { ok: false, error: "Unknown route" })
       const [, name, action, target] = api
       if (!gameExists(GAMES_DIR, name)) return sendJSON(res, 404, { ok: false, error: `Unknown CYOA ${JSON.stringify(name)}` })
-      return action === "export" ? handleExport(res, name) : await handleSave(req, res, gameDir(name), target)
+      // CHANGED (WP-6): a row per named action, own keys only (see SAVABLE_FILES), with
+      // save — the only one with a target — as the default.
+      return Object.hasOwn(GAME_ROUTES, action) ? await GAME_ROUTES[action](req, res, name)
+                                                : await handleSave(req, res, gameDir(name), target)
     } catch (error) {
+      // NEW: a ShelfRefusal is a REFUSAL, not a failure — one sentence, the problems the
+      // border found, and nothing written. One place turns it into a receipt so books.js
+      // can refuse in the shelf's own words without knowing what a status code is.
+      if (error instanceof ShelfRefusal) return sendRefusal(res, error)
       console.log(`${req.method} ${req.url} failed server side:`, error.message)
       return sendJSON(res, 500, { ok: false, error: `${req.method} ${req.url} failed (${error.code ?? error.message})` })
     }

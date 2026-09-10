@@ -11,7 +11,12 @@
 // This file talks to the server (GET /api/books, for what else could be pinned)
 // and it edits content.books; both go through `actions` (main.js), so nothing
 // here imports view.js and the module graph stays a tree.
-import { editorState } from './state.js'
+// CHANGED (stage 4): the tab serves BOTH kinds of subject. A game's pins live in
+// content.books and a book's requirements live in book.requires — a different file, a
+// different key, an ADD-ONLY and FLAT one — and the subject table's `pins` cell names both
+// (see PIN_RULES below). Every card, every fact and every action below is the same either
+// way; what differs is three sentences and two exclusions, and those are a table.
+import { editorState, S } from './state.js'
 import { rowsIn } from '/config/references.js'
 import { bookLabel } from '/config/merge.js'
 
@@ -48,13 +53,73 @@ const titleOfBook = (name) =>
   editorState.books.find(layer => layer !== null && layer.manifest.name === name)?.manifest.title
   ?? shelfBooks().find(book => book.name === name)?.title
   ?? name
+// NEW (§6): ONE NAMING RULE — CHROME SPEAKS TITLES, FAULT PATHS SPEAK FOLDERS.
+// "Dinosaur Age 2" (a title and its edition) is what an author reads; "dinosaur-age 2" is
+// merge.js's bookLabel and belongs in origins, in fault paths and in a folder path, never
+// in a sentence. Before this there were THREE hand-written spellings of the same phrase —
+// pinTitle here, the option label in the add form below, and the Library's requires line in
+// home.js, each with its own fallback — and the Library and the Books tab could and did
+// disagree about the same book. This is the one place the phrase is built; everyone else
+// supplies the title they have in hand.
+export const bookTitle = (title, edition) => `${title} ${edition}`
 // exported: main.js writes the status lines ("added Dinosaur Age 1"), and the
 // words for a book belong here, beside everything else that reads the shelf.
-export const pinTitle = (name, edition) => `${titleOfBook(name)} ${edition}`
+export const pinTitle = (name, edition) => bookTitle(titleOfBook(name), edition)
 // exported for the same reason: adding a book adds what it requires, and the
 // requirements of a book that is NOT pinned yet can only come from the listing.
 export const shelfRequires = (name, edition) =>
   shelfEditions(name).find(each => each.edition === edition)?.requires ?? []
+
+// ───────────────────────── the freeze, as the editor can see it ─────────────────────────
+
+// NEW (stage 4): WHO PINS THIS EDITION — the question the whole freeze turns on, answered
+// from GET /api/games because that is the only door the editor has onto games/.
+//
+// WHAT IT CAN SEE, said out loud because it is less than the server's census: a game card's
+// `books` is the merged LAYER ORDER, so it lists the books that SURVIVED the merge. A game
+// that pins this edition but whose merge was refused (a requirement missing, a file too old)
+// does NOT appear here, and the server's own census — which reads the raw pins out of every
+// content.json — does. So this answer can under-report, and it is used only to decide what
+// the screen OFFERS. The border is the server: a save into an edition it finds pinned comes
+// back 409 with the sentence below, and the editor then paints exactly what it was told.
+// Fail closed is therefore kept where it matters; what is lost is an Edit button that should
+// have read "frozen". THE HANDOFF: one `pinnedBy` field per edition on GET /api/books would
+// make this exact, and would delete this function.
+export const pinnersOf = (games, name, edition) => (games ?? [])
+  .filter(game => (game.books ?? []).includes(`${name} ${edition}`))
+  .map(game => ({ game: game.name, edition }))
+// the same question about the WHOLE book — every edition any game pins, which is what
+// deleting a book has to refuse on. Matched on the label's name half.
+export const pinnersOfBook = (games, name) => (games ?? []).flatMap(game =>
+  (game.books ?? []).filter(label => label.startsWith(`${name} `))
+    .map(label => ({ game: game.name, edition: Number(label.slice(name.length + 1)) })))
+
+// NEW: the three sentences of the freeze. THEY ARE A SECOND COPY, byte for byte, of
+// server/books.js's — and that is a debt, not a design. The originals are the border's and
+// every refusal the server sends carries one; the editor needs the same words BEFORE it asks
+// (a frozen edition must say why it is read-only the moment it opens, and a delete must say
+// what it would refuse before the author clicks). server/ is not served to the browser, so
+// the editor cannot import them, and engine/config — the one place both sides can read — has
+// no door for a shelf sentence yet. THE HANDOFF: move these three into engine/config beside
+// the shelf's four grammars (which live there for exactly this reason, with an oracle pinning
+// them equal) and delete this block. Copied byte-identically on purpose, so that when they
+// move, nothing on screen changes.
+const andList = (list) => list.length < 2 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`
+const gamesThat = (by) => andList(by.map(pin => `games/${pin.game}`))
+const pinVerb   = (by) => by.length === 1 ? 'pins' : 'pin'
+export const frozenEditionSentence = (by, next) => `${gamesThat(by)} ${pinVerb(by)} this edition — it is frozen. Cut edition ${next} to change it.`
+export const pinnedEditionSentence = (by)       => `${gamesThat(by)} ${pinVerb(by)} this edition. Un-pin it first, or delete the whole book.`
+export const pinnedBookSentence    = (by)       => `${andList(by.map(pin => `games/${pin.game} pins edition ${pin.edition}`))} — un-pin ${by.length === 1 ? 'it' : 'them'} first.`
+
+// NEW: the number a cut would give the next edition — one past the HIGHEST FOLDER, and 1
+// when there are none. It is read from every edition the listing names, broken ones
+// included, for the reason the server's nextEdition gives: a broken edition still owns its
+// number, and handing its number to a new edition would bury the author's mistake under a
+// working book. So "Cut edition 3" and the folder a cut actually makes agree.
+export const nextEditionOf = (editions) => {
+  const numbers = (editions ?? []).map(each => each.edition).filter(each => Number.isInteger(each))
+  return numbers.length === 0 ? 1 : Math.max(...numbers) + 1
+}
 
 // ───────────────────────── the facts on a card ─────────────────────────
 
@@ -126,10 +191,12 @@ const buildPinnedCard = (layer, actions) => {
 // folder, a requirement missing. The card carries the merge's own sentence — the
 // same words the faults banner shows — and, when the shelf has some edition of
 // that name, the one click that would fix it.
+// CHANGED: the coordinate it greps for is the subject's own pins path — `content.books[i]`
+// for a game, `book.requires[i]` for a book (merge.js's sitesFor writes both).
 const buildSkippedCard = (pin, at, actions) => {
   const cardEl = el('section', 'editor-section book-card book-card--skipped')
   cardEl.appendChild(el('h2', '', pinTitle(pin?.name, pin?.edition)))
-  const fault = editorState.faults.find(each => each.path === `content.books[${at}]`)
+  const fault = editorState.faults.find(each => each.path === `${pinsPath()}[${at}]`)
   cardEl.appendChild(el('p', 'book-facts', fault?.message ?? 'this pin did not load'))
   const actionsEl = el('div', 'game-actions')
   const latest = latestClean(pin?.name)
@@ -141,61 +208,107 @@ const buildSkippedCard = (pin, at, actions) => {
   return cardEl
 }
 
-// The offer: every book on the shelf this game does not already pin, at its
+// ───────────────────────── whose pin list, and the words for it ─────────────────────────
+
+// NEW (stage 4): the subject's pin list, its fault path, and the three things that differ
+// between "which books is this GAME built on" and "which books does this BOOK require".
+// The ARRAY and the PATH both come from the subject table's one `pins` cell, so they cannot
+// disagree; the words and the two extra exclusions are this table, because they are DOM and
+// the subject table is pure.
+const pins = () => { const [file, key] = S().pins; return editorState[file][key] ?? [] }
+const pinsPath = () => { const [file, key] = S().pins; return `${file}.${key}` }
+
+// `mayPin(name)` is the whole of "two new exclusions the game case never needed"
+// (merge.js:532 makes a self-requirement a fault; orderBooks refuses a cycle). A game needs
+// neither — and must not inherit them: games/basic and books/basic are both legal folder
+// names under ONE grammar, so excluding "the book with my own name" would hide the Basic
+// book from a game that happens to be called basic.
+const PIN_RULES = {
+  game: {
+    none:    'This CYOA is built on no books — every sheet, thing and row in it is its own.',
+    heading: 'Add a book from the shelf',
+    add:     'Add',
+    hint:    'A book whose requirements are not pinned is added with them.',
+    mayPin:  () => true
+  },
+  book: {
+    none:    'This book requires nothing — everything in it is its own.',
+    heading: 'Require a book from the shelf',
+    add:     'Require',
+    hint:    'A book is required together with everything IT requires: `requires` is FLAT, so every one is written out.',
+    // a book may not require itself, and may not require a book that requires it — the
+    // merge's two refusals, asked before the choice is offered rather than after it is made.
+    mayPin:  (name) => name !== editorState.subject.name
+      && !shelfRequires(name, latestClean(name)).some(pin => pin.name === editorState.subject.name)
+  }
+}
+const pinRules = () => PIN_RULES[editorState.subject.kind]
+
+// The offer: every book on the shelf this subject does not already name, at its
 // latest clean edition. Adding one adds whatever it requires too — a book
 // without its foundation is skipped whole by the merge, so offering the choice
 // would only be offering a fault.
 const buildAddForm = (actions) => {
-  const pinned = new Set(editorState.content.books.map(pin => pin.name))
+  const words  = pinRules()
+  const named  = new Set(pins().map(pin => pin?.name))
   const offers = shelfBooks()
-    .filter(book => !pinned.has(book.name) && latestClean(book.name) !== undefined)
+    .filter(book => !named.has(book.name) && latestClean(book.name) !== undefined && words.mayPin(book.name))
     .map(book => ({ name: book.name, edition: latestClean(book.name) }))
 
   const formEl = el('section', 'editor-section')
-  formEl.appendChild(el('h2', '', 'Add a book from the shelf'))
+  formEl.appendChild(el('h2', '', words.heading))
   if (editorState.shelf === null) { formEl.appendChild(el('p', 'wall-hint', 'Reading the shelf…')); return formEl }
   if (editorState.shelf.ok !== true) { formEl.appendChild(el('p', 'wall-hint', `Could not read the shelf — ${editorState.shelf.error}`)); return formEl }
-  if (offers.length === 0) { formEl.appendChild(el('p', 'wall-hint', 'Every book on the shelf is already pinned.')); return formEl }
+  if (offers.length === 0) { formEl.appendChild(el('p', 'wall-hint', 'There is nothing else on the shelf to add.')); return formEl }
 
   const rowEl = el('div', 'game-actions')
   const selectEl = document.createElement('select')
   offers.forEach(offer => {
     const optionEl = document.createElement('option')
     optionEl.value = offer.name
-    optionEl.textContent = `${titleOfBook(offer.name)} ${offer.edition}`
+    optionEl.textContent = pinTitle(offer.name, offer.edition)   // CHANGED (§6): the one spelling, not a second one
     selectEl.appendChild(optionEl)
   })
   rowEl.appendChild(selectEl)
-  rowEl.appendChild(button('save-button', 'Add', () => {
+  rowEl.appendChild(button('save-button', words.add, () => {
     const name = selectEl.value
     actions.pinBook(name, latestClean(name))
   }))
   formEl.appendChild(rowEl)
-  formEl.appendChild(el('p', 'wall-hint', 'A book whose requirements are not pinned is added with them.'))
+  formEl.appendChild(el('p', 'wall-hint', words.hint))
   return formEl
 }
 
 // ───────────────────────── the tab ─────────────────────────
 
 export const renderBooksTab = (actions) => {
-  // the shelf is fetched once per page and remembered on editorState, because
-  // the answer is about the DISK, not about this game — it does not change while
-  // the author edits. A failure is remembered too, so a broken shelf is asked
-  // about once and then said out loud, rather than retried on every paint.
+  // the shelf is fetched once and remembered on editorState, and asked for again the moment
+  // something could have changed it — see actions.forgetShelf.
+  // CORRECTED (stage 4): this comment used to say the answer "does not change while the
+  // author edits", and cached it for the life of the page on those grounds. That premise
+  // dies with the first route that writes a book: an author who creates one and comes back
+  // to this tab would not be offered it, and the stale answer is about the DISK, which is
+  // exactly the kind of lie a cache must not be allowed to tell. So the cache stays (it
+  // saves a fetch per paint, which is the real reason for it) and invalidation is explicit:
+  // every book mutation calls forgetShelf, and the next paint asks again.
+  // A failure is remembered too, so a broken shelf is asked about once and then said out
+  // loud, rather than retried on every paint.
   if (editorState.shelf === null) actions.readShelf()
 
-  if (editorState.content.books.length === 0) {
-    editorEl.appendChild(el('p', 'wall-hint', 'This CYOA is built on no books — every sheet, thing and row in it is its own.'))
-  }
+  if (pins().length === 0) editorEl.appendChild(el('p', 'wall-hint', pinRules().none))
   // pinned, in LAYER order: a book always after the books it requires. That is
   // the order the merge computed, so the cards read in the order the sheets and
   // the rows were laid down.
+  // CHANGED: in BOOK mode the merge's `order` ends with the SUBJECT book itself (it is the
+  // last book layer — that is what book mode means), and the subject is not one of its own
+  // requirements. `editorState.books` holds only the loaded requirements, so the find
+  // simply does not match it and the subject draws no card here. Fail closed by shape.
   editorState.order.forEach(label => {
     const layer = editorState.books.find(each => each !== null && bookLabel(each.manifest) === label)
     if (layer) editorEl.appendChild(buildPinnedCard(layer, actions))
   })
   // then the pins that did not make it, in the order they are written
-  editorState.content.books.forEach((pin, at) => {
+  pins().forEach((pin, at) => {
     const layer = editorState.books[at]
     if (layer !== null && layer !== undefined && editorState.order.includes(bookLabel(layer.manifest))) return
     editorEl.appendChild(buildSkippedCard(pin, at, actions))
