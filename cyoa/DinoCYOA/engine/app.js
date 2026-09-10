@@ -50,13 +50,23 @@ const downloadText = (text, name) => {
 // (This wipe-and-rebuild-from-state loop is the same pattern the old game used.)
 // NEW: every action that changes what is TRUE goes through after() — save the
 // bytes, then repaint. The two TYPING actions deliberately do not: they save and
-// update the status line only, because a repaint mid-word would eat the caret and
-// nothing else on this page depends on a typed value.
+// update the status line only, because a repaint mid-word would eat the caret.
+// CHANGED: that used to be justified by "nothing else on this page depends on a typed
+// value", and a demand may now read Strength or Size, so it isn't true any more. The
+// RULE is kept and the EVENT moved: settleTyped below runs on `change` — when the
+// player leaves the box — so the only value ever judged is the one they LEFT.
 const actions = {
   toggle(group, item)               { gameState.toggleSelection(group, item); after() },
   step(group, item, by)             { gameState.stepQuantity(group, item, by); after() },
   setValue(group, item, field, raw) { gameState.setValue(group, item, field, raw); remember(gameState.keptText); renderStatus() },
   setTyped(field, raw)              { gameState.setTyped(field, raw); remember(gameState.keptText); renderStatus() },
+  // NEW: a typed value can now break a demand — an entry may ask for Strength ≥ 12 —
+  // so LEAVING the box has to settle the sheet and repaint what the settle removed.
+  // The caret rule survives verbatim, because setTyped above still does NOT repaint:
+  // this fires on `change`, not on `input`, so no repaint ever lands mid-word. view.js
+  // hands this to a box only when some offered demand actually reads that slot, and no
+  // game today has one — so for dino and vampire this action is never called.
+  settleTyped()                     { gameState.settle(); after() },
   download()                        { downloadText(gameState.keptText, keptFileName(gameState.kept)) },
   load(text)                        { gameState.loadKept(text); after() },
   print()                           { window.print() },

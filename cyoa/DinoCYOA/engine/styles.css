@@ -197,6 +197,21 @@ body {
   opacity: 0.65;
 }
 
+/* ===== NEW: what an entry DEMANDS of the sheet =====
+   It sits under the name like a GURPS prerequisite line, in the same small grey the
+   other prose fields use, and the part that FAILS is the only thing coloured — a
+   player scanning a locked card should land on the one clause that is the reason.
+   A met clause carries .card-demand and gets no rule of its own: grey IS the
+   met look, and a second rule saying so would be a second place to change. */
+.card-demands       { margin: 0 0 6px; font-size: 1rem; color: #666; }
+.card-demands-label { font-weight: 700; }
+.card-demand--unmet { color: #b3261e; font-weight: 700; }
+
+/* The THIRD locked look, beside .card--selected and .card--locked (whose dimming it
+   always carries as well — the card wears both classes). Never HIDDEN: an entry you
+   could go and earn has to stay visible, or there is no reason to earn it. */
+.card--unmet        { border-color: #b3261e; }
+
 /* ===== NEW: the player's sheet =====
    It sits between the status bar and the rows, because the rows are what it is FOR.
    It is WHITE PAPER, hardcoded — the same reason .card already hardcodes #fff: a

@@ -1,5 +1,14 @@
-import { groups, playerSheet, totalBudget } from './config/gameConfig.js'   // CHANGED: + the declared sheet and the budget the sheet's total line prints
+// CHANGED: + nameOfThing and watchedFields. Both come from the BORDER and could come
+// from nowhere else: a demand names a thing that may live on a shelf no row shows, and
+// the view may not reach into things.json to learn its name; and which typed slot a
+// demand READS is a fact about the merged world, not about any one card.
+import { groups, playerSheet, totalBudget, nameOfThing, watchedFields } from './config/gameConfig.js'
 import { placementSheet, asOption } from './config/schema.js'   // NEW: the placement fields of a list section, for the line below
+// NEW: what an entry demands of the sheet, in the three words the card needs — the slot
+// a condition names, whether it holds, and the condition SAID. Three readers, one
+// phrase-maker: the card, place()'s refusal and the status line all print demandText, so
+// the shop's words and the sheet's words can never drift apart.
+import { demandFieldById, meetsDemand, demandText } from './config/demands.js'
 // NEW: the cost rule and the quantity reader, ASKED rather than repeated — the
 // stepper's number and the sheet's per-entry points must be the ones the budget used.
 import { entryCost, quantityOf } from './config/sheet.js'
@@ -143,8 +152,28 @@ const labelled = (field, tag) => {
   return { fieldEl, controlEl }
 }
 
+// NEW: THE CARET RULE, kept — by moving the EVENT rather than the rule.
+// A typed value is load-bearing now: a demand may read Strength or Size, so leaving a
+// box can break a purchase. `input` still only saves and updates the status line (a
+// repaint mid-word eats the caret); `change` — which fires when the player LEAVES the
+// box — re-settles the sheet.
+// Measured in a real browser, and this is the measurement that decided it. Editing a
+// Strength of 15 down to 13 goes 15 → 1 → 13, because a backspace leaves a "1" behind:
+//   on `input`   the "1" fails `Strength ≥ 12`, the purchase is deleted mid-word, and
+//                finishing the word does not bring it back
+//   on `change`  the "1" is never judged; only the 13 the player LEFT is, and the
+//                purchase survives. A real 9, left in the box, really does break it.
+// `onSettle` is undefined for every slot no demand reads — and `watchedFields` is EMPTY
+// for both games that exist today, so not one box on dino or vampire gets this listener
+// and typing there is byte-for-byte what it was.
+const settlesOnChange = (controlEl, onSettle) => {
+  if (onSettle) controlEl.addEventListener('change', () => onSettle())
+}
+
+// CHANGED: a FOURTH argument, `onSettle` — see settlesOnChange above. It is the only
+// thing added to any of the four, and three of them are otherwise untouched.
 const INPUT_BUILDERS = {
-  text: (field, value, onChange) => {
+  text: (field, value, onChange, onSettle) => {
     const { fieldEl, controlEl } = labelled(field, 'input')
     controlEl.type = 'text'
     controlEl.value = value ?? ''
@@ -152,9 +181,10 @@ const INPUT_BUILDERS = {
     // what the empty box is FOR, and "Unnamed" is what an unnamed sheet is called
     if (field.placeholder) controlEl.placeholder = field.placeholder
     controlEl.addEventListener('input', () => onChange(controlEl.value))
+    settlesOnChange(controlEl, onSettle)
     return fieldEl
   },
-  number: (field, value, onChange) => {
+  number: (field, value, onChange, onSettle) => {
     const { fieldEl, controlEl } = labelled(field, 'input')
     controlEl.type = 'number'
     controlEl.value = value ?? ''
@@ -162,9 +192,10 @@ const INPUT_BUILDERS = {
     // readValue is the one border that turns keystrokes into a number, and it lives
     // in sheet.js so the player's door and the author's door cannot drift apart
     controlEl.addEventListener('input', () => onChange(controlEl.value))
+    settlesOnChange(controlEl, onSettle)
     return fieldEl
   },
-  lines: (field, value, onChange) => {
+  lines: (field, value, onChange, onSettle) => {
     const { fieldEl, controlEl } = labelled(field, 'textarea')
     controlEl.rows = 3
     // a value that is not an array is a field whose kind used to be text — show
@@ -180,9 +211,10 @@ const INPUT_BUILDERS = {
       fitToText(controlEl)
       onChange(controlEl.value)
     })
+    settlesOnChange(controlEl, onSettle)
     return fieldEl
   },
-  choice: (field, value, onChange) => {
+  choice: (field, value, onChange, onSettle) => {
     const { fieldEl, controlEl } = labelled(field, 'select')
     // through asOption, because options arrive in two shapes — a book writes them
     // short (bare strings), a sheet writes them long ({ value, label }). One reader
@@ -194,20 +226,27 @@ const INPUT_BUILDERS = {
       controlEl.appendChild(optionEl)
     })
     controlEl.value = value ?? ''
+    // a `choice` already fires `change` on the pick itself — the same instant its
+    // `input` fires — so this box settles the moment it is used, not when it is left.
+    // That is exactly right: there is no half-typed word in a dropdown.
     controlEl.addEventListener('change', () => onChange(controlEl.value))
+    settlesOnChange(controlEl, onSettle)
     return fieldEl
   }
 }
 
 // NEW: the mirror of renderDisplay, one storey over. A kind with no builder warns
 // once, by name, and draws NOTHING — never a box that silently writes nowhere.
-const renderInput = (field, value, onChange) => {
+// CHANGED: `onSettle` passed straight through, and left undefined by every caller who
+// does not want it — a card's placement boxes never settle (a demand asks WHAT is on the
+// sheet, never at what Level, so a Level is invisible to every demand there is).
+const renderInput = (field, value, onChange, onSettle) => {
   const builder = INPUT_BUILDERS[field.type]
   if (!builder) {
     console.warn(`No input for kind "${field.type}" (field: ${field.key})`)
     return document.createTextNode('')
   }
-  return builder(field, value, onChange)
+  return builder(field, value, onChange, onSettle)
 }
 
 // NEW: [−] n [+] for a bound row whose section MULTIPLIES (a number placement field
@@ -239,6 +278,46 @@ const buildStepper = (group, item, actions) => {
   stepperEl.appendChild(tagged('span', 'stepper-value', String(now)))
   stepperEl.appendChild(upEl)
   return stepperEl
+}
+
+// NEW: one condition, said. Every sentence about a demand on this page goes through
+// here, so there is exactly ONE spelling of "Origin holds Tyrannosaurus" in the engine
+// and the card, the button's tooltip and state.js's refusal cannot drift apart.
+// `nameOfThing` is handed in because demands.js may not reach for a shelf and the view
+// may not either — the border knows every thing's name and answers for both.
+const said = (demand) => demandText(demand, demandFieldById(playerSheet.type, demand.field), nameOfThing)
+
+// NEW: the two refusal FRAMES a locked card wears, which are state.js's refusalFor
+// sentences word for word — because the tooltip on the grey button and the sentence
+// place() refuses with are the same fact told to two different readers, and a player
+// who reads one and then opens the console must not find a third story. The frames are
+// spelled in both files; the PHRASE inside them (said, above) has one implementation,
+// which is the drift that would actually matter.
+const refusalText = (blocking, clicked) => blocking.kind === 'own'
+  ? `${clicked.name} needs: ${said(blocking.demand)}`
+  : `${clicked.name} would break ${blocking.item.name}, which needs: ${said(blocking.demand)}`
+
+// NEW: the GURPS prerequisite line — what this entry asks of the sheet, ALWAYS printed
+// when it asks anything, met in grey and the failing clause in red. A shop whose rules
+// only appear when you break them is a shop that punishes looking, so an unmet entry is
+// shown, greyed and unpickable — never hidden. An entry that demands nothing draws not
+// one new pixel, which is why today's dino and vampire cards are byte-for-byte what
+// they were.
+//   The `met` question is asked MINUS ME, exactly as settle() asks it: for a card
+//   already picked, leave its own entry out; for one not picked, the current sheet
+//   already IS minus-me.
+// A demand implies a sheet — the border refuses to OFFER a demanding thing to a game
+// that builds none (gameConfig's resolveDemands) — so playerSheet is never null here.
+const buildDemandsLine = (group, item) => {
+  const subject = gameState.sheetWith(gameState.isSelected(group, item) ? { skip: { row: group, item } } : {})
+  const demandsEl = p('card-demands', '')
+  demandsEl.appendChild(tagged('span', 'card-demands-label', 'Needs: '))
+  item.demands.forEach((demand, at) => {
+    if (at > 0) demandsEl.appendChild(document.createTextNode(' · '))
+    const met = meetsDemand(demand, demandFieldById(playerSheet.type, demand.field), subject)
+    demandsEl.appendChild(tagged('span', met ? 'card-demand' : 'card-demand card-demand--unmet', said(demand)))
+  })
+  return demandsEl
 }
 
 // Builds ONE group's section and RETURNS it — it never places itself.
@@ -295,6 +374,15 @@ const buildGroupSection = (group, actions) => {
     const buttonEl = document.createElement('button')
     buttonEl.className = 'card-button'
 
+    // NEW: ONE call, read by the button below AND by the printed line further down —
+    // and it is gameState.whyNot, the very predicate place() asks at the door. That is
+    // not tidiness: a card whose view asked a NARROWER question than its door would
+    // show an enabled "Select" that does nothing when clicked.
+    // Two locked states come out of it and they are told apart by `kind`:
+    //   "own"     this entry's own demands do not hold
+    //   "breaks"  taking it would break a pick the player already holds
+    const blocking = gameState.whyNot(group, item)
+
     if (gameState.isSelected(group, item)) {
       cardEl.classList.add('card--selected')
       buttonEl.textContent = 'Selected'
@@ -303,6 +391,14 @@ const buildGroupSection = (group, actions) => {
       cardEl.classList.add('card--locked')
       buttonEl.textContent = 'Full'
       buttonEl.disabled = true
+    // NEW: THE RULES BEFORE THE MONEY, and the order is place()'s guard order exactly.
+    // An entry you may not have AT ALL is not an entry you cannot afford, and telling a
+    // player to save up for something they can never buy is a lie.
+    } else if (blocking !== null) {
+      cardEl.classList.add('card--locked', 'card--unmet')
+      buttonEl.textContent = 'Locked'
+      buttonEl.disabled = true
+      buttonEl.title = refusalText(blocking, item)
     // CHANGED: the group is passed too, so the price on the button is the price a
     // NEW pick would really cost — its section's default quantity, not always ×1
     } else if (!gameState.canAfford(item, group)) {
@@ -316,6 +412,15 @@ const buildGroupSection = (group, actions) => {
 
     cardEl.appendChild(imgEl)
     cardEl.appendChild(descEl)
+    // NEW: the prerequisite line, under the name, exactly where a GURPS book prints it.
+    if (item.demands.length > 0) cardEl.appendChild(buildDemandsLine(group, item))
+    // NEW: the SECOND locked reason, PRINTED and not merely hovered. An entry that would
+    // break a pick you already hold usually carries no demands of its own — the rule is
+    // written on the VICTIM — so without this line its card would be grey with nothing on
+    // it to explain why. And on a touch screen a `title` is invisible. Name the victim.
+    if (blocking !== null && blocking.kind === 'breaks')
+      cardEl.appendChild(p('card-demand card-demand--unmet',
+        `Would break ${blocking.item.name}, which needs: ${said(blocking.demand)}`))
     // CHANGED: label and traits used to be drawn by hand right here. They are
     // the author's fields now (a migrated game has exactly those two), drawn
     // in the type's field order through the display table — same slot on the
@@ -432,16 +537,22 @@ const renderSheet = (actions) => {
   // field's own default (the border built it), so the boxes and blankFields agree
   // about what an untouched Strength is.
   const dressed = (field) => playerSheet.fields.find(entry => entry.key === field.key) ?? field
+  // NEW: which boxes re-settle when the player leaves them. ONLY a slot some offered
+  // demand actually reads — the border counted them once, at hydration. `undefined` for
+  // every other box means no `change` listener is attached at all, so a game with no
+  // demands (dino, vampire, every game that exists today) types exactly as it always has.
+  // Name can never be in the set: demandFields offers no core slot, on purpose.
+  const settleFor = (field) => watchedFields.has(field.key) ? () => actions.settleTyped() : undefined
   const typedEl = document.createElement('div')
   typedEl.className = 'sheet-block'
   const nameField = playerSheet.fields[0]     // playerFields puts Name first, always
   typedEl.appendChild(renderInput({ ...nameField, placeholder: 'Unnamed' }, gameState.typed[nameField.key],
-                                  raw => actions.setTyped(nameField, raw)))
+                                  raw => actions.setTyped(nameField, raw), settleFor(nameField)))
   playerSheet.sections.filter(section => section.kind === 'fields').forEach(section => {
     typedEl.appendChild(tagged('h3', 'sheet-caption', section.caption))
     section.fields.forEach(field => {
       const entry = dressed(field)
-      typedEl.appendChild(renderInput(entry, gameState.typed[entry.key], raw => actions.setTyped(entry, raw)))
+      typedEl.appendChild(renderInput(entry, gameState.typed[entry.key], raw => actions.setTyped(entry, raw), settleFor(entry)))
     })
   })
   sheetEl.appendChild(typedEl)
