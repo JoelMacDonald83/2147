@@ -1,6 +1,6 @@
 // The shape edition this contract describes. Files carrying an older
 // version get migrated up to this at the border.
-export const SCHEMA_VERSION = 5   // CHANGED: 4 → 5 — sheets have sections; a game pins books and keeps house rules
+export const SCHEMA_VERSION = 6   // CHANGED: 5 → 6 — the player has a sheet
 
 // NEW: the shelf's grammars. BOOK_NAME is the game-name grammar (server/games.js NAME) written
 // here so engine/config never imports server/ — oracle N2 pins the two regexes equal.
@@ -108,6 +108,13 @@ export const contentSchema = [
 export const rowOverrideSchema = [
   { key: "label",    caption: "Label",     type: "text",     optional: true },
   { key: "query",    caption: "Shows",     type: "query",    optional: true },
+  // NEW: the same key a row has (see groupSchema below), overridable per game.
+  // This is what lets `games/dino` bind four rows that a FROZEN book proposes,
+  // without cutting a new edition of the book — and it is the whole reason
+  // `fills` is on this sheet as well as on the row's own.
+  // No `default` here: an override slot is born EMPTY and a key appears on the
+  // first override only, exactly like the four keys around it.
+  { key: "fills",    caption: "Fills",     type: "choice",   optional: true, optionsFrom: "fillableSections" },
   { key: "showWhen", caption: "Show when", type: "showWhen", optional: true },
   { key: "hidden",   caption: "Hidden",    type: "flag",     optional: true }   // the only value is true
 ]
@@ -124,6 +131,23 @@ export const groupSchema = [
   // types.json ("" = "shows nothing yet"); where is null (every thing of the
   // type) or one { field, op, value } condition — see query.js.
   { key: "query",    caption: "Shows",     type: "query",    default: { type: "", where: null } },
+  // NEW: which SECTION of the player's sheet this row's picks land in — a section
+  // id from the merged library, or "" (this row is a plain picker, which is what
+  // every v5 row is). A SECTION ID and not a key: ids are what every other
+  // reference in this data follows (query.where.field, showWhen.thing), and an id
+  // survives a rename. It sits beside `query` because the two are one thought:
+  // what this row offers, and where what you take lands.
+  // `default: ""` AND `optional: true` at once, on purpose, and BOTH halves matter:
+  //   default   — what a WRITER puts down. A newborn row and the migration write
+  //               the key, so a GAME file always carries it in its canonical slot
+  //               and the editor only ever ASSIGNS to a key that is already there
+  //               (assigning never moves a key; appending one would drift the order).
+  //   optional  — what a CHECKER forgives. The frozen books' proposal rows have no
+  //               such key and are never rewritten; without `optional` every book on
+  //               the shelf would fail validateBookFile and be skipped whole.
+  // optionsFrom names the editor's OPTION_SOURCES entry, the way a section's `of`
+  // does; the engine and the validator ignore it.
+  { key: "fills",    caption: "Fills",     type: "choice",   default: "", optional: true, optionsFrom: "fillableSections" },
   // NEW: when the player gets to see this row. always = no gate. The other
   // kinds and what they mean live in visibility.js (GATES).
   { key: "showWhen", caption: "Show when", type: "showWhen", default: { kind: "always" } },
@@ -280,6 +304,9 @@ export const totalBudgetSchema = [
   { key: "totalBudget", caption: "Total budget", type: "optionalNumber", default: 10, hydrateDefault: 10 }   // CHANGED: optional — absent = a book's proposal shows through
 ]
 
+// NEW, said here because this is where a reader asks: min and max count PICKS,
+// never quantities. Three Cute Rocks are ONE entry on the sheet and ONE pick in
+// the row; a quantity multiplies the price, never the count.
 export const groupRulesSchema = [
   { key: "min", caption: "Min points", type: "optionalNumber", default: null, hydrateDefault: 0 },
   { key: "max", caption: "Max points", type: "optionalNumber", default: null, hydrateDefault: Infinity }
@@ -339,7 +366,16 @@ export const SHEETS = {
 // is born [] (a new game pins nothing until the server says otherwise); `order`
 // has default null and is optional — written only once the author arranges.
 export const FILE_SHEETS = {
-  content: [{ key: "meta", type: "form", of: "meta" }, { key: "books", type: "pins", default: [] }, ...contentSchema, { key: "rowOverrides", type: "cabinet", of: "rowOverride" }],   // NEW: books, rowOverrides
+  // NEW: `sheet` — the sheet the PLAYER builds, a type id from the MERGED library
+  // ("basic:character"), or "" (this game builds no sheet: a menu, which is what
+  // every v5 game is). It sits after `books` because the books are what DEFINE it:
+  // you pin the books, then you say which of their sheets the player fills in.
+  // Same default/optional pairing as a row's `fills`, for the same two reasons;
+  // `seedFile` walks this table, so a newborn game gets `"sheet": ""` in its
+  // canonical slot for free — the server needs no change.
+  content: [{ key: "meta", type: "form", of: "meta" }, { key: "books", type: "pins", default: [] },
+            { key: "sheet", caption: "The player builds", type: "choice", default: "", optional: true, optionsFrom: "playerSheets" },
+            ...contentSchema, { key: "rowOverrides", type: "cabinet", of: "rowOverride" }],   // NEW: books, sheet, rowOverrides
   rules:   [...totalBudgetSchema, { key: "groupRules", type: "cabinet", of: "groupRules" }],
   themes:  [{ key: "page", type: "form", of: "pageTheme" }, { key: "groupThemes", type: "cabinet", of: "groupTheme" }],
   types:   [...typesSchema, { key: "sectionsFor", type: "buckets", of: "section" }, { key: "fieldsFor", type: "buckets", of: "fieldDef" }],   // NEW: the two addition cabinets

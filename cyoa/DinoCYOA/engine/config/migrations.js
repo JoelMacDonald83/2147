@@ -137,11 +137,41 @@ const migrateSetV4toV5 = (set) => ({
   things:  stamp(set.things, 5)
 })
 
+// ── step 5: v5 → v6 ──
+// The player's sheet arrives. A game gains ONE key (`sheet`: which type the player
+// builds) and every row gains one (`fills`: which section of it a pick lands in).
+// Both are born EMPTY, and "" means exactly what v5 meant: this game is a menu and
+// this row is a plain picker. That is why every v5 game keeps playing identically.
+// Both are WRITTEN here rather than left absent, in their canonical slots, so the
+// editor never has to insert a key into the middle of a file — it only ever
+// assigns to a key that is already there, and assigning never moves one.
+// Rows are rebuilt key by key — the same move v3 → v4 made — so the canonical order
+// holds whatever order a v5 file happened to have.
+// Nothing is minted, nothing is read from anywhere, nothing depends on the books:
+// the step is a pure function of the set and byte-identical run twice.
+// FROZEN HISTORY: "" and the row's six keys are spelled out here and never imported
+// from schema.js — schema.js describes TODAY, a migration describes the past.
+const migrateSetV5toV6 = (set) => {
+  const convertRow = (row) => ({
+    id: row.id, label: row.label, query: row.query, fills: "",
+    showWhen: row.showWhen, children: row.children.map(convertRow)
+  })
+  return {
+    content: { version: 6, meta: set.content.meta, books: set.content.books, sheet: "",
+               groups: set.content.groups.map(convertRow), rowOverrides: set.content.rowOverrides },
+    rules:  stamp(set.rules,  6),
+    themes: stamp(set.themes, 6),
+    types:  stamp(set.types,  6),
+    things: stamp(set.things, 6)
+  }
+}
+
 const MIGRATIONS = {
   1: migrateSetV1toV2,
   2: migrateSetV2toV3,
   3: migrateSetV3toV4,
-  4: migrateSetV4toV5   // NEW
+  4: migrateSetV4toV5,
+  5: migrateSetV5toV6   // NEW
 }
 
 const setVersion = (set) => set.content.version
