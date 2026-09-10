@@ -10,24 +10,36 @@
 //   A1 determinism, mint-free   v3 → v5 migrated twice is byte-identical; no uuid minted or lost
 //   A2 climb                    v2 → v5 equals v3 → v5 (modulo the ids step 2 mints); v1 → v5 equals v2 → v5
 //   A3 v4 → v5 (NEW)            the COMMITTED v4 files climb the last step twice identically; every field id once, inside a section
+//   A4 v5 → v6 (NEW, with A3)   the COMMITTED files climb to 6: byte-equal to a literal that is those bytes plus the stamps, `sheet: ""` and one `fills` per row
 //   B1 idempotence              save → reload → migrate (no-op) → render-time write → save: five files byte-identical
 //   B2 canonical shapes         every key order the editor and the engine rely on, for a migrated set
 //   B3 missing files by name    a v3 OR v5 set without types/things fails at the border and NAMES them
 //   B5 canonical v5 shapes (NEW) §2.8 over the migrated set and (dino) the REBUILT files: sections, fieldDefs, thing key orders
+//   B6 canonical v6 shapes (NEW, with B5) games/dino ON DISK: sheet after books, label,fills override slots, merged rows id,label,query,fills,showWhen,children
 //   C1 bridge v3                the REAL v3 engine (git) and the v5 engine hydrate v3 data alike
 //   C2 bridge v2                the REAL v2 engine (git) and the v5 engine hydrate v2 data alike
 //   C3 working tree             the v5 engine hydrates games/<game> with zero warnings
 //   C4 relative paths           data/… and books/… page-relative, assets/… built — never absolute
 //   C5 bridge v4 (NEW)          the REAL v4 engine (git) and the v5 engine hydrate the committed v4 data alike, and play alike
+//   C6 bridge v5 (NEW)          the REAL v5 engine and the v5 SHELF (git) and the v6 engine hydrate the committed data alike, and play alike
+//   C7 vampire untouched (NEW)  the v6 engine over the committed v4 vampire: no sheet, no binding, no book url, no warning
 //   G1 border loudness          a hand-broken set warns ONCE per fault, by row, and fails closed
 //   G2 border loudness, books (NEW)   the §5.3 shelf warns `Book fault — …` once per fault; a pin at edition 3 fails CLOSED
+//   G3 border loudness, the sheet (NEW) five broken games: one warning each, in §3.10's wording, each failing closed
 //   T1 the committed shelf (NEW)      what books/ holds, that every book validates, that every file is canonical
 //   T2 editions (NEW)                 edition 2 is edition 1 plus exactly one thing
+//   T3 the shelf's version (NEW)      every data file on the shelf says SCHEMA_VERSION and moved no other byte
+//   W1 the shelf's placement fields (NEW) Gear ships quantity/number/1, Skills level/number/1, and nobody else a `quantity`
 //   D1 rebuild in-process (NEW)       the rebuilt dino plays EXACTLY what the v4 dino played, row by row, item by item
 //   D2 rebuild CLI (NEW)              exit 0 writes D1's bytes; a second run exits 1; a partial state or a short shelf exits 2
 //   D3 play replay (NEW)              I1's four steps over the rebuilt files + the shelf
 //   D4 the pin is real (NEW)          edition 2 puts Nest in the Lairs row; edition 3 fails closed
 //   D5 committed data (NEW)           once games/dino is rebuilt it byte-equals D1 (skipped until then)
+//   D6 the dino data edit (NEW)       one declaration, four bindings, zero faults — and D1's projection, unchanged
+//   W2 play with values (NEW)         §2.6's fifteen steps and its fifteen numbers, refusal and refund included
+//   W3 the sheet's content (NEW)      gameState.sheet IS §2.4; the shell gained one element; the print block; two new engine files
+//   W4 keep and load (NEW)            a child keeps, a FRESH child loads, and the two hold the same sheet — byte for byte
+//   W5 a kept sheet meets a changed game (NEW) nine fixtures: eight notes and one refusal, nothing guessed
 //   I1 play (dino)              pick a Lair → Location appears; unpick → it hides, refunds, and says so
 //   I2 editor save order, books (NEW) a new pet placed INTO a book sheet, plus a things.order swap, land in the editor's order
 //   S1 committed files fit      validateGame says [] over the committed, migrated and climbed sets
@@ -36,6 +48,7 @@
 //   S4 checked against disk     content is refused while a sibling ON DISK is hand-broken, unparsable or missing
 //   S5 the shelf's routes (NEW) /books/… and /games/<g>/books/…; the asset search path; traversal
 //   S6 save against the pins (NEW)    content.json is judged WITH the shelf: F1, F3, F15 by path, nothing written
+//   S8 the server judges the binding (NEW) a bad `fills` or a bad `sheet` → 400 at its path, nothing written
 //   S7 the engine over HTTP (NEW)     5 data + 12 book urls, page-relative; every image whole
 //   E1 exact file set           engine/ + data/ + assets/ + the manifest, nothing else; manifest keys fixed
 //   E2 bytes                    a book-less game's data travels as its own bytes; sizes and sha256 true to the manifest
@@ -48,6 +61,7 @@
 //   E9 CLI                      exit 0 prints the tree; usage exits 1; refusals exit 2 and write nothing
 //   E10 ignore rules            .gitignore holds .DS_Store and dist/; git ignores both
 //   E11 export flatten (NEW)    the published dino is the FLATTENED merge and needs no shelf
+//   W6 the published folder (NEW)     the whole of the player's sheet, with no shelf and no server
 //   E12 assets (NEW)            the union of the game's and the books' assets/, one flat folder, collisions refused
 //   E13 refusals, books (NEW)   a pin off the shelf, a broken shelf, --out inside books/ — all refused, nothing written
 //   M1 GET /api/games           every folder with title, version, books, counts, faults, exported flag
@@ -103,6 +117,10 @@ const V2_COMMIT = process.env.CYOA_V2_COMMIT ?? '79b5ec4'            // v2 engin
 const V3_ENGINE_COMMIT = process.env.CYOA_V3_ENGINE_COMMIT ?? '11e46a2'
 const V3_DATA_COMMIT = process.env.CYOA_V3_DATA_COMMIT ?? '2ab45f0'  // both games at v3 on disk
 const V4_COMMIT = process.env.CYOA_V4_COMMIT ?? '1393b3e'            // NEW: v4 engine + both games at v4
+// NEW (v6): the last commit of the v5 world — the v5 engine, the v5 SHELF and
+// both games exactly as committed. It is what C6 bridges against (does a v6
+// engine still play what the v5 engine played?) and what A4 climbs.
+const V5_COMMIT = process.env.CYOA_V5_COMMIT ?? 'dee73a2'
 const GIT_ROOT = process.env.CYOA_GIT_REPO
   ?? execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: DINO_DIR, encoding: 'utf8' }).trim()
 const FILES = ['content', 'rules', 'themes', 'types', 'things']
@@ -187,42 +205,89 @@ if (process.argv[2] === '--hydrate') {
   const sample = (id) => flat(mod.groups).flatMap(row => row.items).find(item => item.id === id) ?? null
   const wanted = (process.env.CYOA_SAMPLE ?? '').split(',').filter(Boolean)
   const samples = Object.fromEntries(wanted.map(id => [id, sample(id)]))
+  // NEW (v6): what the game says the PLAYER builds, and where each row's picks
+  // land. Both are `null` under every engine before v6 (the modules export no
+  // such name, and a hydrated row had no `fills`), which is exactly what lets the
+  // bridges keep comparing whole answers.
+  const playerSheet = mod.playerSheet == null ? null : {
+    id: mod.playerSheet.id, label: mod.playerSheet.label,
+    fields: mod.playerSheet.fields.map(field => ({ key: field.key, type: field.type, default: field.default })),
+    sections: mod.playerSheet.sections.map(section => ({ id: section.id, key: section.key, kind: section.kind, of: section.of ?? null }))
+  }
+  const bindings = flat(mod.groups).map(row => ({ id: row.id, label: row.label, fills: row.fills?.id ?? null, quantityField: row.quantityField?.key ?? null, items: row.items.length }))
   // writeSync, not process.stdout.write: on macOS a write to a pipe is asynchronous,
   // and process.exit right after it would drop everything past the 64 KB pipe buffer
-  writeSync(process.stdout.fd, JSON.stringify({ warnings, fetched, heroImage, images, samples, totalBudget: mod.totalBudget ?? null, groups: summarize(mod.groups) }))
+  writeSync(process.stdout.fd, JSON.stringify({ warnings, fetched, heroImage, images, samples, playerSheet, bindings, totalBudget: mod.totalBudget ?? null, groups: summarize(mod.groups) }))
   process.exit(0)
 }
 
 // node oracles.mjs --play <engineDir> <gameDir> <stepsJSON> [<booksDir>]
 // Imports the engine's real state.js (which imports gameConfig through the fake
-// fetch) and PLAYS: every step is one toggle { row, thing }, both by id, and
-// after each the child records what the player would see. console.log is
-// silenced because state.js logs its refusals ("… is not shown") and stdout must
-// stay pure JSON; the warnings are captured, not silenced — a warning is a finding.
+// fetch) and PLAYS. The warnings are captured, not silenced — a warning is a
+// finding. CHANGED: the lines state.js prints with console.log (its refusals:
+// "… is not shown", "… costs 2 more, but only 1 left") are captured too rather
+// than dropped, because W2.9 asserts one of them verbatim. stdout still carries
+// nothing but the one JSON object the parent parses.
+//
+// A STEP is one of five shapes, and they are told apart by the keys they carry:
+//   { row, thing }                 toggle a pick            (v2 → v6: every old check)
+//   { row, thing, by }             step that pick's quantity            (NEW, v6)
+//   { row, thing, field, value }   set one placement value on that pick (NEW, v6)
+//   { field, value }               type into one sheet slot             (NEW, v6)
+//   { load }                       load a kept sheet, whole             (NEW, v6)
 if (process.argv[2] === '--play') {
   const [engineDir, gameDir, stepsJSON, booksDir] = process.argv.slice(3)
   const warnings = captureWarnings()
-  console.log = () => {}
+  const logs = []
+  console.log = (...parts) => logs.push(parts.join(' '))
   installFakeFetch(gameDir, [], booksDir)
   const { gameState } = await import(pathToFileURL(join(engineDir, 'state.js')).href)
-  const { groups } = await import(pathToFileURL(join(engineDir, 'config', 'gameConfig.js')).href)
+  const { groups, playerSheet } = await import(pathToFileURL(join(engineDir, 'config', 'gameConfig.js')).href)
   const { flattenGroups } = await import(pathToFileURL(join(engineDir, 'helpers.js')).href)
   const allGroups = flattenGroups(groups)
+  // The snapshot gains EXACTLY two keys, and both are `?? null`: the v2, v3, v4
+  // and v5 engines have no such getter, so both sides of every bridge read null
+  // and I1/C5/C6 can go on comparing whole snapshots. Anything richer (the typed
+  // half, the values store, the notice, the captured log) would differ by shape
+  // between two engines, so it travels in `final` instead — and only when asked.
   const snapshot = () => ({
     visible: [...gameState.visible],
     dropped: gameState.dropped.map(item => item.name),
     spent: gameState.spent,
     remaining: gameState.remaining,
-    unmet: gameState.unmetGroups.map(group => group.id)
+    unmet: gameState.unmetGroups.map(group => group.id),
+    sheet: gameState.sheet ?? null,
+    kept: gameState.keptText ?? null
   })
   const { visible, unmet } = snapshot()
-  const steps = JSON.parse(stepsJSON).map(({ row, thing }) => {
-    const group = allGroups.find(group => group.id === row)
-    const item = group.items.find(item => item.id === thing)
-    gameState.toggleSelection(group, item)
+  const steps = JSON.parse(stepsJSON).map((step) => {
+    if (step.load !== undefined) { gameState.loadKept(step.load); return snapshot() }
+    if (step.row === undefined) { gameState.setTyped(playerSheet.fields.find(field => field.key === step.field), step.value); return snapshot() }
+    const group = allGroups.find(group => group.id === step.row)
+    const item = group.items.find(item => item.id === step.thing)
+    if (step.by !== undefined) gameState.stepQuantity(group, item, step.by)
+    else if (step.field !== undefined) gameState.setValue(group, item, group.fills.placement.find(field => field.key === step.field), step.value)
+    else gameState.toggleSelection(group, item)
     return snapshot()
   })
-  writeSync(process.stdout.fd, JSON.stringify({ warnings, start: { visible, unmet }, steps }))   // sync, see --hydrate
+  // CYOA_PLAY_STATE=1 asks for the whole of what the player is left holding —
+  // the two stores, the selections as ids, the status line, the sheet and the
+  // keepsake's bytes. It is left OUT by default so that the answer's SHAPE is the
+  // same under a v2 engine and a v6 one, which is what the bridges compare.
+  const final = process.env.CYOA_PLAY_STATE !== '1' ? undefined : {
+    typed: gameState.typed ?? null,
+    values: gameState.values ?? null,
+    selections: Object.fromEntries(allGroups.map(group => [group.id, gameState.selections[group.id].map(item => item.id)])),
+    notice: gameState.notice ?? null,
+    status: gameState.statusMessage,
+    spent: gameState.spent,
+    remaining: gameState.remaining,
+    visible: [...gameState.visible],
+    sheet: gameState.sheet ?? null,
+    kept: gameState.keptText ?? null,
+    logs
+  }
+  writeSync(process.stdout.fd, JSON.stringify({ warnings, start: { visible, unmet }, steps, ...(final === undefined ? {} : { final }) }))   // sync, see --hydrate
   process.exit(0)
 }
 
@@ -251,7 +316,11 @@ if (process.argv[2] === '--hydrate-http') {
 const { blockedChecks } = await import('./oracles-logic.mjs')
 
 const { migrateSet } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'migrations.js')).href)
-const { SCHEMA_VERSION, fieldsOfType, listSectionsOf } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'schema.js')).href)
+const { SCHEMA_VERSION, fieldsOfType, listSectionsOf, thingKeys, placementSheet } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'schema.js')).href)
+// NEW (v6): the two files the player's sheet is made of. Both are pure, so the
+// parent can ask them the same questions the engine asks — and W3 can build the
+// sheet a child printed a second time, from the merged set, and compare.
+const { QUANTITY_KEY, quantityFieldOf, blankFields } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'sheet.js')).href)
 const { danglingReferences, forgetType, forgetThing } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'references.js')).href)
 const { flattenGroups } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'helpers.js')).href)
 const { validateFile, crossChecks, problemText } = await import(pathToFileURL(join(DINO_DIR, 'engine', 'config', 'validate.js')).href)
@@ -266,7 +335,7 @@ const { exportGame, ExportRefusal, MANIFEST, TOOL, listFiles, sha256, readBookSy
 const { PLAN, statusOf, rebuildDino } = await import(pathToFileURL(REBUILD_SCRIPT).href)
 const { seedSet } = await import(pathToFileURL(join(DINO_DIR, 'server', 'games.js')).href)
 const { shelfOf } = await import(pathToFileURL(join(DINO_DIR, 'server', 'books.js')).href)
-assert.equal(SCHEMA_VERSION, 5, 'these oracles describe schema version 5')
+assert.equal(SCHEMA_VERSION, 6, 'these oracles describe schema version 6')
 
 const games = process.argv.length > 2 ? process.argv.slice(2) : ['dino', 'vampire']
 const WORK = mkdtempSync(join(tmpdir(), 'cyoa-oracles-'))
@@ -286,6 +355,17 @@ const v2EngineDir = archiveEngine(V2_COMMIT, 'v2')
 const v3EngineDir = archiveEngine(V3_ENGINE_COMMIT, 'v3')
 const v4EngineDir = archiveEngine(V4_COMMIT, 'v4')     // NEW: the last engine before the books arc
 const v5EngineDir = join(DINO_DIR, 'engine')           // the working tree
+// NEW (v6): the v5 engine AND the v5 shelf, straight from git. The shelf comes
+// with it because a v5 engine reads v5 books: the version stamp on every file
+// under books/ is part of the contract, so the two travel together (§4.2).
+const archiveBooks = (commit, name) => {
+  mkdirSync(join(WORK, name), { recursive: true })
+  execFileSync('git', ['archive', '-o', join(WORK, `${name}.tar`), commit, `${DINO_IN_REPO}/books`], { cwd: GIT_ROOT })
+  execFileSync('tar', ['-xf', join(WORK, `${name}.tar`), '-C', join(WORK, name)])
+  return join(WORK, name, DINO_IN_REPO, 'books')
+}
+const v5PrevEngineDir = archiveEngine(V5_COMMIT, 'v5prev')
+const v5PrevBooksDir = archiveBooks(V5_COMMIT, 'v5prev-books')
 
 const gitShow = (commit, path) => execFileSync('git', ['show', `${commit}:${path}`], { cwd: GIT_ROOT, encoding: 'utf8' })
 const writeGame = (gameDir, set) => {
@@ -311,7 +391,9 @@ const runChild = (mode, args, env = {}) => {
 // CHANGED: an optional booksDir — the shelf the child's fake fetch answers
 // `books/…` from. Absent = a folder with no shelf (a published export).
 const hydrate = (engineDir, gameDir, booksDir, env) => runChild('--hydrate', [engineDir, gameDir, ...(booksDir === undefined ? [] : [booksDir])], env)
-const play = (engineDir, gameDir, steps, booksDir) => runChild('--play', [engineDir, gameDir, JSON.stringify(steps), ...(booksDir === undefined ? [] : [booksDir])])
+const play = (engineDir, gameDir, steps, booksDir, env = {}) => runChild('--play', [engineDir, gameDir, JSON.stringify(steps), ...(booksDir === undefined ? [] : [booksDir])], env)
+// the same play, asking for the whole of the final state (see the child above)
+const playFully = (engineDir, gameDir, steps, booksDir) => play(engineDir, gameDir, steps, booksDir, { CYOA_PLAY_STATE: '1' })
 // The HTTP child must NOT be run with execFileSync: the server it fetches from
 // lives in THIS process, and a synchronous wait would freeze the event loop that
 // answers it — the child would wait forever. So this one is awaited.
@@ -501,6 +583,35 @@ const REBUILT = {
   rows: { dino: 'dinosaur-age:row-companions', gear: 'dinosaur-age:row-gear', lair: 'dinosaur-age:row-lairs', location: 'dinosaur-age:row-locations' },
   things: { lavaPit: 'dinosaur-age:lava-pit', volcanoRim: 'dinosaur-age:volcano-rim', nest: 'dinosaur-age:nest' }
 }
+// NEW (v6): the four things §2.6's play uses, and the play itself — one list, so
+// the SOURCE game (W2–W5) and the PUBLISHED folder (W6) are asked for the same
+// fifteen steps and the same fifteen numbers. The four typed steps go through
+// `{ field, value }`, raw string and all, exactly as an <input> hands them over.
+const PLAYER = {
+  tali:   'a8d09a0f-f269-4a04-a173-d694dc36b105',
+  miku:   '0c63d4ce-f909-4682-b27f-c77929d1f40c',
+  rock:   'dinosaur-age:cute-rock',
+  banana: 'dinosaur-age:the-banana'
+}
+const PLAY_STEPS = [
+  { field: 'name', value: 'Rexina' },
+  { field: 'concept', value: 'A dino parent' },
+  { field: 'size', value: 'big' },
+  { field: 'strength', value: '12' },
+  { field: 'notes', value: 'Allergic to ferns' },
+  { row: REBUILT.rows.dino, thing: PLAYER.tali },                   // 2. a companion, 1
+  { row: REBUILT.rows.gear, thing: PLAYER.rock },                   // 3. a free rock
+  { row: REBUILT.rows.gear, thing: PLAYER.rock, by: 1 },            // 4. + twice → quantity 3
+  { row: REBUILT.rows.gear, thing: PLAYER.rock, by: 1 },
+  { row: REBUILT.rows.gear, thing: PLAYER.banana },                 // 5. THE BANANA, 2
+  { row: REBUILT.rows.gear, thing: PLAYER.banana, by: 1 },          // 6. + once → 2 × 2
+  { row: REBUILT.rows.lair, thing: REBUILT.things.lavaPit },        // 7. a Lair, 3 → Locations opens
+  { row: REBUILT.rows.location, thing: REBUILT.things.volcanoRim }, // 8. a Location, 1 → spent 9
+  { row: REBUILT.rows.gear, thing: PLAYER.banana, by: 1 },          // 9. refused: 2 more, 1 left
+  { row: REBUILT.rows.lair, thing: REBUILT.things.lavaPit }         // 10. unpick → Locations hides, refund
+]
+const KEEP_AT_8 = PLAY_STEPS.slice(0, 13)          // the state §2.4 and §2.7 are written from
+const SPENT_PER_STEP = [0, 0, 0, 0, 0, 1, 1, 1, 1, 3, 5, 8, 9, 9, 5]
 
 // The real games/, dist/ and books/ as they are BEFORE anything below runs — M9
 // and M12 hash them again at the very end. Every server this file starts is
@@ -574,8 +685,8 @@ for (const game of games) {
   const v2Flat = { ...v1, content: { ...v1.content, version: 2, groups: v1.content.groups.map(group => ({ ...group, children: [] })) },
                    rules: { ...v1.rules, version: 2 }, themes: { ...v1.themes, version: 2 } }
   assert.equal(normalize(serialize(migrateSet(v1)), v2Ids), normalize(serialize(migrateSet(v2Flat)), v2Ids), 'v1 → v5 equals v2 → v5')
-  FILES.forEach(name => assert.equal(migrateSet(rawV2)[name].version, 5, `the v2 climb ends at 5 (${name})`))
-  ok(`A2 v2 (git ${V2_COMMIT}) → v5 equals v3 (git ${V3_DATA_COMMIT}) → v5 modulo minted ids; v1 → v5 equals v2 → v5; every climb ends at 5`)
+  FILES.forEach(name => assert.equal(migrateSet(rawV2)[name].version, 6, `the v2 climb ends at 6 (${name})`))
+  ok(`A2 v2 (git ${V2_COMMIT}) → v6 equals v3 (git ${V3_DATA_COMMIT}) → v6 modulo minted ids; v1 → v6 equals v2 → v6; every climb ends at 6`)
 
   // ── A3 the last step, over the COMMITTED v4 files: deterministic and mint-free ──
   const v4Text = serialize(rawV4)
@@ -594,7 +705,37 @@ for (const game of games) {
   assert.deepEqual(fromV4.content.books, [], 'a v4 game knew no books')
   assert.deepEqual(fromV4.content.rowOverrides, {})
   assert.deepEqual(validateSet(fromV4), [], 'and the result fits the v5 contract')
-  ok(`A3 v4 (git ${V4_COMMIT}) → v5: twice byte-identical, ${uuidsIn(v4Text).size} uuids in and the same out, ${v4FieldIds.length} field ids each once inside a section, books: []`)
+  // ── A4 the climb to v6, over the COMMITTED files (NEW) ──
+  // The step this stage adds, run over the bytes that are actually in git: ONE
+  // key on the game and ONE on every row, both born EMPTY. The whole result is
+  // compared against a LITERAL built from the committed set — not read by eye —
+  // so "the diff is exactly the five version lines, `sheet: ""` and one `fills`
+  // per row" is a fact this run proves rather than a sentence a comment makes.
+  const rawCommitted = deepFreeze(Object.fromEntries(FILES.map(name => [name, JSON.parse(gitShow(V5_COMMIT, `${gamePath}/${name}.json`))])))
+  const committedVersion = rawCommitted.content.version
+  assert.equal(committedVersion, game === 'dino' ? 5 : 4, `${game} at ${V5_COMMIT} is where the v5 world left it`)
+  const climbed = migrateSet(rawCommitted)
+  assert.equal(serialize(climbed), serialize(migrateSet(rawCommitted)), 'two climbs to v6 are byte-identical')
+  FILES.forEach(name => assert.equal(climbed[name].version, 6, `${name}.json stamped 6`))
+  assert.equal(climbed.content.sheet, '', 'a game that never heard of sheets builds NONE — not a guess at one')
+  flattenGroups(climbed.content.groups).forEach(row => assert.equal(row.fills, '', `row ${row.id} fills nothing`))
+  assert.ok(sameSet(uuidsIn(serialize(climbed)), uuidsIn(serialize(rawCommitted))), 'no uuid appears or disappears')
+  if (committedVersion === 5) {
+    const withFills = (rows) => rows.map(row => ({ id: row.id, label: row.label, query: row.query, fills: '', showWhen: row.showWhen, children: withFills(row.children) }))
+    assert.equal(serialize(climbed), serialize({
+      content: { version: 6, meta: rawCommitted.content.meta, books: rawCommitted.content.books, sheet: '',
+                 groups: withFills(rawCommitted.content.groups), rowOverrides: rawCommitted.content.rowOverrides },
+      rules:  { ...rawCommitted.rules,  version: 6 },
+      themes: { ...rawCommitted.themes, version: 6 },
+      types:  { ...rawCommitted.types,  version: 6 },
+      things: { ...rawCommitted.things, version: 6 }
+    }), 'the committed v5 game climbs to EXACTLY the committed bytes plus the stamps, the sheet and the bindings')
+    assert.deepEqual(climbed.content.rowOverrides, rawCommitted.content.rowOverrides, 'and an override slot is not rewritten')
+  }
+  // judged WITH its books: a pinned game's rows show the books' sheets, so
+  // validateSet (which is "no books") would call every one of those a dangle
+  assert.deepEqual(validateGame({ own: climbed, books: climbed.content.books.map(pin => readBookSync(REAL_BOOKS, pin)) }), [], 'and the result fits the v6 contract')
+  ok(`A3/A4 v4 (git ${V4_COMMIT}) → v5: twice byte-identical, ${uuidsIn(v4Text).size} uuids in and the same out, ${v4FieldIds.length} field ids each once inside a section, books: []; and the COMMITTED v${committedVersion} game (git ${V5_COMMIT}) climbs to v6 twice identically, mint-free, ${committedVersion === 5 ? 'byte-equal to a literal that is the committed bytes plus five stamps, sheet "" and one fills per row' : 'ending at sheet "" with every fills ""'}`)
 
   // ── B1 idempotence: save 1 → reload → migrate (no-op) → the one render-time write → save 2 ──
   const roundTrip = (set, label) => {
@@ -609,15 +750,15 @@ for (const game of games) {
   ok(`B1 save → reload → migrate → render → save: all five files byte-identical${rebuilt ? ' (the migrated set and the rebuilt files)' : ''}`)
 
   // ── B2 canonical shapes and key orders ──
-  FILES.forEach(name => assert.equal(first[name].version, 5, `${name}.json stamped 5`))
-  assert.equal(keysOf(first.content), 'version,meta,books,groups,rowOverrides')
+  FILES.forEach(name => assert.equal(first[name].version, 6, `${name}.json stamped 6`))
+  assert.equal(keysOf(first.content), 'version,meta,books,sheet,groups,rowOverrides')
   assert.equal(keysOf(first.types), 'version,types,sectionsFor,fieldsFor')
   assert.equal(keysOf(first.things), 'version,things')
   assert.equal(keysOf(first.rules), keysOf(rawV3.rules))
   assert.equal(keysOf(first.themes), keysOf(rawV3.themes))
   const typeIds = new Set(first.types.types.map(type => type.id))
   const checkRow = (row) => {
-    assert.equal(keysOf(row), 'id,label,query,showWhen,children')
+    assert.equal(keysOf(row), 'id,label,query,fills,showWhen,children')
     assert.equal(keysOf(row.query), 'type,where')
     assert.equal(row.query.where, null, 'a migrated row has no condition')
     assert.equal(keysOf(row.showWhen), 'kind')
@@ -635,15 +776,15 @@ for (const game of games) {
     first.things.things[type.id].forEach(thing => assert.equal(keysOf(thing), 'id,name,cost,imageURL,label,traits'))
   })
   assert.equal(Object.keys(first.things.things).length, first.types.types.length, 'one bucket per type, no extras')
-  ok(`B2 canonical key orders; ${countGroups(first.content.groups)} rows each id,label,query,showWhen,children; one "identity" section per type; where null; gate always; all five stamped 5`)
+  ok(`B2 canonical key orders; ${countGroups(first.content.groups)} rows each id,label,query,fills,showWhen,children; one "identity" section per type; where null; gate always; all five stamped 6`)
 
   // ── B3 the border's promise: a set missing a file names it. The v3 input is
   // the line `stamp` exists for: steps 3 and 4 have to carry a null THROUGH, and
-  // a { ...null, version: 5 } would turn it into a stray object that slips past
+  // a { ...null, version: 6 } would turn it into a stray object that slips past
   // the check. The v5 input never runs a step — it only proves the check itself. ──
-  assert.throws(() => migrateSet({ ...rawV3, types: null, things: null }), /Missing data files for version 5: types, things/)
-  assert.throws(() => migrateSet({ ...rawV4, types: null, things: null }), /Missing data files for version 5: types, things/)
-  assert.throws(() => migrateSet({ ...first, types: null, things: null }), /Missing data files for version 5: types, things/)
+  assert.throws(() => migrateSet({ ...rawV3, types: null, things: null }), /Missing data files for version 6: types, things/)
+  assert.throws(() => migrateSet({ ...rawV4, types: null, things: null }), /Missing data files for version 6: types, things/)
+  assert.throws(() => migrateSet({ ...first, types: null, things: null }), /Missing data files for version 6: types, things/)
   ok('B3 a v3, v4 or v5 game without types.json/things.json fails at the border, by name')
 
   // ── B5 the canonical v5 shapes of §2.8, over the migrated set and (dino) the rebuilt files ──
@@ -657,7 +798,7 @@ for (const game of games) {
   }
   first.types.types.forEach(type => type.sections.forEach(section => checkSection(section, `${game} migrated`)))
   if (rebuilt) {
-    assert.equal(keysOf(rebuilt.content), 'version,meta,books,groups,rowOverrides')
+    assert.equal(keysOf(rebuilt.content), 'version,meta,books,sheet,groups,rowOverrides')
     assert.equal(keysOf(rebuilt.rules), 'version,groupRules', 'no totalBudget: the book proposes it')
     assert.equal(keysOf(rebuilt.themes), 'version,page,groupThemes')
     assert.equal(keysOf(rebuilt.types), 'version,types,sectionsFor,fieldsFor')
@@ -675,7 +816,27 @@ for (const game of games) {
   } else {
     assert.equal(first.things.order, undefined, 'a game that arranges nothing writes no `order` key')
   }
-  ok(`B5 canonical v5 shapes: file key orders of §2.8; every section id,key,caption,kind,(fields|of,placement); every fieldDef id,key,caption,type[,options][,default]${rebuilt ? '; the rebuilt pets and places in SHEET key order; things.order last' : '; no things.order'}`)
+  // ── B6 the v6 shapes: the two new keys, in their canonical slots (NEW) ──
+  // B2 has already walked the MIGRATED set (content gains `sheet` after `books`;
+  // every row gains `fills` after `query`). This half is about the bytes the
+  // owner actually edited: games/dino on disk, and the MERGED rows the engine
+  // and the export eat, where a binding may come from a book or from an override.
+  let bindings = 0
+  if (rebuilt) {
+    const disk = readGameSet(workingTreeDir)
+    assert.equal(keysOf(disk.content), 'version,meta,books,sheet,groups,rowOverrides', 'games/dino on disk: sheet after books')
+    assert.equal(disk.content.sheet, 'basic:character', 'and it names the sheet the player builds')
+    Object.entries(disk.content.rowOverrides).forEach(([id, slot]) => assert.equal(keysOf(slot), 'label,fills', `rowOverrides["${id}"]: sparse, in edit order`))
+    const mergedDisk = flattenGame({ books: disk.content.books.map(pin => readBookSync(REAL_BOOKS, pin)), game: disk })
+    assert.equal(keysOf(mergedDisk.content), 'version,meta,books,sheet,groups,rowOverrides', 'the merged set carries the declaration too')
+    flattenGroups(mergedDisk.content.groups).forEach(row => {
+      assert.equal(keysOf(row), 'id,label,query,fills,showWhen,children', `merged row ${row.id}: fills straight after query`)
+      bindings += 1
+    })
+  } else {
+    assert.equal('sheet' in readGameSet(workingTreeDir).content, false, 'a game that has never been opened at v6 declares nothing — and no key is invented for it')
+  }
+  ok(`B5/B6 canonical v6 shapes: file key orders of §2.8; every section id,key,caption,kind,(fields|of,placement); every fieldDef id,key,caption,type[,options][,default]${rebuilt ? `; the rebuilt pets and places in SHEET key order; things.order last; games/dino on disk declares basic:character with label,fills override slots and ${bindings} merged rows in id,label,query,fills,showWhen,children` : '; no things.order; and no invented `sheet` key'}`)
 
   // ── C1 bridge v3: real v3 engine vs the v5 engine, over v3 data ──
   const v3GitDir = writeGame(join(WORK, 'v3data', game), rawV3)     // the committed v3 files — the lazy path for the v5 engine
@@ -899,6 +1060,52 @@ for (const game of games) {
     assert.equal(da2.things.things['basic:place'].indexOf(nest), 2, 'at index 2 of the Place bucket — between Play pen and Volcano Rim')
     ok('T2 editions: every id of Dinosaur Age 1 is in edition 2 on the same sheet, unchanged; edition 2 adds exactly dinosaur-age:nest (a lair, cost 1, index 2); types.json and proposals.json byte-identical; book.json differs only in `edition`')
 
+    // ── T3 the shelf speaks THIS version (NEW) ──
+    // A version bump costs a CEREMONY (§4.2): every data file on the shelf is
+    // re-stamped, and NOTHING else about it moves. This is the check that makes
+    // the next bump unable to forget it — and the one that proves the eight-line
+    // edit really was eight lines.
+    const shelfFiles = listFiles(REAL_BOOKS).filter(notDot)
+    const committedShelf = execFileSync('git', ['ls-tree', '-r', '--name-only', V5_COMMIT, '--', `${DINO_IN_REPO}/books`], { cwd: GIT_ROOT, encoding: 'utf8' })
+      .split('\n').filter(Boolean).map(path => path.slice(`${DINO_IN_REPO}/books/`.length)).sort()
+    assert.deepEqual(shelfFiles, committedShelf, 'the shelf gained and lost no file')
+    let stamped = 0
+    shelfFiles.forEach(rel => {
+      const committed = () => gitShow(V5_COMMIT, `${DINO_IN_REPO}/books/${rel}`)
+      if (!rel.endsWith('.json')) { assert.equal(sha256(join(REAL_BOOKS, rel)), sha256(join(v5PrevBooksDir, rel)), `${rel}: a picture is not a data file — byte-identical`); return }
+      const text = readFileSync(join(REAL_BOOKS, rel), 'utf8')
+      const file = JSON.parse(text)
+      if (file.version === undefined) { assert.equal(text, committed(), `${rel}: book.json is not a data file, and not one byte moved`); return }
+      assert.equal(file.version, SCHEMA_VERSION, `${rel} speaks version ${SCHEMA_VERSION}`)
+      assert.equal(text.replace(`"version": ${SCHEMA_VERSION}`, `"version": ${SCHEMA_VERSION - 1}`), committed(), `${rel}: the ONLY byte that moved is the stamp`)
+      stamped += 1
+    })
+    assert.equal(stamped, 8, 'eight data files on the shelf, eight stamps')
+    editions.forEach(([name, edition]) => assert.deepEqual(validateBook(readBookSync(REAL_BOOKS, { name, edition }), shelf).map(problemText), [], `books/${name}/${edition} still validates at ${SCHEMA_VERSION}`))
+    ok(`T3 the shelf speaks version ${SCHEMA_VERSION}: ${shelfFiles.length} files, the same set as ${V5_COMMIT}; ${stamped} data files stamped ${SCHEMA_VERSION} and byte-equal to the committed bytes once the stamp is put back; the four book.json manifests and the four pictures untouched; validateBook still [] for all four books`)
+
+    // ── W1 the shelf's placement fields are real (NEW) ──
+    // The quantity convention (§2.3) is a claim about the SHELF, not about the
+    // engine: `quantity` multiplies only because Basic authored exactly one such
+    // field, as a number, with a default of 1. If a book ever names a second one,
+    // this is where the owner finds out — before a player pays twice for a Level.
+    const shelfLayersAll = editions.map(([name, edition]) => readBookSync(REAL_BOOKS, { name, edition }))
+    const shelfSections = shelfLayersAll.flatMap(layer => [
+      ...(layer.types?.types ?? []).flatMap(type => type.sections),
+      ...Object.values(layer.types?.sectionsFor ?? {}).flat()
+    ])
+    const listSections = shelfSections.filter(section => section.kind === 'list')
+    const spell = (field) => `${field.key}:${field.type}:${JSON.stringify(field.default)}`
+    const sectionNamed = (id) => listSections.find(section => section.id === id)
+    assert.deepEqual(sectionNamed('basic:character.gear').placement.map(spell), ['quantity:number:1'], 'Gear ships exactly one placement field, and it is the one that multiplies')
+    assert.deepEqual(sectionNamed('basic:character.skills').placement.map(spell), ['level:number:1'], 'Skills ships exactly one, and a LEVEL does not multiply')
+    assert.deepEqual(listSections.filter(section => section.placement.some(field => field.key === QUANTITY_KEY)).map(section => section.id),
+      ['basic:character.gear'], 'and NO other list section on any shipped sheet carries a `quantity`')
+    assert.equal(quantityFieldOf(sectionNamed('basic:character.gear')).id, 'basic:character.gear.quantity')
+    assert.equal(quantityFieldOf(sectionNamed('basic:character.skills')), null)
+    listSections.filter(section => section.id !== 'basic:character.gear').forEach(section => assert.equal(quantityFieldOf(section), null, `${section.id} multiplies nothing`))
+    ok(`W1 the shelf's placement fields: over the REAL books, ${listSections.length} list sections; Gear's placement is exactly quantity/number/1 and Skills' is exactly level/number/1; no other shipped list section carries a "quantity", so quantityFieldOf answers null for every one of them`)
+
     // ── D1 rebuild in-process — the exact-order equality test ──
     // The whole books arc's promise to the player, measured: the rebuilt dino,
     // merged against the real shelf and hydrated by the real engine, shows the
@@ -908,9 +1115,12 @@ for (const game of games) {
     assert.deepEqual(validateGame({ own: rebuilt, books: shelfLayers }).map(problemText), [], 'the rebuilt game validates against its shelf')
     assert.deepEqual(rebuilt.content.books, PLAN.pins, 'the three pins')
     assert.deepEqual(rebuilt.content.groups, [], 'the game owns no rows any more')
-    assert.deepEqual(rebuilt.content.rowOverrides, Object.fromEntries(Object.values(PLAN.rows).map(({ from, to }) => [to, { label: from }])), 'four labels, and nothing else, overridden')
-    assert.deepEqual(rebuilt.rules, { version: 5, groupRules: {} }, 'rules keeps an empty cabinet — the book proposes the numbers')
-    assert.deepEqual(rebuilt.types, { version: 5, types: [], sectionsFor: {}, fieldsFor: {} }, 'all four sheets are Basic\'s now')
+    // CHANGED (Stage 2): an override slot now carries the BINDING as well as the
+    // label — the game says which section of the player's sheet each of the four
+    // proposed rows fills, because a frozen book edition cannot be edited to say it.
+    assert.deepEqual(rebuilt.content.rowOverrides, Object.fromEntries(Object.values(PLAN.rows).map(({ from, to, fills }) => [to, { label: from, fills }])), 'four labels and four bindings, and nothing else, overridden')
+    assert.deepEqual(rebuilt.rules, { version: 6, groupRules: {} }, 'rules keeps an empty cabinet — the book proposes the numbers')
+    assert.deepEqual(rebuilt.types, { version: 6, types: [], sectionsFor: {}, fieldsFor: {} }, 'all four sheets are Basic\'s now')
     assert.deepEqual(rebuilt.themes.page, migratedV4.themes.page, 'the page theme is untouched — it was never about a row')
     assert.deepEqual(Object.keys(rebuilt.themes.groupThemes), Object.keys(migratedV4.themes.groupThemes).map(id => PLAN.rows[id].to), 'the two backgrounds are RE-KEYED to the proposed rows')
     assert.deepEqual(Object.values(rebuilt.themes.groupThemes), Object.values(migratedV4.themes.groupThemes), 'with the same values')
@@ -1030,13 +1240,100 @@ for (const game of games) {
     ok('D4 the pin is real: at edition 1 the Lair row offers 4, at edition 2 it offers 5 with Nest at index 4 and nothing else differs; at edition 3 the book is skipped, F1 is warned, and the game falls closed to zero rows')
 
     // ── D5 the committed data (binds once the owner runs the rebuild) ──
-    if (statusOf(migrateSet(readGameSet(workingTreeDir)), PLAN) === 'done') {
+    // CHANGED: the gate now asks TWO questions, not one. It always asked "has the
+    // rebuild been run?" (statusOf); it now also asks "does the game on disk speak
+    // THIS contract?". Both must hold, because rebuiltText is written by today's
+    // migration and is therefore stamped SCHEMA_VERSION — so a game whose files
+    // still carry the previous stamp cannot byte-equal it, and saying so is the
+    // ceremony a version bump costs (§4.2), not a failure of the rebuild.
+    // The assertion itself is untouched: when it runs it still demands every byte.
+    const onDisk = readGameSet(workingTreeDir)
+    if (statusOf(migrateSet(onDisk), PLAN) === 'done' && onDisk.content.version === SCHEMA_VERSION) {
       assert.deepEqual(readGameText(workingTreeDir), rebuiltText, 'games/dino byte-equals D1\'s output')
       assert.equal(treeHash(REAL_BOOKS), realBooks, 'and the shelf D1 merged against is the shelf on disk')
       ok('D5 games/dino byte-equals the rebuild script\'s output, over the committed shelf')
     } else {
-      skip('D5 — games/dino is still at v4; the owner runs tools/rebuild-dino-v5.mjs once, at the end')
+      skip(`D5 — games/dino is not at version ${SCHEMA_VERSION} yet; the owner runs tools/rebuild-dino-v5.mjs once, at the end`)
     }
+
+    // ── D6 the dino data edit (NEW) ──
+    // Stage 2's whole visible change to the DATA: one declaration and four
+    // bindings, written by the same script that wrote the rest (D5, re-run just
+    // above). The claim worth making out loud is the last one: a binding changes
+    // what a pick RECORDS, never what a row OFFERS — so D1's row-by-row,
+    // item-by-item comparison against the v4 game still holds, untouched.
+    const authored = readGameSet(workingTreeDir)
+    const BINDINGS = [
+      ['dinosaur-age:row-companions', 'basic:character.companions'],
+      ['dinosaur-age:row-gear',       'basic:character.gear'],
+      ['dinosaur-age:row-lairs',      'basic:character.places'],
+      ['dinosaur-age:row-locations',  'basic:character.places']
+    ]
+    assert.equal(authored.content.sheet, 'basic:character', 'the game declares the sheet the player builds')
+    assert.deepEqual(Object.entries(authored.content.rowOverrides).map(([id, slot]) => [id, slot.fills]), BINDINGS, 'four override slots, each naming the section its row fills')
+    assert.deepEqual(authored.content.groups, [], 'and the game still owns no rows of its own — every one of them is Dinosaur Age\'s')
+    const authoredMerge = mergeLayers({ books: shelfLayers, game: authored })
+    assert.deepEqual(authoredMerge.faults, [], 'the merge has nothing to say')
+    assert.deepEqual(validateGame({ own: authored, books: shelfLayers }), [], 'and the whole game fits the contract, judged with its books')
+    assert.deepEqual(authoredMerge.set.content.groups.map(row => [row.id, row.fills]), BINDINGS, 'the bindings show through the merge, in row order')
+    assert.equal(authoredMerge.set.content.sheet, 'basic:character')
+    assert.deepEqual(readGameText(workingTreeDir), rebuiltText, 'the edit on disk IS what the script writes — no hand-tidying')
+    // the real engine over the real shelf: the sheet resolves, every row binds,
+    // and the Gear row is the only one that multiplies
+    assert.deepEqual(v5Tree.warnings, [], 'zero warnings')
+    assert.equal(v5Tree.playerSheet.id, 'basic:character')
+    assert.equal(v5Tree.playerSheet.label, 'Character')
+    assert.deepEqual(v5Tree.playerSheet.fields.map(field => field.key), ['name', 'concept', 'size', 'strength', 'dexterity', 'intelligence', 'health', 'notes'], '§2.5\'s eight typed slots, from three books, with no game-side authoring at all')
+    assert.deepEqual(v5Tree.bindings.map(row => [row.id, row.fills]), BINDINGS, 'every hydrated row carries its SECTION')
+    assert.deepEqual(v5Tree.bindings.map(row => row.quantityField), [null, 'quantity', null, null], 'and only Gear multiplies')
+    assert.deepEqual(v5Tree.bindings.map(row => row.items), [8, 4, 4, 1], 'the same 17 items D1 counted — a binding changes what a pick RECORDS, never what a row OFFERS')
+    assert.deepEqual(project(rebuiltPlay.groups), project(v4Result.groups), 'and D1\'s projection against the v4 game still holds')
+    ok('D6 the dino data edit: content.sheet is basic:character, four rowOverrides carry the four bindings, the game still owns no rows; the merge has zero faults and validateGame is []; games/dino byte-equals the rebuild script\'s output (D5, re-run); the engine resolves the sheet to Character with eight typed slots, binds all four rows, multiplies only Gear, and still offers 8/4/4/1 items — D1\'s projection against the v4 dino, unchanged')
+
+    // ── G3 border loudness, the sheet (NEW) ──
+    // Five hand-broken games, each warning EXACTLY once, in §3.10's wording, and
+    // each failing CLOSED. Failing closed here means the row offers NOTHING: the
+    // alternative (keep offering the picks, they simply never reach the sheet)
+    // makes the player PAY POINTS for an entry that appears nowhere, and paying
+    // for nothing is silently wrong where an empty row is visibly wrong.
+    const healthyItems = Object.fromEntries(v5Tree.bindings.map(row => [row.id, row.items]))
+    const brokenSheet = (label, edit) => {
+      const set = structuredClone(authored)
+      edit(set)
+      const dir = writeGame(join(WORK, `sheet-broken-${label.replace(/\W+/g, '-')}`, game), set)
+      return hydrate(v5EngineDir, dir, REAL_BOOKS)
+    }
+    const GEAR_ROW = 'dinosaur-age:row-gear'
+    const GEAR_LABEL = 'Now give your Dino stuffables!'
+    // 1. the DECLARATION dangles. One cause, ONE sentence: every bound row would
+    //    otherwise report too, which is five sentences for one typo.
+    const noSheet = brokenSheet('no sheet', set => { set.content.sheet = 'basic:charcter' })
+    assert.deepEqual(noSheet.warnings, ['This game builds a sheet that does not exist (basic:charcter); no sheet is shown'], 'one warning, and no row repeats it')
+    assert.equal(noSheet.playerSheet, null, 'no sheet is shown')
+    assert.deepEqual(noSheet.bindings.map(row => [row.fills, row.items]), Array(4).fill([null, 0]), 'and every bound row fails closed')
+    // 2–4. the three ways a binding can be wrong, one row at a time
+    const faults = [
+      ['an unknown section', 'basic:character.gearz', `Row "${GEAR_LABEL}" fills a section that is not on the player's sheet (basic:character.gearz); it shows nothing`],
+      ['a FIELDS section',   'basic:character.notes', `Row "${GEAR_LABEL}" fills "Notes", which holds fields, not entries (basic:character.notes); it shows nothing`],
+      ['another shelf',      'basic:character.skills', `Row "${GEAR_LABEL}" shows basic:item but fills "Skills", which lists basic:skill (basic:character.skills); it shows nothing`]
+    ]
+    faults.forEach(([label, fills, warning]) => {
+      const result = brokenSheet(label, set => { set.content.rowOverrides[GEAR_ROW].fills = fills })
+      assert.deepEqual(result.warnings, [warning], `${label}: exactly one warning, in §3.10's wording`)
+      assert.equal(result.playerSheet.id, 'basic:character', `${label}: the sheet itself is fine`)
+      result.bindings.forEach(row => assert.equal(row.items, row.id === GEAR_ROW ? 0 : healthyItems[row.id], `${label}: ${row.id} is ${row.id === GEAR_ROW ? 'empty' : 'untouched'}`))
+    })
+    // 5. a binding with no sheet at all — the row names a section of a sheet this
+    //    game does not build. The other three bindings go, so the ONE fault left
+    //    is the one this fixture is about.
+    const bindingWithoutSheet = brokenSheet('bound with no sheet', set => {
+      set.content.sheet = ''
+      Object.entries(set.content.rowOverrides).forEach(([id, slot]) => { if (id !== GEAR_ROW) slot.fills = '' })
+    })
+    assert.deepEqual(bindingWithoutSheet.warnings, [`Row "${GEAR_LABEL}" fills a section but this game builds no sheet (basic:character.gear); it shows nothing`])
+    assert.equal(bindingWithoutSheet.playerSheet, null)
+    assert.deepEqual(bindingWithoutSheet.bindings.map(row => row.items), [8, 0, 4, 1], 'the bound row shows nothing; the three plain pickers are exactly the v5 rows they were')
+    ok('G3 border loudness, the sheet: five hand-broken games, each warning EXACTLY once in §3.10\'s wording — a dangling declaration says its one sentence and no row repeats it (every bound row still fails closed), and each of the four binding faults empties ITS row while every other row keeps every item')
 
     // ── G2 border loudness for books: the §5.3 shelf, warned once per fault ──
     // A scratch shelf carrying the "dup 1" book of §5.3 — it requires ONLY basic 1,
@@ -1045,9 +1342,9 @@ for (const game of games) {
     const dupShelf = copyShelf(join(WORK, 'shelf-dup', 'books'))
     writeBook(dupShelf, 'dup', 1, {
       book: { name: 'dup', title: 'Dup', edition: 1, requires: [{ name: 'basic', edition: 1 }] },
-      types: { version: 5, types: [], sectionsFor: {}, fieldsFor: { 'basic:nope': [{ id: 'dup:ghost', key: 'ghost', caption: 'Ghost', type: 'text' }] } },
-      things: { version: 5, things: { 'basic:item': [{ id: 'dinosaur-age:water-gun', name: 'Not the water gun', cost: 9, imageURL: '' }] } },
-      proposals: { version: 5, totalBudget: 12, groups: [], groupRules: { 'dinosaur-age:row-lairs': { max: 2 } } }
+      types: { version: 6, types: [], sectionsFor: {}, fieldsFor: { 'basic:nope': [{ id: 'dup:ghost', key: 'ghost', caption: 'Ghost', type: 'text' }] } },
+      things: { version: 6, things: { 'basic:item': [{ id: 'dinosaur-age:water-gun', name: 'Not the water gun', cost: 9, imageURL: '' }] } },
+      proposals: { version: 6, totalBudget: 12, groups: [], groupRules: { 'dinosaur-age:row-lairs': { max: 2 } } }
     })
     const dupSet = structuredClone(rebuilt)
     dupSet.content.books = [...PLAN.pins, { name: 'dup', edition: 1 }]
@@ -1063,6 +1360,266 @@ for (const game of games) {
     assert.equal(countGroups(dupResult.groups), 4, 'and the game still plays its four rows')
     assert.equal(dupResult.groups[1].items[0].name, 'Not the water gun', 'with dup\'s water gun, because dup defined it first')
     ok('G2 border loudness for books: the §5.3 shelf gives exactly four `Book fault — <path>: <message>` warnings, verbatim and in order, and the game still hydrates its four rows')
+
+    // ═════════════════ the player's sheet, played: W2–W5 ═════════════════
+    // Everything below runs the REAL engine over the AUTHORED dino (games/dino on
+    // disk) and the REAL shelf, in a child process, with no DOM anywhere: the
+    // sheet is state.js's business, and state.js is the file that must never
+    // touch a browser.
+    const SCRITCHES = v5Tree.groups[2].items.find(item => item.name === 'The Scritches Dimension').id   // the free joke lair, by name
+    const ROWS = REBUILT.rows
+    // ONE child plays it, and W3, W4 and W5 all read that one answer: three
+    // checks about the same moment must be about the SAME moment.
+    const keepRun = playFully(v5EngineDir, workingTreeDir, KEEP_AT_8, REAL_BOOKS)
+    const keptAtEight = keepRun.final.kept
+
+    // ── W2 play with values ──
+    {
+      const played = playFully(v5EngineDir, workingTreeDir, PLAY_STEPS, REAL_BOOKS)
+      assert.deepEqual(played.warnings, [], 'no warnings for the whole run')
+      const spent = played.steps.map(step => step.spent)
+      assert.deepEqual(spent, SPENT_PER_STEP, '§2.6\'s arithmetic, step by step')
+      // W2.4 the honest free-item edge: 0 × 3 is still 0
+      assert.equal(spent[8], 1, 'three Cute rocks cost what one costs, because a rock costs nothing')
+      // W2.9 the refusal: the sentence, verbatim, and NOTHING moved
+      assert.ok(played.final.logs.includes('THE BANANA at 3 costs 2 more, but only 1 left'), `the stepper's refusal, verbatim — got ${JSON.stringify(played.final.logs.slice(-3))}`)
+      assert.equal(spent[13], spent[12], 'a refused step spends nothing')
+      assert.equal(played.final.values[ROWS.gear][PLAYER.banana].quantity, 2, 'and leaves the quantity where it was')
+      // W2.10 the refund, said out loud, and the values pruned with the picks
+      const [, , , , , , , , , , , pickedLair, pickedLocation, , unpicked] = played.steps
+      assert.ok(pickedLair.visible.includes(ROWS.location), 'a Lair opens the Locations row')
+      assert.equal(pickedLocation.spent, 9)
+      assert.equal(pickedLocation.remaining, 1)
+      assert.deepEqual(unpicked.dropped, ['Volcano Rim'], 'unpicking the Lair refunds the Location, by name')
+      assert.equal(unpicked.spent, 5)
+      assert.ok(!unpicked.visible.includes(ROWS.location), 'and hides its row')
+      assert.deepEqual(played.final.values[ROWS.location], {}, 'pruneValues: a value never outlives its pick')
+      assert.deepEqual(played.final.values[ROWS.gear], { [PLAYER.rock]: { quantity: 3 }, [PLAYER.banana]: { quantity: 2 } })
+      assert.deepEqual(played.final.typed, { name: 'Rexina', concept: 'A dino parent', size: 'big', strength: 12, dexterity: 10, intelligence: 10, health: 10, notes: ['Allergic to ferns'] },
+        'the typed half: what the player wrote, through readValue, beside the four defaults nobody touched')
+      // W2.5 min and max count PICKS, never quantities
+      const counting = playFully(v5EngineDir, workingTreeDir, [
+        { row: ROWS.gear, thing: PLAYER.rock },
+        { row: ROWS.gear, thing: PLAYER.rock, by: 4 },        // five of one thing: allowed
+        { row: ROWS.dino, thing: PLAYER.tali },
+        { row: ROWS.dino, thing: PLAYER.miku }                // a second companion: refused
+      ], REAL_BOOKS)
+      assert.equal(counting.final.values[ROWS.gear][PLAYER.rock].quantity, 5, 'a quantity of five is fine — max counts PICKS')
+      assert.deepEqual(counting.final.selections[ROWS.dino], [PLAYER.tali], 'while a second pick in a max-1 row is refused')
+      assert.ok(counting.final.logs.some(line => line.includes('is full (max 1)')), 'and says so')
+      assert.equal(counting.final.spent, 1, 'five free rocks and one Tali')
+      ok('W2 play with values: §2.6\'s fifteen steps give 0,0,0,0,0,1,1,1,1,3,5,8,9,9,5 — three free rocks still cost 0, two bananas cost 4, a Lair opens Locations, the ninth step is refused with "THE BANANA at 3 costs 2 more, but only 1 left" and moves nothing, and unpicking the Lair refunds "Volcano Rim" to 5 and prunes its values; min/max count PICKS (quantity 5 allowed, a second companion refused); zero warnings')
+    }
+
+    // ── W3 the sheet's content ──
+    {
+      const played = keepRun
+      const sheet = played.steps[12].sheet
+      // §2.4, whole — the real output of the real engine over the real shelf
+      assert.deepEqual(sheet, {
+        name: 'Rexina', cost: 9, imageURL: '',
+        concept: 'A dino parent', size: 'big', strength: 12, dexterity: 10, intelligence: 10, health: 10,
+        notes: ['Allergic to ferns'],
+        origin: [], advantages: [], disadvantages: [], skills: [],
+        gear: [{ thing: PLAYER.rock, quantity: 3 }, { thing: PLAYER.banana, quantity: 2 }],
+        companions: [{ thing: PLAYER.tali }],
+        places: [{ thing: REBUILT.things.lavaPit }, { thing: 'dinosaur-age:volcano-rim' }],
+        ties: []
+      }, '§2.4, exactly')
+      // THE headline claim: the player's sheet is a THING of its type
+      const mergedSet = mergeLayers({ books: shelfLayers, game: authored }).set
+      const character = mergedSet.types.types.find(type => type.id === 'basic:character')
+      assert.deepEqual(Object.keys(sheet), thingKeys(character), 'its keys ARE thingKeys(basic:character) — `notes` before `origin`, measured')
+      assert.equal('id' in sheet, false, 'and it mints nothing')
+      assert.deepEqual(Object.keys(blankFields(character)), ['name', 'concept', 'size', 'strength', 'dexterity', 'intelligence', 'health', 'notes'])
+      // it passes the AUTHOR's own placement audit: put it on the shelf it is a
+      // thing of, and nothing dangles
+      const before = danglingReferences(mergedSet).length
+      mergedSet.things.things['basic:character'] = [...mergedSet.things.things['basic:character'], { id: 'player:sheet', ...sheet }]
+      assert.equal(danglingReferences(mergedSet).length, before, 'the player\'s sheet passes the author\'s own placement audit')
+      // and the two rows that fill ONE section landed in row order, then pick order
+      assert.deepEqual(sheet.places.map(entry => entry.thing), ['dinosaur-age:lava-pit', 'dinosaur-age:volcano-rim'], 'Lairs before Locations — flattened row order')
+
+      // the shell: exactly one new element, still wordless
+      const indexPath = join(v5EngineDir, 'index.html')
+      const indexText = readFileSync(indexPath, 'utf8')
+      const SHEET_ELEMENT = '<section id="sheet" hidden></section>'
+      assert.ok(indexText.includes(SHEET_ELEMENT), 'index.html holds the one new element')
+      const committedIndex = gitShow(V5_COMMIT, `${DINO_IN_REPO}/engine/index.html`)
+      assert.equal(indexText.split('\n').filter(line => !line.includes(SHEET_ELEMENT)).join('\n'), committedIndex, 'and it is the ONLY line that moved')
+      // wordless means the BODY is wordless: every word a player reads is drawn
+      // from the data. (<title> keeps its "Loading…" placeholder, which renderMeta
+      // replaces the moment content.json lands.)
+      const body = indexText.slice(indexText.indexOf('<body>'), indexText.indexOf('</body>'))
+      const words = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, '').replace(/\s+/g, '')
+      assert.equal(words, '', 'the shell is still wordless — every word on the page comes from the data')
+      // the print block: the shop goes, the sheet stays
+      const css = readFileSync(join(v5EngineDir, 'styles.css'), 'utf8')
+      const printBlock = css.slice(css.indexOf('@media print'))
+      assert.ok(css.includes('@media print'), 'styles.css holds a print block')
+      ;['.hero', '#status', '#groups', '.sheet-actions'].forEach(selector => assert.ok(printBlock.includes(selector), `@media print hides ${selector}`))
+      // and the engine grew exactly two files
+      // engine/stuff.js is the owner's own untracked scratch file. §0.1 says leave
+      // it alone, so it is named here rather than silently swept up — the day it
+      // goes, this line goes with it and the claim is unchanged.
+      const OWNER_JUNK = ['stuff.js']
+      const v5Files = listFiles(v5PrevEngineDir).filter(notDot)
+      const nowFiles = listFiles(v5EngineDir).filter(notDot).filter(file => !OWNER_JUNK.includes(file))
+      assert.deepEqual(nowFiles.filter(file => !v5Files.includes(file)).sort(), ['config/kept.js', 'config/sheet.js'], 'two new files, and no others')
+      assert.deepEqual(v5Files.filter(file => !nowFiles.includes(file)), [], 'and none was lost')
+      ok(`W3 the sheet's content: after §2.6's eighth step gameState.sheet deep-equals §2.4 whole (cost 9 included) and its keys ARE thingKeys(basic:character); placed on the merged shelf it adds nothing to danglingReferences; the two rows that fill one section land in row order; index.html gained exactly ${SHEET_ELEMENT} and is still wordless; @media print hides .hero, #status, #groups and .sheet-actions; engine/ grew exactly config/sheet.js and config/kept.js`)
+    }
+
+    // ── W4 keep and load, end to end, no DOM ──
+    {
+      const kept = keepRun
+      const keptText = keptAtEight
+      assert.equal(keptText, kept.steps[12].kept, 'the keepsake a snapshot carries is the keepsake the run ends with')
+      const file = JSON.parse(keptText)
+      assert.deepEqual(Object.keys(file), ['kept', 'game', 'sheet', 'fields', 'picks'])
+      assert.deepEqual([file.kept, file.game, file.sheet], [1, 'Adopt a Dino! CYOA', 'basic:character'])
+      assert.deepEqual(file.picks.map(pick => [pick.row, pick.thing, pick.name, pick.values]), [
+        [ROWS.dino, PLAYER.tali, 'Tali', {}],
+        [ROWS.gear, PLAYER.rock, 'Cute rock', { quantity: 3 }],
+        [ROWS.gear, PLAYER.banana, 'THE BANANA', { quantity: 2 }],
+        [ROWS.lair, 'dinosaur-age:lava-pit', 'Lava Pit', {}],
+        [ROWS.location, 'dinosaur-age:volcano-rim', 'Volcano Rim', {}]
+      ], '§2.7\'s five picks, in flattened row order')
+      assert.equal(keptText, JSON.stringify(file, null, 2) + '\n', 'two-space, trailing newline')
+      // a FRESH engine, a fresh process, one door: load
+      const loaded = playFully(v5EngineDir, workingTreeDir, [{ load: keptText }], REAL_BOOKS)
+      assert.deepEqual(loaded.warnings, [], 'a clean load says nothing to the console')
+      assert.deepEqual(loaded.final.notice, { bad: false, text: 'Loaded "Rexina".', notes: [] })
+      assert.deepEqual(loaded.final.typed, kept.final.typed, 'the typed half came back')
+      assert.deepEqual(loaded.final.selections, kept.final.selections, 'every pick, in every row')
+      assert.deepEqual(loaded.final.values, kept.final.values, 'and every placement value')
+      assert.equal(loaded.final.spent, 9)
+      assert.deepEqual(loaded.final.visible, kept.final.visible, 'the gated row is open again — visibility is settled ONCE, at the end')
+      assert.deepEqual(loaded.final.sheet, kept.final.sheet, 'so the document is the same document')
+      assert.equal(loaded.final.kept, keptText, 'and re-keeping is BYTE-IDENTICAL')
+      ok('W4 keep and load, end to end: one child plays §2.6\'s first eight steps and prints the keepsake (5 picks in flattened row order, canonical bytes); a FRESH child loads that text and its typed half, selections, values, spent, visible set and built sheet all deep-equal the first child\'s; the notice is the clean `Loaded "Rexina".`; re-keeping is byte-identical')
+    }
+
+    // ── W5 a kept sheet meets a changed game ──
+    // The stage's second spine, measured nine ways: the file's IDENTITY being
+    // wrong refuses the WHOLE file, while a REFERENCE inside it being gone drops
+    // THAT entry, by name, and loads the rest. A removed rock must not cost a
+    // player their character.
+    {
+      const scratchGame = (label, edit) => {
+        const set = readGameSet(workingTreeDir)
+        edit(set)
+        return writeGame(join(WORK, `w5-${label}`, game), set)
+      }
+      const scratchShelf = (label, edit) => {
+        const dir = copyShelf(join(WORK, `w5-${label}`, 'books'))
+        edit((name, edition, file, change) => {
+          const path = join(dir, name, String(edition), `${file}.json`)
+          const json = JSON.parse(readFileSync(path, 'utf8'))
+          change(json)
+          writeFileSync(path, serialize(json))
+        })
+        return dir
+      }
+      // one fixture, loaded: the game (or the shelf) with ONE thing changed, and
+      // W4's file walked in through the one door a click and a restore share
+      // `repeats` is how many warnings this fixture says TWICE, and it is 0 for
+      // every one of the nine: a note that names a CAUSE rather than a pick is
+      // said once, however many picks that cause touched (kept.js's sayOnce).
+      const meets = (dir, booksDir, text = keptAtEight, repeats = 0) => {
+        const run = playFully(v5EngineDir, dir, [{ load: text }], booksDir)
+        assert.equal(run.warnings.length - new Set(run.warnings).size, repeats, 'no warning is printed twice')
+        assert.deepEqual(run.warnings.filter(line => line.includes('was refused after it was judged')), [], 'readKept judged it, so `place` has nothing left to object to')
+        const notice = run.final.notice
+        if (notice.bad === false) assert.deepEqual(run.warnings.filter(line => line.startsWith('Kept sheet — ')), notice.notes.map(note => `Kept sheet — ${note}`), 'the console gets every player sentence, in order')
+        return run
+      }
+      const thingsIn = (run) => Object.values(run.final.selections).flat()
+      const ALL_FIVE = [PLAYER.tali, PLAYER.rock, PLAYER.banana, 'dinosaur-age:lava-pit', 'dinosaur-age:volcano-rim']
+
+      // 1. THE BANANA is taken off the shelf
+      const noBanana = meets(workingTreeDir, scratchShelf('no-banana', edit => edit('dinosaur-age', 1, 'things', json => {
+        json.things['basic:item'] = json.things['basic:item'].filter(thing => thing.id !== PLAYER.banana)
+      })))
+      assert.deepEqual(noBanana.final.notice.notes, ['"THE BANANA" is no longer offered in Now give your Dino stuffables!; it was dropped.'])
+      assert.deepEqual(thingsIn(noBanana), ALL_FIVE.filter(id => id !== PLAYER.banana), 'that pick alone is gone')
+      assert.equal(noBanana.final.spent, 5, 'and the four points it cost came back')
+
+      // 2. the whole Gear row is hidden by a house rule
+      const noGearRow = meets(scratchGame('no-gear-row', set => { set.content.rowOverrides[ROWS.gear].hidden = true }), REAL_BOOKS)
+      assert.deepEqual(noGearRow.final.notice.notes, ['2 picks were dropped — the part of the game they came from is gone.'])
+      assert.deepEqual(thingsIn(noGearRow), [PLAYER.tali, 'dinosaur-age:lava-pit', 'dinosaur-age:volcano-rim'])
+      assert.equal(noGearRow.final.spent, 5)
+
+      // 3. the Lairs row now allows one pick. The file for this one is W4's play
+      // plus one FREE extra lair, because a lowered max only bites a row with a
+      // tail to lose — and the tail in FILE ORDER is what goes.
+      const twoLairs = playFully(v5EngineDir, workingTreeDir, [...KEEP_AT_8, { row: ROWS.lair, thing: SCRITCHES }], REAL_BOOKS).final.kept
+      assert.equal(JSON.parse(twoLairs).picks.filter(pick => pick.row === ROWS.lair).length, 2)
+      const oneLair = meets(scratchGame('one-lair', set => { set.rules.groupRules[ROWS.lair] = { ...set.rules.groupRules[ROWS.lair], max: 1 } }), REAL_BOOKS, twoLairs)
+      assert.deepEqual(oneLair.final.notice.notes, ['"Now select a Lair! Do you have a Lair? Dino needs a Lair!" now allows 1 pick, not 2 — 1 pick was dropped.'])
+      assert.deepEqual(oneLair.final.selections[ROWS.lair], ['dinosaur-age:lava-pit'], 'the FIRST pick in file order survives')
+
+      // 4. `size` is taken off the Identity section
+      const noSize = meets(workingTreeDir, scratchShelf('no-size', edit => edit('dinosaur-age', 1, 'types', json => {
+        delete json.fieldsFor['basic:character.identity']
+      })))
+      assert.deepEqual(noSize.final.notice.notes, ['The field "size" is no longer on this sheet; what you typed there was dropped.'])
+      assert.equal('size' in noSize.final.typed, false, 'the slot went with the field')
+      assert.deepEqual(noSize.final.typed, { name: 'Rexina', concept: 'A dino parent', strength: 12, dexterity: 10, intelligence: 10, health: 10, notes: ['Allergic to ferns'] }, 'and every other typed value is kept')
+      assert.deepEqual(thingsIn(noSize), ALL_FIVE)
+
+      // 5. `strength` becomes a text field
+      const textStrength = meets(workingTreeDir, scratchShelf('text-strength', edit => edit('stats', 1, 'types', json => {
+        const strength = json.fieldsFor['basic:character.attributes'].find(field => field.key === 'strength')
+        strength.type = 'text'
+        strength.default = ''
+      })))
+      assert.deepEqual(textStrength.final.notice.notes, ['"Strength" was dropped — it must be a string (found 12).'], 'the VALIDATOR\'s own phrase, verbatim')
+      assert.equal(textStrength.final.typed.strength, '', 'the slot holds its new default')
+      assert.equal(textStrength.final.typed.dexterity, 10)
+
+      // 6. `quantity` is taken off Gear's placement — nothing multiplies any more
+      const noQuantity = meets(workingTreeDir, scratchShelf('no-quantity', edit => edit('basic', 1, 'types', json => {
+        json.types.find(type => type.id === 'basic:character').sections.find(section => section.id === 'basic:character.gear').placement = []
+      })), keptAtEight)
+      // ONE sentence, though both gear picks carried a quantity: the field leaving
+      // the game is one cause, and one cause is one sentence
+      assert.deepEqual(noQuantity.final.notice.notes, ['"Gear · Quantity" is no longer part of this game; it was dropped.'])
+      assert.deepEqual(Object.values(noQuantity.final.values[ROWS.gear]), [{}, {}], 'every gear entry is back to ×1')
+      assert.equal(noQuantity.final.spent, 7, '1 + 0 + 2 + 3 + 1 — the two bananas and the three rocks are one each now')
+
+      // 7. the budget is cut to 5. The sheet loads WHOLE: dropping by cost means
+      // choosing which entry the player would have sacrificed, and that is a
+      // guess about their character. Saying so is the honest answer.
+      const poorer = meets(scratchGame('small-budget', set => { set.rules.totalBudget = 5 }), REAL_BOOKS)
+      assert.deepEqual(poorer.final.notice.notes, [], 'nothing is dropped')
+      assert.deepEqual(thingsIn(poorer), ALL_FIVE)
+      assert.equal(poorer.final.spent, 9)
+      assert.equal(poorer.final.remaining, -4)
+      assert.ok(poorer.final.status.startsWith('Over budget by 4 — remove something'), `the status line says it in words: ${JSON.stringify(poorer.final.status)}`)
+
+      // 8. the game builds a different KIND of sheet: refused whole, nothing loaded
+      const otherSheet = meets(scratchGame('other-sheet', set => { set.content.sheet = 'basic:place' }), REAL_BOOKS)
+      assert.deepEqual(otherSheet.final.notice, { bad: true, text: 'That sheet was kept for "Adopt a Dino! CYOA", which builds a different kind of sheet. Nothing was loaded.', notes: [], draft: false })
+      assert.equal(otherSheet.final.spent, 0, 'nothing was loaded')
+      assert.deepEqual(thingsIn(otherSheet), [])
+      const placeSheet = mergeLayers({ books: shelfLayers, game: readGameSet(workingTreeDir) }).set.types.types.find(type => type.id === 'basic:place')
+      assert.deepEqual(otherSheet.final.typed, blankFields(placeSheet), 'the player\'s own sheet is untouched — still blank')
+      assert.ok(otherSheet.final.visible.length > 0, 'and the page still plays')
+
+      // 9. a pinned book is UPGRADED — dinosaur-age 1 → 2, which only ADDS a lair.
+      // Nothing the sheet points at moved, so NOTHING IS SAID. This is the case a
+      // pin list in the file would have cried wolf on (§2.7).
+      const upgraded = meets(scratchGame('edition-2', set => {
+        set.content.books = set.content.books.map(pin => pin.name === 'dinosaur-age' ? { name: pin.name, edition: 2 } : pin)
+      }), REAL_BOOKS)
+      assert.deepEqual(upgraded.final.notice, { bad: false, text: 'Loaded "Rexina".', notes: [] }, 'loads clean')
+      assert.deepEqual(thingsIn(upgraded), ALL_FIVE)
+      assert.equal(upgraded.final.spent, 9, 'and the sheet costs exactly what it cost')
+      assert.equal(upgraded.final.sheet.places.length, 2)
+      ok('W5 a kept sheet meets a changed game: nine fixtures — a thing off the shelf (F6, refunded), a hidden row (F7, grouped), a lowered max (F9, the tail in file order), a removed field (F10), a field whose KIND changed (F11, ending with the validator\'s own phrase), a removed placement field (F12, every entry back to ×1), a cut budget (loads whole, remaining −4, "Over budget by 4 — remove something"), a game that builds another KIND of sheet (refused whole, nothing loaded, the page still plays) and an UPGRADED book (loads clean, nothing said); in every one: no warning twice, no guess, and `place` never refuses what readKept has judged')
+    }
   }
 
   // ═════════════════════ the border: S1–S4 ═════════════════════
@@ -1125,7 +1682,7 @@ for (const game of games) {
     assert.equal(old.body.error, 'content.json does not fit the schema')
     assert.equal(old.body.problems.length, 1, 'an old version is ONE problem')
     assert.equal(old.body.problems[0].path, 'content.version')
-    assert.match(old.body.problems[0].message, /must be 5 \(found 4\) — open the game in the editor and Save/)
+    assert.match(old.body.problems[0].message, /must be 6 \(found 4\) — open the game in the editor and Save/)
     unchanged('an old version')
     assert.deepEqual(await post(origin, game, 'content', '{'), { status: 400, body: { ok: false, error: 'Body is not valid JSON' } })
     unchanged('a body that is not JSON')
@@ -1140,7 +1697,7 @@ for (const game of games) {
     unchanged('a duplicate field key')
     assert.deepEqual(await post(origin, game, 'nope', {}), { status: 404, body: { ok: false, error: 'Unknown save target' } })
     // a target named like an inherited property is unknown too — the whitelist reads own keys only
-    assert.deepEqual(await post(origin, game, 'constructor', { version: 5 }), { status: 404, body: { ok: false, error: 'Unknown save target' } })
+    assert.deepEqual(await post(origin, game, 'constructor', { version: 6 }), { status: 404, body: { ok: false, error: 'Unknown save target' } })
     // a save that fails ON DISK is a 500 receipt, never the end of the process
     chmodSync(dataFile('rules'), 0o444)
     try {
@@ -1341,6 +1898,31 @@ for (const game of games) {
       assert.equal(treeHash(dinoDir), dinoHash, 'the folder is exactly where it started')
       ok('S6 save against the pins: without Stats on the shelf the four land and content → 400 with F3 verbatim; with it, five 200s byte-identical; hidden: false, a pin at edition 3, an arrangement naming edition 2\'s Nest (F15) and a dangling placement each → 400 at their path, nothing written')
 
+      // ── S8 the server judges the binding (NEW) ──
+      // The validator is the contract the server enforces, and the two new
+      // pointers join it: a save that names a section the player's sheet does not
+      // have is a 400 with a sentence, not a game that quietly offers nothing.
+      const mergedRows = flattenGame({ books: PLAN.pins.map(pin => readBookSync(shelfBooks, pin)), game: rebuilt }).content.groups
+      const gearAt = `content.groups[${mergedRows.findIndex(row => row.id === 'dinosaur-age:row-gear')}]`
+      assert.deepEqual(await post(origin, 'dino', 'content', rebuilt.content), SAVED, 'the good declaration and the four good bindings land')
+      assert.equal(readFileSync(join(dinoDir, 'data', 'content.json'), 'utf8'), rebuiltText.content, 'and the bytes on disk are the bytes that were sent')
+      const refuseSheet = async (label, content, expected) => {
+        const receipt = await post(origin, 'dino', 'content', content)
+        assert.equal(receipt.status, 400, `${label}: 400`)
+        assert.deepEqual(receipt.body.problems, [expected], label)
+        assert.equal(readFileSync(join(dinoDir, 'data', 'content.json'), 'utf8'), rebuiltText.content, `${label}: nothing written`)
+      }
+      await refuseSheet('a binding onto a FIELDS section', withContent(set => { set.content.rowOverrides['dinosaur-age:row-gear'].fills = 'basic:character.notes' }),
+        { path: `${gearAt}.fills`, message: 'fills "Notes", which holds fields, not entries (basic:character.notes)' })
+      await refuseSheet('a binding onto another shelf', withContent(set => { set.content.rowOverrides['dinosaur-age:row-gear'].fills = 'basic:character.skills' }),
+        { path: `${gearAt}.fills`, message: 'shows basic:item but fills "Skills", which lists basic:skill (basic:character.skills)' })
+      await refuseSheet('a sheet that is not on the shelf', withContent(set => { set.content.sheet = 'basic:nope' }),
+        { path: 'content.sheet', message: 'builds a sheet that does not exist (basic:nope)' })
+      await refuseSheet('a sheet that is not a string', withContent(set => { set.content.sheet = 3 }),
+        { path: 'content.sheet', message: 'must be a string (found 3)' })
+      assert.deepEqual(await post(origin, 'dino', 'content', rebuilt.content), SAVED, 'put back')
+      ok('S8 the server judges the binding: a good sheet and four good bindings → 200 and the bytes on disk; a binding onto a FIELDS section, a binding onto another shelf, a sheet that is not on the shelf and a sheet that is not a string each → 400 with ONE problem at its exact path (the MERGED row for a binding, content.sheet for the declaration) and nothing written')
+
       // ── S7 the engine over HTTP: the shelf answers page-relative ──
       const http = await hydrateHTTP(v5EngineDir, `${origin}/games/dino/index.html`)
       assert.deepEqual(http.warnings, [], 'no warnings over HTTP')
@@ -1410,7 +1992,7 @@ for (const game of games) {
   assert.deepEqual(Object.keys(manifest), ['tool', 'game', 'schemaVersion', 'books', 'complete', 'rows', 'items', 'files'], 'fixed keys — no timestamp, no git hash')
   assert.equal(manifest.tool, 'cyoa-export')
   assert.equal(manifest.complete, true)
-  assert.equal(manifest.schemaVersion, 5)
+  assert.equal(manifest.schemaVersion, SCHEMA_VERSION)
   assert.equal(manifest.game, game)
   assert.deepEqual(manifest.books, sourceSet.content.books, 'the books folded in — the folder\'s only record of the shelf it was built on')
   assert.equal(manifest.rows, countGroups(v5Tree.groups))
@@ -1468,6 +2050,40 @@ for (const game of games) {
   imagesOf(fromDist.groups).forEach(rel => assert.ok(existsSync(join(outDir, rel)), `${rel} is in the folder`))
   ok(`E3 the folder hydrates like the source: same projection, five page-relative fetches and no book url, ${imagesOf(fromDist.groups).length} image URLs all present`)
 
+  // ── W6 the published folder does all of it, with no server (NEW) ──
+  // The published folder is the artifact this whole codebase exists to make: a
+  // static directory, opened from any subpath, with no shelf on disk and no
+  // server behind it. Everything Stage 2 added has to work THERE — otherwise it
+  // is a feature of the workshop rather than of the game.
+  if (game === 'dino') {
+    assert.equal(fromDist.playerSheet.id, 'basic:character', 'the folder knows which sheet the player builds')
+    assert.deepEqual(fromDist.bindings.map(row => row.fills), ['basic:character.companions', 'basic:character.gear', 'basic:character.places', 'basic:character.places'], 'and every row is bound')
+    assert.deepEqual(fromDist.fetched, FILES.map(name => `data/${name}.json`), 'five urls, and never a books/… — the merge baked the shelf in')
+    // the FLATTENED bytes on disk: the declaration, and a `fills` on every row
+    const distContent = JSON.parse(readFileSync(join(outDir, 'data', 'content.json'), 'utf8'))
+    assert.equal(distContent.sheet, 'basic:character')
+    assert.deepEqual(distContent.groups.map(row => row.fills), ['basic:character.companions', 'basic:character.gear', 'basic:character.places', 'basic:character.places'])
+    assert.deepEqual(distContent.rowOverrides, {}, 'nothing left to override — the folder IS the merge')
+    // W2's play, over the folder, with the folder's own engine
+    const distPlay = playFully(outDir, outDir, PLAY_STEPS)
+    assert.deepEqual(distPlay.warnings, [])
+    assert.deepEqual(distPlay.steps.map(step => step.spent), SPENT_PER_STEP, 'the same fifteen numbers as the source game')
+    // W4's round trip, over the folder — the same BYTES as over the source
+    const distKept = playFully(outDir, outDir, KEEP_AT_8).final.kept
+    const sourceKept = playFully(v5EngineDir, v5Source, KEEP_AT_8, expShelf).final.kept
+    assert.equal(distKept, sourceKept, 'a sheet kept from the published folder is byte-identical to one kept from the source')
+    const loaded = playFully(outDir, outDir, [{ load: distKept }])
+    assert.deepEqual(loaded.final.notice, { bad: false, text: 'Loaded "Rexina".', notes: [] }, 'and it loads back into the folder, clean')
+    assert.equal(loaded.final.kept, distKept)
+    assert.equal(loaded.final.spent, 9)
+    // and the two new engine files travelled, byte for byte
+    ;['config/sheet.js', 'config/kept.js'].forEach(file => {
+      assert.ok(existsSync(join(outDir, file)), `${file} is in the folder`)
+      assert.equal(sha256(join(outDir, file)), sha256(join(v5EngineDir, file)), `${file} byte-equals the engine's`)
+    })
+    ok('W6 the published folder: no shelf, no server — five data urls and nothing else; the flattened content.json carries the declaration and a fills on every row with rowOverrides {}; playerSheet resolves; §2.6\'s fifteen steps give §2.6\'s fifteen numbers; a sheet kept from the folder is BYTE-IDENTICAL to one kept from the source and loads back clean; config/sheet.js and config/kept.js byte-equal the engine\'s')
+  }
+
   // ── E4 subpath serving: the engine over real HTTP under /site/<game>/ ──
   const srv = await serveUnder('site', join(WORK, 'dist'))
   try {
@@ -1512,7 +2128,7 @@ for (const game of games) {
   const v4Src = writeGame(join(WORK, 'v4src', game), rawV4)
   cpSync(join(v5Source, 'assets'), join(v4Src, 'assets'), { recursive: true })
   const outV4 = join(WORK, 'out-v4', game)
-  assert.throws(() => exportOf({ outDir: outV4, sourceDir: v4Src }), err => err instanceof ExportRefusal && /is at version 4, not 5 — open the game in the editor and Save first/.test(err.message))
+  assert.throws(() => exportOf({ outDir: outV4, sourceDir: v4Src }), err => err instanceof ExportRefusal && /is at version 4, not 6 — open the game in the editor and Save first/.test(err.message))
   assert.equal(existsSync(outV4), false, 'nothing written')
   // a data file that is not JSON is a refusal by name, never a stack trace
   const badJSON = copyGame(v5Source, join(WORK, 'badjson', game))
@@ -1697,9 +2313,9 @@ for (const game of games) {
     const dupExportShelf = copyShelf(join(WORK, 'exp-dup', 'books'))
     writeBook(dupExportShelf, 'dup', 1, {
       book: { name: 'dup', title: 'Dup', edition: 1, requires: [{ name: 'basic', edition: 1 }] },
-      types: { version: 5, types: [], sectionsFor: {}, fieldsFor: { 'basic:nope': [{ id: 'dup:ghost', key: 'ghost', caption: 'Ghost', type: 'text' }] } },
-      things: { version: 5, things: { 'basic:item': [{ id: 'dinosaur-age:water-gun', name: 'Not the water gun', cost: 9, imageURL: '' }] } },
-      proposals: { version: 5, totalBudget: 12, groups: [], groupRules: { 'dinosaur-age:row-lairs': { max: 2 } } }
+      types: { version: 6, types: [], sectionsFor: {}, fieldsFor: { 'basic:nope': [{ id: 'dup:ghost', key: 'ghost', caption: 'Ghost', type: 'text' }] } },
+      things: { version: 6, things: { 'basic:item': [{ id: 'dinosaur-age:water-gun', name: 'Not the water gun', cost: 9, imageURL: '' }] } },
+      proposals: { version: 6, totalBudget: 12, groups: [], groupRules: { 'dinosaur-age:row-lairs': { max: 2 } } }
     })
     const dupSource = copyGame(v5Source, join(WORK, 'dupsource', game))
     const dupSet = readGameSet(dupSource)
@@ -1721,6 +2337,70 @@ for (const game of games) {
     assert.equal(treeHash(expShelf), shelfHash, 'and the shelf is untouched')
     ok('E13 refusals with a shelf: a pin the shelf cannot answer → "pins a book that is not on the shelf: dinosaur-age 3"; the §5.3 shelf → refused with the four fault paths; --out inside the books folder → the guard sentence; the previous export and the shelf survive all three')
   }
+}
+
+// ═════════════════ the bridge to the v5 world: C6, C7 (once) ═════════════════
+// C1, C2 and C5 ask "does today's engine still play what the v2/v3/v4 engines
+// played?". C6 asks the same question of the engine one commit back — the last
+// engine before the player had a sheet — and C7 asks the one question this whole
+// stage has to be able to answer with a straight face: is the game that builds
+// NO sheet byte-for-byte the game it was?
+{
+  const committedGame = (name) => writeGame(join(WORK, 'committed', name),
+    Object.fromEntries(FILES.map(file => [file, JSON.parse(gitShow(V5_COMMIT, `${DINO_IN_REPO}/games/${name}/data/${file}.json`))])))
+
+  // ── C6 the bridge that IS S6 ──
+  // The v5 engine and the v5 SHELF travel together: a v5 engine reads v5 books,
+  // and re-stamping the shelf is the ceremony a version bump costs (§4.2). Said
+  // out loud: a v6 row carries three more keys than a v5 one, so `summarize`
+  // goes on projecting only what BOTH engines produce — exactly as it already
+  // does for `query` and `displayType`.
+  const bridged = ['dino', 'vampire'].map(name => {
+    const dir = committedGame(name)
+    const before = hydrate(v5PrevEngineDir, dir, v5PrevBooksDir)
+    const after = hydrate(v5EngineDir, dir, REAL_BOOKS)
+    assert.deepEqual(before.warnings, [], `${name}: the v5 engine warned over the committed data`)
+    assert.deepEqual(after.warnings, [], `${name}: the v6 engine warned over the committed data`)
+    assert.deepEqual(after.groups, before.groups, `${name}: the v6 engine plays what the v5 engine played`)
+    assert.deepEqual(after.fetched, before.fetched, `${name}: and asks for the same files, in the same order`)
+    assert.equal(after.totalBudget, before.totalBudget, `${name}: for the same budget`)
+    return { name, rows: countGroups(after.groups), items: countItems(after.groups) }
+  })
+  // and the four steps of I1, replayed through both engines over the committed
+  // dino: the same snapshots, `sheet` and `kept` null on both sides (the v5
+  // engine has no such getter; the committed game declares no sheet)
+  const committedDino = join(WORK, 'committed', 'dino')
+  const bridgeSteps = [
+    { row: REBUILT.rows.lair, thing: REBUILT.things.lavaPit },
+    { row: REBUILT.rows.location, thing: REBUILT.things.volcanoRim },
+    { row: REBUILT.rows.lair, thing: REBUILT.things.lavaPit },
+    { row: REBUILT.rows.location, thing: REBUILT.things.volcanoRim }
+  ]
+  const playedBefore = play(v5PrevEngineDir, committedDino, bridgeSteps, v5PrevBooksDir)
+  const playedAfter = play(v5EngineDir, committedDino, bridgeSteps, REAL_BOOKS)
+  assert.deepEqual(playedAfter, playedBefore, 'four steps, two engines, one answer — whole snapshots')
+  assert.deepEqual(playedAfter.steps.map(step => [step.sheet, step.kept]), Array(4).fill([null, null]), 'a game that declares no sheet builds none, under either engine')
+  ok(`C6 the bridge to the v5 engine (git ${V5_COMMIT}) and the v5 shelf: ${bridged.map(each => `${each.name} ${each.rows} rows / ${each.items} items`).join(', ')}, no warnings on either side, the same urls in the same order, project-equal hydrations; and I1's four steps replay through both engines to deep-equal snapshots with sheet and kept null throughout`)
+
+  // ── C7 vampire is untouched ──
+  // games/vampire is the proof that a v4, book-less, sheet-less game still plays.
+  // Not one byte of it may move — not the version line — so this check reads the
+  // WORKING TREE and compares it to git before it plays it.
+  const vampireDir = join(DINO_DIR, 'games', 'vampire')
+  FILES.forEach(name => assert.equal(readFileSync(join(vampireDir, 'data', `${name}.json`), 'utf8'), gitShow(V5_COMMIT, `${DINO_IN_REPO}/games/vampire/data/${name}.json`), `games/vampire/data/${name}.json is byte-identical to ${V5_COMMIT}`))
+  const vampire = hydrate(v5EngineDir, vampireDir)
+  assert.deepEqual(vampire.warnings, [], 'zero warnings')
+  assert.equal(vampire.playerSheet, null, 'this game is a menu, not a sheet — and saying so is not a fault')
+  assert.deepEqual([...new Set(vampire.bindings.map(row => row.fills))], [null], 'every row is a plain picker')
+  assert.deepEqual([...new Set(vampire.bindings.map(row => row.quantityField))], [null], 'and nothing multiplies')
+  assert.deepEqual(vampire.fetched, FILES.map(name => `data/${name}.json`), 'five data urls and nothing else — no shelf, no book')
+  const firstRow = vampire.bindings.find(row => row.items > 0)
+  const played = playFully(v5EngineDir, vampireDir, [{ row: firstRow.id, thing: flatSummary(vampire.groups).find(row => row.id === firstRow.id).items[0].id }])
+  assert.deepEqual(played.steps.map(step => [step.sheet, step.kept]), [[null, null]], 'sheet and kept are null in the snapshot')
+  assert.deepEqual(played.final.typed, {}, 'a game that builds no sheet types nothing')
+  assert.equal(played.final.notice, null)
+  assert.deepEqual(played.warnings, [])
+  ok(`C7 vampire is untouched: its five data files byte-equal ${V5_COMMIT}; under the v6 engine it hydrates with zero warnings, playerSheet null, every one of its ${vampire.bindings.length} rows a plain picker with no quantity field, five data urls and nothing else; a pick leaves sheet and kept null and the typed half {}`)
 }
 
 // ═════════════════════ the manager: M1–M7 ═════════════════════
@@ -1840,7 +2520,7 @@ for (const game of games) {
     const newSet = readGameSet(dir)
     assert.deepEqual(validateGame({ own: newSet, books: seedPins.map(pin => readBookSync(SHELF, pin)) }), [], 'the newborn fits, judged against the book it stands on')
     assert.equal(migrateSet(newSet), newSet, 'the newborn is already at SCHEMA_VERSION — the same object comes back')
-    assert.equal(keysOf(newSet.content), 'version,meta,books,groups,rowOverrides')
+    assert.equal(keysOf(newSet.content), 'version,meta,books,sheet,groups,rowOverrides')
     assert.equal(keysOf(newSet.rules), 'version,totalBudget,groupRules')
     assert.equal(keysOf(newSet.themes), 'version,page,groupThemes')
     assert.equal(keysOf(newSet.types), 'version,types,sectionsFor,fieldsFor')
@@ -1849,7 +2529,7 @@ for (const game of games) {
     assert.deepEqual([bornLocal.warnings, bornLocal.groups], [[], []], 'the engine hydrates the newborn: no warnings, no rows')
     const bornHTTP = await hydrateHTTP(v5EngineDir, `${origin}/games/${newborn}/index.html`)
     assert.deepEqual([bornHTTP.warnings, bornHTTP.groups], [[], []], 'and over HTTP')
-    assert.deepEqual(cardOf(await listed(), newborn), { name: newborn, title: 'Space Pirates!', version: 5, books: ['basic 1'], rows: 0, types: 7, things: 0, faults: 0, exported: false }, 'the list shows the newborn on Basic: seven merged sheets, no rows')
+    assert.deepEqual(cardOf(await listed(), newborn), { name: newborn, title: 'Space Pirates!', version: 6, books: ['basic 1'], rows: 0, types: 7, things: 0, faults: 0, exported: false }, 'the list shows the newborn on Basic: seven merged sheets, no rows')
     assert.deepEqual(await editorSave(origin, newborn, newSet), Array(5).fill(SAVED), 'a no-edit save: five 200s')
     assert.deepEqual(readGameText(dir), Object.fromEntries(FILES.map(name => [name, serialize(seedSet('Space Pirates!', seedPins)[name])])), 'a no-edit save of a newborn is byte-identical')
     // S3's add-a-type recipe on a newborn, BESIDE the books it already stands on
@@ -2103,7 +2783,7 @@ for (const game of games) {
   mkdirSync(join(SHELF, 'basic', 'one'), { recursive: true })                // an edition folder that is not an edition
   writeBook(SHELF, 'broken', 1, {                                            // a Stats-like book writing outside its namespace
     book: { name: 'broken', title: 'Broken', edition: 1, requires: [{ name: 'basic', edition: 1 }] },
-    types: { version: 5, types: [], sectionsFor: {}, fieldsFor: { 'basic:character.attributes': [{ id: 'basic:strength', key: 'strength', caption: 'Strength', type: 'number', default: 10 }] } }
+    types: { version: 6, types: [], sectionsFor: {}, fieldsFor: { 'basic:character.attributes': [{ id: 'basic:strength', key: 'strength', caption: 'Strength', type: 'number', default: 10 }] } }
   })
   const { origin, stop } = await startServer(join(WORK, 'm11'), join(WORK, 'm11-dist'), SHELF)
   try {

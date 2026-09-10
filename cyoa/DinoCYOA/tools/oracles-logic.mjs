@@ -18,17 +18,25 @@
 //   L7  cycle and self-gate         L16 migration v4 → v5 (NEW)
 //   L8  one-pass fixpoint           L17 placements: audit and repairs (NEW)
 //   L9  monotone, deterministic, order-blind
+//   L18 migration v5 → v6 (NEW)     L19 the two new repairs: fills, sheet (NEW)
 // the validator (engine/config/validate.js — the sheet's third reader):
 //   V1  tables agree                V5  per-file suppresses cross; total; pure
 //   V2  the healthy set fits        V6  paths resolve
 //   V3  the breakage table          V7  problem format
 //   V4  leftovers are not problems  V8  the breakage table, books (NEW)
+//   V9  the breakage table, the player's sheet (NEW)
 // NEW: the MERGE (engine/config/merge.js) — a game is the last layer of a stack:
 //   K1  order-independence, purity  K6  conflicts (F13/F14)
 //   K2  add-only union              K7  the cascade and the arrangement
 //   K3  duplicates (F6)             K8  flatten fixed point
 //   K4  bad additions (F7–F12)      K9  validators (set / game / book)
-//   K5  pins and requires (F1–F5)
+//   K5  pins and requires (F1–F5)  K10 the sheet and the binding cross it (NEW)
+// NEW (v6): the PLAYER'S SHEET — engine/config/sheet.js and kept.js, both pure:
+//   P1  sheet walkers               P6  the kept file is canonical
+//   P2  checkFills, six answers     P7  readKept refusals (F1–F5)
+//   P3  quantity and cost           P8  readKept notes (F6–F13)
+//   P4  buildSheet                  P9  readKept is total and pure
+//   P5  readValue
 // the manager's pure parts — the editor's hash grammar and the server's games
 // module, both import-time pure (no DOM, no HTTP, no disk touched):
 //   N1  hash grammar                N2  names            N3  the seed
@@ -41,14 +49,19 @@ import { FIELD_DEFAULTS, fieldDefault, asOption, sheetOfType, placementSheet, fi
 import { migrateSet } from '../engine/config/migrations.js'
 import { OPERATORS, operatorOf, WHERE_VALUE_TYPE, WHERE_VALUE_DEFAULT, readAs, checkWhere, matchesWhere, filterThings, valuesOf } from '../engine/config/query.js'
 import { GATES, SHOW_WHEN_KINDS, idsBelow, computeVisible, dropHidden, checkShowWhen, deadRows } from '../engine/config/visibility.js'
-import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, danglingReferences } from '../engine/config/references.js'
-import { validateFile, validateBookFile, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES } from '../engine/config/validate.js'
+import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, danglingReferences } from '../engine/config/references.js'
+import { validateFile, validateBookFile, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES, checkFieldValue } from '../engine/config/validate.js'
+// NEW (v6): the two files this stage adds. Both are pure and leaf-ish — sheet.js
+// imports schema.js and nothing else; kept.js imports schema, sheet and validate —
+// so both run here, in the half that never reads the shelf.
+import { QUANTITY_KEY, NAME_ENTRY, sectionById, fillableSections, playerFields, blankFields, blankValues, checkFills, quantityFieldOf, quantityOf, entryCost, readValue, buildSheet } from '../engine/config/sheet.js'
+import { KEPT_VERSION, keptFrom, sheetText, keptFileName, readKept } from '../engine/config/kept.js'
 import { GAME_LAYER, bookLabel, emptyGame, orderBooks, mergeLayers, flattenGame, validateGame, validateSet, validateBook } from '../engine/config/merge.js'
 import { parseHash, hashFor, uiState, TABS } from '../dinoEdit/uiState.js'
 import { NAME, NAME_MAX, RESERVED, isGameName, slugOf, titleProblems, seedSet } from '../server/games.js'
 import { EDITION, isEditionName } from '../server/books.js'
 
-assert.equal(SCHEMA_VERSION, 5, 'these oracles describe schema version 5')
+assert.equal(SCHEMA_VERSION, 6, 'these oracles describe schema version 6')
 
 let checks = 0
 const ok = (label) => { checks += 1; console.log(`  ok  ${label}`) }
@@ -385,13 +398,13 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
     types:  { version: 3, types: [{ id: 'type-1', label: 'One', fields: [] }, { id: 'type-2', label: 'Two', fields: [] }] },
     things: { version: 3, things: { 'type-1': [], 'type-2': [] } }
   }
-  assert.throws(() => migrateSet({ ...v3, types: null, things: null }), /Missing data files for version 5: types, things/, 'stamp keeps a null a null')
+  assert.throws(() => migrateSet({ ...v3, types: null, things: null }), /Missing data files for version 6: types, things/, 'stamp keeps a null a null')
   const frozen = deepFreeze(structuredClone(v3))
   const out = migrateSet(frozen)
-  FILE_NAMES.forEach(name => assert.equal(out[name].version, 5, `${name} stamped 5`))
-  assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'groups', 'rowOverrides'])
+  FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${name} stamped 6`))
+  assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'])
   const checkRow = (migrated, original) => {
-    assert.deepEqual(Object.keys(migrated), ['id', 'label', 'query', 'showWhen', 'children'], `row ${migrated.id} has the five keys in order`)
+    assert.deepEqual(Object.keys(migrated), ['id', 'label', 'query', 'fills', 'showWhen', 'children'], `row ${migrated.id} has the six keys in order`)
     assert.deepEqual(migrated.query, { type: original.displayType, where: null })
     assert.deepEqual(Object.keys(migrated.query), ['type', 'where'])
     assert.equal(migrated.query.where, null)
@@ -400,9 +413,9 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   }
   out.content.groups.forEach((group, index) => checkRow(group, v3.content.groups[index]))
   assert.equal(JSON.stringify(migrateSet(frozen)), JSON.stringify(out), 'migrating twice is byte-identical: nothing minted')
-  assert.equal(migrateSet(out), out, 'a v5 set passes the border as the same object')
+  assert.equal(migrateSet(out), out, 'a v6 set passes the border as the same object')
   assert.deepEqual(danglingReferences(out), [], 'a migrated set is closed')
-  ok('L12 migration border (v3 → 5): missing files named; canonical row shape; where null; showWhen always; byte-identical twice')
+  ok('L12 migration border (v3 → 6): missing files named; canonical row shape; where null; showWhen always; byte-identical twice')
 }
 
 // ───────────────────────── L13 repairs ─────────────────────────
@@ -417,10 +430,10 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
       row('R4', { kind: 'thingPicked', thing: 't-lava' }, [], { type: '', where: null })
     ]
     return {
-      content: { version: 5, meta: {}, books: [], groups: rows, rowOverrides: {} },
+      content: { version: 6, meta: {}, books: [], groups: rows, rowOverrides: {} },
       // fresh copies: a removal below splices a section's fields and a bucket, and the next build must not see it
-      types:   { version: 5, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
-      things:  { version: 5, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
+      types:   { version: 6, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
+      things:  { version: 6, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
     }
   }
   const touched = (changed) => changed.map(({ row }) => row.id).join(',')
@@ -592,7 +605,7 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   })
   const input = v4()
   const out = migrateSet(input)
-  FILE_NAMES.forEach(name => assert.equal(out[name].version, 5, `${name} stamped 5`))
+  FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${name} stamped 6`))
   // every type gains EXACTLY ONE section, its id derived (never minted)
   out.types.types.forEach((type, i) => {
     assert.deepEqual(Object.keys(type), ['id', 'label', 'sections'])
@@ -602,10 +615,13 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
     assert.deepEqual([section.id, section.key, section.caption, section.kind], [`${type.id}.identity`, 'identity', 'Identity', 'fields'])
     assert.equal(section.fields, input.types.types[i].fields, 'the old field list, the same objects — nothing rewritten')
   })
-  assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'groups', 'rowOverrides'])
+  assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'])
   assert.deepEqual(out.content.books, [], 'a v4 game knew no books')
   assert.deepEqual(out.content.rowOverrides, {}, 'and had nothing to override')
-  assert.equal(out.content.groups, input.content.groups, 'the rows ride through untouched')
+  // CHANGED: the rows used to RIDE THROUGH this ladder as the same objects. They no
+  // longer can: the v5 → v6 step rebuilds every row key by key to give it `fills`,
+  // so what survives is the canonical key ORDER, not the object identity.
+  assert.deepEqual(out.content.groups.map(row => Object.keys(row)), [['id', 'label', 'query', 'fills', 'showWhen', 'children']])
   assert.deepEqual(Object.keys(out.types), ['version', 'types', 'sectionsFor', 'fieldsFor'])
   assert.deepEqual([out.types.sectionsFor, out.types.fieldsFor], [{}, {}])
   // rules, themes and things are STAMPED and otherwise byte-equal
@@ -615,11 +631,11 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   assert.equal(out.rules.totalBudget, 10, 'a written budget is the game\'s own and stays written')
   // deterministic, mint-free, closed, and a fixed point
   assert.equal(JSON.stringify(migrateSet(v4())), JSON.stringify(out), 'migrating twice is byte-identical')
-  assert.equal(migrateSet(out), out, 'a v5 set comes back as the same object')
+  assert.equal(migrateSet(out), out, 'a v6 set comes back as the same object')
   assert.deepEqual(danglingReferences(out), [], 'the migrated set is closed')
   assert.deepEqual(validateSet(out), [], 'and it fits the contract')
-  assert.throws(() => migrateSet({ ...v4(), types: null, things: null }), /Missing data files for version 5: types, things/)
-  ok('L16 migration v4 → v5: one derived "identity" section per type, the same field objects; content gains books: [] and rowOverrides: {}; types gains the two addition cabinets; twice is byte-identical; missing files named')
+  assert.throws(() => migrateSet({ ...v4(), types: null, things: null }), /Missing data files for version 6: types, things/)
+  ok('L16 migration v4 → v6: one derived "identity" section per type, the same field objects; content gains books: [] and rowOverrides: {}; types gains the two addition cabinets; twice is byte-identical; missing files named')
 }
 
 // ───────────────────────── L17 placements: the audit and the two repairs ─────────────────────────
@@ -628,12 +644,12 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
 {
   const listSection = { id: 'a:s.friends', key: 'friends', caption: 'Friends', kind: 'list', of: 'a:s', placement: [] }
   const build = (friends) => ({
-    content: { version: 5, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], groups: [], rowOverrides: {} },
-    types: { version: 5, sectionsFor: {}, fieldsFor: {}, types: [
+    content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], groups: [], rowOverrides: {} },
+    types: { version: 6, sectionsFor: {}, fieldsFor: {}, types: [
       { id: 'a:s', label: 'S', sections: [identityOf('a:s', []), listSection] },
       { id: 'b:t', label: 'T', sections: [identityOf('b:t', [])] }
     ] },
-    things: { version: 5, things: {
+    things: { version: 6, things: {
       'a:s': [{ id: 'a:one', name: 'One', cost: 0, imageURL: '', friends }, { id: 'a:two', name: 'Two', cost: 0, imageURL: '' }],
       'b:t': [{ id: 'b:elsewhere', name: 'Elsewhere', cost: 0, imageURL: '' }]
     } }
@@ -675,6 +691,100 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   ok('L17 placements: the audit\'s four shape sentences and "places a thing that does not exist" (another shelf counts as gone); crossChecks attaches them by key; forgetPlaced and forgetSectionPlacements edit in place, name what they touched, and are no-ops twice')
 }
 
+// ───────────────────────── L18 migration v5 → v6 (NEW) ─────────────────────────
+// The step that puts the player's sheet in the files: one key on the game
+// (`sheet`) and one on every row at every depth (`fills`), both born EMPTY —
+// because "" is the honest "this game builds no sheet / this row fills nothing",
+// which is exactly what every v5 game and every v5 row means. A migration that
+// guessed `basic:character` here would silently change what a game IS.
+{
+  const UUIDS = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g
+  const uuidsOf = (text) => new Set(text.match(UUIDS) ?? [])
+  const uuid = (n) => `0000000${n}-0000-4000-8000-00000000000${n}`
+  const v5Row = (id, children = []) => ({ id, label: `row ${id}`, query: { type: 'type-x', where: null }, showWhen: { kind: 'always' }, children })
+  const v5Set = (books, groups) => ({
+    content: { version: 5, meta: { pageTitle: 'T', heroTitle: 'T' }, books, groups, rowOverrides: { [uuid(1)]: { label: 'Kept' } } },
+    rules:   { version: 5, totalBudget: 10, groupRules: {} },
+    themes:  { version: 5, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
+    types:   { version: 5, types: [], sectionsFor: {}, fieldsFor: {} },
+    things:  { version: 5, things: {} }
+  })
+  const fixtures = {
+    'a bookless game': v5Set([], [v5Row(uuid(1))]),
+    'a pinned game':   v5Set([{ name: 'basic', edition: 1 }], [v5Row(uuid(2))]),
+    'a nested tree':   v5Set([], [v5Row(uuid(3), [v5Row(uuid(4), [v5Row(uuid(5))])]), v5Row(uuid(6))])
+  }
+  Object.entries(fixtures).forEach(([label, input]) => {
+    const before = JSON.stringify(input)
+    const out = migrateSet(deepFreeze(structuredClone(input)))
+    FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${label}: ${name} stamped 6`))
+    assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'], `${label}: the canonical content order, with sheet after books`)
+    assert.equal(out.content.sheet, '', `${label}: a v5 game declared no sheet, so it builds none`)
+    assert.deepEqual(out.content.books, input.content.books, `${label}: the pins are carried through untouched`)
+    assert.deepEqual(out.content.rowOverrides, input.content.rowOverrides, `${label}: an override slot is NOT rewritten — a key appears there on the first override only`)
+    eachRow(out.content.groups, (row) => {
+      assert.deepEqual(Object.keys(row), ['id', 'label', 'query', 'fills', 'showWhen', 'children'], `${label}: row ${row.id} in the canonical order, fills after query`)
+      assert.equal(row.fills, '', `${label}: row ${row.id} fills nothing`)
+    })
+    assert.equal(JSON.stringify(migrateSet(structuredClone(input))), JSON.stringify(out), `${label}: migrating twice is byte-identical`)
+    assert.equal(JSON.stringify(input), before, `${label}: the input is untouched`)
+    assert.equal(ids(uuidsOf(JSON.stringify(out))), ids(uuidsOf(before)), `${label}: the same set of uuids out — the step mints nothing and loses nothing`)
+    assert.equal(migrateSet(out), out, `${label}: a v6 set comes back as the SAME OBJECT`)
+  })
+  assert.throws(() => migrateSet({ ...fixtures['a bookless game'], types: null }), /Missing data files for version 6: types/, 'a null file is still NAMED, not climbed')
+  ok(`L18 migration v5 → v6: 3 fixtures, five files stamped 6, content = version,meta,books,sheet,groups,rowOverrides with sheet ""; every row at every depth id,label,query,fills,showWhen,children with fills ""; twice is byte-identical; mint-free; a v6 set is returned unchanged; a null file is named`)
+}
+
+// ───────────────────────── L19 the two new repairs (NEW) ─────────────────────────
+// The audit's two new pointers, and the two repairs that close them. Same shape
+// as the six that exist: edit in place, return one entry per thing changed with
+// the sentence the editor says out loud, and be a no-op the second time.
+{
+  const gearSection = () => ({ id: 'a:s.gear', key: 'gear', caption: 'Gear', kind: 'list', of: 'b:t', placement: [] })
+  const boundRow = (id, fills, children = []) => ({ id, label: `row ${id}`, query: { type: 'b:t', where: null }, fills, showWhen: { kind: 'always' }, children })
+  const build = () => ({
+    content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], sheet: 'a:s',
+      groups: [boundRow('r1', 'a:s.gear', [boundRow('r2', 'a:s.gear')]), boundRow('r3', '')], rowOverrides: {} },
+    types:  { version: 6, types: [
+      { id: 'a:s', label: 'S', sections: [identityOf('a:s', []), gearSection()] },
+      { id: 'b:t', label: 'T', sections: [identityOf('b:t', [])] }
+    ], sectionsFor: {}, fieldsFor: {} },
+    things: { version: 6, things: { 'a:s': [], 'b:t': [] } }
+  })
+  assert.deepEqual(danglingReferences(build()), [], 'the healthy set points at nothing missing')
+
+  // (a) the section goes: two bound rows dangle, and forgetFills closes both
+  const removed = build()
+  removed.types.types[0].sections.pop()
+  assert.deepEqual(danglingReferences(removed).map(entry => `${entry.row.id} ${entry.pointer}: ${entry.what}`),
+    ['r1 fills: fills a section that is not on the player\'s sheet (a:s.gear)', 'r2 fills: fills a section that is not on the player\'s sheet (a:s.gear)'],
+    'the row\'s fourth pointer, at every depth')
+  const changed = forgetFills(removed.content.groups, 'a:s.gear')
+  assert.deepEqual(changed.map(entry => `${entry.row.id}: ${entry.what}`),
+    ['r1: fills nothing now — the section it filled changed or was removed', 'r2: fills nothing now — the section it filled changed or was removed'])
+  assert.deepEqual(removed.content.groups.map(row => row.fills), ['', ''], 'the top-level rows keep their key, now empty')
+  assert.equal(removed.content.groups[0].children[0].fills, '', 'and so does the nested one')
+  assert.deepEqual(forgetFills(removed.content.groups, 'a:s.gear'), [], 'a second run changes nothing')
+  assert.deepEqual(danglingReferences(removed), [], 'and the audit is closed')
+
+  // (b) the TYPE goes: one sentence for the declaration, and the rows are dark
+  // for that one cause — the audit says it ONCE and no row repeats it
+  const gone = build()
+  gone.types.types.shift()
+  assert.deepEqual(danglingReferences(gone).map(entry => `${entry.path} ${entry.pointer}: ${entry.what}`),
+    ['content sheet: builds a sheet that does not exist (a:s)'], 'one cause, one sentence — and no row also reports')
+  assert.deepEqual(forgetPlayerSheet(gone.content, 'nope:type'), [], 'a type this game does not build is not this repair\'s business')
+  assert.deepEqual(forgetPlayerSheet(gone.content, 'a:s').map(entry => entry.what), ['builds no sheet now — the type it named was removed'])
+  assert.equal(gone.content.sheet, '')
+  assert.deepEqual(forgetPlayerSheet(gone.content, 'a:s'), [], 'a second run changes nothing')
+  // the rows are still bound to a section that is now unreachable — the editor
+  // runs BOTH repairs when a type goes, and then the file is closed
+  assert.deepEqual(danglingReferences(gone).map(entry => entry.what), ['fills a section but this game builds no sheet (a:s.gear)', 'fills a section but this game builds no sheet (a:s.gear)'])
+  forgetFills(gone.content.groups, 'a:s.gear')
+  assert.deepEqual(danglingReferences(gone), [], 'after both repairs the audit is []')
+  ok('L19 the two new repairs: a removed section dangles both bound rows (nested included) and forgetFills clears exactly those, once; a removed sheet TYPE is ONE sentence with no row repeating it, forgetPlayerSheet clears the declaration; both are no-ops the second time and together they close the audit')
+}
+
 // ═════════════════════════ the validator: V1–V8 ═════════════════════════
 // validate.js is the sheet's THIRD reader — the editor's builders say how a kind
 // is edited, the game's displays say how it is shown, CHECKERS say how it is
@@ -687,16 +797,16 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
 // (t-king's traits is a string, t-egg lacks every author field): H is clean
 // UNDER D2, by design.
 const H = () => ({
-  content: { version: 5, meta: { pageTitle: 'T', heroTitle: 'H' }, books: [], groups: [
+  content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'H' }, books: [], groups: [
     row('R1', { kind: 'always' }, [ row('R1a', { kind: 'anyInRow', row: 'R1' }, [], { type: 'type-dino', where: { field: FIELD_LABEL, op: 'is', value: 'Gayer' } }) ], { type: 'type-dino', where: null }),
     row('R2', { kind: 'thingPicked', thing: 't-tali' }, [], { type: 'type-lair', where: { field: 'core:cost', op: 'gte', value: 1 } }),
     row('R3', { kind: 'anyInRow', row: 'R1a' }, [], { type: 'type-lair', where: null }),
     row('R4', { kind: 'thingPicked', thing: 't-lava' }, [], { type: '', where: null })
   ], rowOverrides: {} },
-  rules:  { version: 5, totalBudget: 10, groupRules: { R1: { min: 1, max: 1 }, R2: {}, R3: { max: 2 } } },
-  themes: { version: 5, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: { R1: { background: 'red' }, R2: {} } },
-  types:  { version: 5, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
-  things: { version: 5, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
+  rules:  { version: 6, totalBudget: 10, groupRules: { R1: { min: 1, max: 1 }, R2: {}, R3: { max: 2 } } },
+  themes: { version: 6, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: { R1: { background: 'red' }, R2: {} } },
+  types:  { version: 6, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
+  things: { version: 6, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
 })
 // every problem V3 and V8 produce, kept for V7's format check
 const everyProblem = []
@@ -724,10 +834,10 @@ const everyProblem = []
   assert.deepEqual(FILE_NAMES, ['content', 'rules', 'themes', 'types', 'things'])
   assert.equal(SHEETS.meta, metaSchema); assert.equal(SHEETS.pageTheme, pageThemeSchema)
   const holds = (sheet, part, where) => assert.deepEqual(sheet.slice(where, where + part.length), part)
-  holds(FILE_SHEETS.content, contentSchema, 2)                 // meta, books, THEN groups, then rowOverrides
+  holds(FILE_SHEETS.content, contentSchema, 3)                 // meta, books, sheet, THEN groups, then rowOverrides
   holds(FILE_SHEETS.rules, totalBudgetSchema, 0)
   holds(FILE_SHEETS.types, typesSchema, 0)
-  assert.deepEqual(FILE_SHEETS.content.map(entry => entry.key), ['meta', 'books', 'groups', 'rowOverrides'])
+  assert.deepEqual(FILE_SHEETS.content.map(entry => entry.key), ['meta', 'books', 'sheet', 'groups', 'rowOverrides'])
   assert.deepEqual(FILE_SHEETS.types.map(entry => entry.key), ['types', 'sectionsFor', 'fieldsFor'])
   assert.deepEqual(FILE_SHEETS.things.map(entry => entry.key), ['things', 'order'])
   // the BOOK files: the game's own types/things sheets, and proposals — the rows
@@ -780,7 +890,7 @@ const everyProblem = []
   const kindRow = (kind) => [`13 showWhen kind ${JSON.stringify(kind)}`, s => { s.content.groups[0].showWhen = { kind } }, [`${G}[0].showWhen.kind`], [new RegExp(`${JSON.stringify(kind)} is not a show-when kind \\(always, thingPicked, anyInRow\\)`)]]
   const fieldKindRow = (type) => [`40 field kind ${JSON.stringify(type)}`, s => { s.types.types[0].sections[0].fields[0].type = type }, [`${S}.fields[0].type`], [new RegExp(`${JSON.stringify(type)} is not one of text, number, lines, choice`)]]
   const table = [
-    ['1 old version, no walk',     s => { s.content.version = 4; delete s.content.meta },                    ['content.version'],                 [/must be 5 \(found 4\) — open the game in the editor and Save/]],
+    ['1 old version, no walk',     s => { s.content.version = 4; delete s.content.meta },                    ['content.version'],                 [/must be 6 \(found 4\) — open the game in the editor and Save/]],
     ['2 version as a string',      s => { s.rules.version = '5' },                                          ['rules.version'],                   [/found "5"/]],
     ['3 showWhen absent',          s => { delete s.content.groups[1].showWhen },                            [`${G}[1].showWhen`],                [/must be an object \(found absent\)/]],
     ['4 totalBudget a string',     s => { s.rules.totalBudget = '10' },                                     ['rules.totalBudget'],               [/must be a number or absent \(found "10"\)/]],
@@ -894,7 +1004,7 @@ const everyProblem = []
   both.content.groups[0].query.type = 'type-gone'
   assert.deepEqual(validateSet(both).map(problem => problem.path), ['types.types[0].sections[0].fields'], 'the dangle waits for the shape')
   // (b) total: junk in, an array out, never a throw; a missing file is validateSet's word
-  const junk = [[], 'x', 42, {}, { version: 5 }, { version: 5, extra: 1 }]
+  const junk = [[], 'x', 42, {}, { version: 6 }, { version: 6, extra: 1 }]
   FILE_NAMES.forEach(name => junk.forEach(value => {
     const problems = validateFile(name, value)
     assert.ok(Array.isArray(problems) && problems.length > 0, `${name} over ${JSON.stringify(value)} is refused, quietly`)
@@ -1044,14 +1154,14 @@ const everyProblem = []
   const bookTable = [
     ['the manifest fits',        'book',      manifest(),                                                        null,             null],
     ['an edition that is text',  'book',      manifest({ edition: '1' }),                                        'book.edition',   /must be a number \(found "1"\)/],
-    ['a manifest with a version', 'book',     { ...manifest(), version: 5 },                                     'book.version',   /unexpected key "version"/],
+    ['a manifest with a version', 'book',     { ...manifest(), version: 6 },                                     'book.version',   /unexpected key "version"/],
     ['requires that is not a list', 'book',   manifest({ requires: {} }),                                        'book.requires',  /must be an array \(found an object\)/],
     ['a requirement with no edition', 'book', manifest({ requires: [{ name: 'basic' }] }),                       'book.requires[0].edition', /must be a positive integer \(found absent\)/],
-    ['a book file at version 4', 'types',     { version: 4, types: [], sectionsFor: {}, fieldsFor: {} },         'types.version',  /must be 5 \(found 4\) — this book was written for another version/],
-    ['proposals without groups', 'proposals', { version: 5, groupRules: {} },                                    'proposals.groups', /must be an array \(found absent\)/],
-    ['proposals fit',            'proposals', { version: 5, totalBudget: 10, groups: [], groupRules: {} },       null,             null],
-    ['a book may write order',   'things',    { version: 5, things: {}, order: { 'basic:place': ['x'] } },       null,             null],
-    ['things at version 4',      'things',    { version: 5, things: { 'basic:place': [{ id: 'x', name: 'X', cost: 0, imageURL: '' }] } }, null, null]
+    ['a book file at version 4', 'types',     { version: 4, types: [], sectionsFor: {}, fieldsFor: {} },         'types.version',  /must be 6 \(found 4\) — this book was written for another version/],
+    ['proposals without groups', 'proposals', { version: 6, groupRules: {} },                                    'proposals.groups', /must be an array \(found absent\)/],
+    ['proposals fit',            'proposals', { version: 6, totalBudget: 10, groups: [], groupRules: {} },       null,             null],
+    ['a book may write order',   'things',    { version: 6, things: {}, order: { 'basic:place': ['x'] } },       null,             null],
+    ['things at version 4',      'things',    { version: 6, things: { 'basic:place': [{ id: 'x', name: 'X', cost: 0, imageURL: '' }] } }, null, null]
   ]
   bookTable.forEach(([label, file, value, path, regex]) => {
     const problems = validateBookFile(file, value)
@@ -1063,6 +1173,60 @@ const everyProblem = []
   })
   assert.equal(validateBookFile('types', { version: 4, types: 'x' }).length, 1, 'an old book file is refused by version and NOT walked')
   ok(`V8 the breakage table, books: ${gameTable.length} game mutations (pins, house rules, sections, options and defaults, the two addition cabinets, the arrangement) and ${bookTable.length} book files, each at its exact path with its sentence`)
+}
+
+// ───────────────────────── V9 the breakage table, the player's sheet (NEW) ─────────────────────────
+// The v6 contract adds exactly two author-written pointers — `content.sheet` and
+// a row's `fills` — plus one rule about a book's placement fields. Each mutation
+// below is ONE mistake and must produce exactly ONE problem at exactly ONE path,
+// with the sentence of §3.10. The fixture is H with a sheet: type-dino gains a
+// LIST section (Gear, listing type-lair) and R2 — which already shows type-lair —
+// fills it, which is the healthy shape everything else here breaks.
+{
+  const quantityField = () => ({ id: 'type-dino.gear.quantity', key: 'quantity', caption: 'Quantity', type: 'number', default: 1 })
+  const gearSection = () => ({ id: 'type-dino.gear', key: 'gear', caption: 'Gear', kind: 'list', of: 'type-lair', placement: [quantityField()] })
+  const HS = () => {
+    const set = H()
+    set.content.sheet = 'type-dino'
+    set.types.types[0].sections.push(gearSection())
+    set.content.groups[1].fills = 'type-dino.gear'          // R2 shows type-lair, Gear lists type-lair
+    set.content.groups[0].fills = ''                        // R1 is a plain picker, exactly as every v5 row is
+    return set
+  }
+  assert.deepEqual(validateSet(HS()), [], 'the bound fixture itself is clean')
+  const G = 'content.groups'
+  const S = 'types.types[0].sections[1]'
+  const table = [
+    ['1 sheet a number',        s => { s.content.sheet = 3 },                                  ['content.sheet'],        [/must be a string \(found 3\)/]],
+    ['2 fills null',            s => { s.content.groups[0].fills = null },                     [`${G}[0].fills`],        [/must be a string \(found null\)/]],
+    ['3 fills a missing section', s => { s.content.groups[1].fills = 'type-dino.gearz' },      [`${G}[1].fills`],        [/^fills a section that is not on the player's sheet \(type-dino\.gearz\)$/]],
+    ['4 fills a FIELDS section', s => { s.content.groups[1].fills = 'type-dino.identity' },    [`${G}[1].fills`],        [/^fills "Identity", which holds fields, not entries \(type-dino\.identity\)$/]],
+    ['5 fills the wrong shelf', s => { s.content.groups[0].fills = 'type-dino.gear' },         [`${G}[0].fills`],        [/^shows type-dino but fills "Gear", which lists type-lair \(type-dino\.gear\)$/]],
+    ['6 bound with no sheet',   s => { s.content.sheet = '' },                                 [`${G}[1].fills`],        [/^fills a section but this game builds no sheet \(type-dino\.gear\)$/]],
+    ['7 the sheet dangles',     s => { s.content.sheet = 'type-nope' },                        ['content.sheet'],        [/^builds a sheet that does not exist \(type-nope\)$/]],
+    ['8 an override fills 7',   s => { s.content.rowOverrides.R2 = { fills: 7 } },             ['content.rowOverrides["R2"].fills'], [/must be a string \(found 7\)/]],
+    ['9 a text "quantity"',     s => { s.types.types[0].sections[1].placement = [{ id: 'type-dino.gear.quantity', key: 'quantity', caption: 'Quantity', type: 'text' }] },
+                                                                                               [`${S}.placement[0].type`], [/^a placement field keyed "quantity" multiplies the entry's cost, so it must be a number field$/]]
+  ]
+  table.forEach(([label, mutate, expectedPaths, regexes]) => {
+    const set = HS()
+    mutate(set)
+    const problems = validateSet(set)
+    assert.deepEqual(problems.map(problem => problem.path), expectedPaths, `V9 ${label}: exactly these paths, in order`)
+    regexes.forEach((regex, i) => assert.match(problems[i].message, regex, `V9 ${label}: message ${i}`))
+    everyProblem.push(...problems)
+  })
+  // row 7 spelled out: ONE cause, ONE sentence. R2 is still bound, and would
+  // otherwise report too — the audit stays quiet about it on purpose (§3.8).
+  const dangling = HS()
+  dangling.content.sheet = 'type-nope'
+  assert.equal(dangling.content.groups[1].fills, 'type-dino.gear', 'the bound row is still bound')
+  assert.equal(crossChecks(dangling).length, 1, 'and says nothing of its own while the sheet itself is missing')
+  // V1's claim, re-run now that three entries have joined the sheets: the border
+  // cannot grow a type CHECKERS does not know.
+  const everySheet = [...Object.values(SHEETS), ...Object.values(FILE_SHEETS), ...Object.values(BOOK_FILE_SHEETS), coreThingSchema]
+  everySheet.flatMap(sheet => sheet.map(entry => entry.type)).forEach(type => assert.ok(CHECKED_TYPES.includes(type), `CHECKERS has no checker for sheet type "${type}"`))
+  ok(`V9 the breakage table, the player's sheet: ${table.length} mutations (a sheet of the wrong kind, four bad bindings, a binding with no sheet, a dangling declaration, a bad override slot, a text "quantity") each ONE problem at ONE path with §3.10's sentence; a dangling sheet silences its rows; every sheet type still has a checker`)
 }
 
 // ───────────────────────── V7 problem format ─────────────────────────
@@ -1098,9 +1262,9 @@ const layerOf = (name, edition, requires, files = {}) => ({
   manifest: { name, title: name, edition, requires },
   types: files.types ?? null, things: files.things ?? null, proposals: files.proposals ?? null
 })
-const typesFile     = (types = [], sectionsFor = {}, fieldsFor = {}) => ({ version: 5, types, sectionsFor, fieldsFor })
-const thingsFile    = (things) => ({ version: 5, things })
-const proposalsFile = (totalBudget, groups, groupRules = {}) => ({ version: 5, totalBudget, groups, groupRules })
+const typesFile     = (types = [], sectionsFor = {}, fieldsFor = {}) => ({ version: 6, types, sectionsFor, fieldsFor })
+const thingsFile    = (things) => ({ version: 6, things })
+const proposalsFile = (totalBudget, groups, groupRules = {}) => ({ version: 6, totalBudget, groups, groupRules })
 const thingOf = (id, name, cost = 0, rest = {}) => ({ id, name, cost, imageURL: '', ...rest })
 
 // ── Basic 1: the seven sheets, structure only (§10.1) ──
@@ -1141,7 +1305,9 @@ const basicFx = () => layerOf('basic', 1, [], { types: typesFile([
 // ── Stats 1: nothing of its own; four attributes into Basic's empty section (§10.2) ──
 const ATTRIBUTES = ['strength', 'dexterity', 'intelligence', 'health']
 const statsFx = (edition = 1) => layerOf('stats', edition, [{ name: 'basic', edition: 1 }], { types: typesFile([], {}, {
-  'basic:character.attributes': ATTRIBUTES.map(key => ({ id: `stats:${key}`, key, caption: key, type: 'number', default: 10 })),
+  // the captions are the SHELF's own (Strength, Dexterity, …) because a player
+  // sentence quotes them — P8's F11 reads "Strength" was dropped, verbatim
+  'basic:character.attributes': ATTRIBUTES.map(key => ({ id: `stats:${key}`, key, caption: `${key[0].toUpperCase()}${key.slice(1)}`, type: 'number', default: 10 })),
   'basic:skill.identity': [{ id: 'stats:based-on', key: 'basedOn', caption: 'Based on', type: 'choice', options: ['Strength', 'Dexterity', 'Intelligence', 'Health'] }]
 }) })
 
@@ -1198,13 +1364,13 @@ const dupFx = () => layerOf('dup', 1, [{ name: 'basic', edition: 1 }], {
 // ── the game: pins the three books, one own sheet, one own thing on a BOOK
 // sheet with a placement, one own row, one label override, one arrangement ──
 const gameFx = () => ({
-  content: { version: 5, meta: { pageTitle: 'Dino', heroTitle: 'Dino' }, books: [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 1 }],
+  content: { version: 6, meta: { pageTitle: 'Dino', heroTitle: 'Dino' }, books: [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 1 }],
     groups: [{ id: 'own-row', label: 'Own row', query: { type: 'own-sheet', where: null }, showWhen: { kind: 'always' }, children: [] }],
     rowOverrides: { 'dinosaur-age:row-lairs': { label: 'Now select a Lair!' } } },
-  rules:  { version: 5, groupRules: {} },
-  themes: { version: 5, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
+  rules:  { version: 6, groupRules: {} },
+  themes: { version: 6, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
   types:  typesFile([{ id: 'own-sheet', label: 'Own', sections: [fieldsSection('own-sheet', 'identity', 'Identity', [{ id: 'own-sheet.identity.note', key: 'note', caption: 'Note', type: 'text' }])] }]),
-  things: { version: 5, things: {
+  things: { version: 6, things: {
     'basic:character': [thingOf('own-tali', 'Tali', 1, { concept: 'A biggie dino!', size: 'biggie', origin: [{ thing: 'dinosaur-age:tyrannosaurus' }], notes: ['stompies'] })],
     'basic:item': [thingOf('own-hat', 'Party hat', 1, { description: 'Squeak', tags: [] })],
     'own-sheet': [thingOf('own-thing', 'Own thing', 0, { note: '' })]
@@ -1279,7 +1445,7 @@ const faultLines = (result) => result.faults.map(problemText)
   assert.deepEqual(set.content.rowOverrides, {})
   assert.deepEqual([set.types.sectionsFor, set.types.fieldsFor], [{}, {}])
   assert.equal(set.things.order, undefined, 'the arrangement has been applied, not carried')
-  FILE_NAMES.forEach(name => assert.equal(set[name].version, 5))
+  FILE_NAMES.forEach(name => assert.equal(set[name].version, 6))
   assert.deepEqual(validateSet(set), [], 'and the flattened world fits the contract on its own')
   ok(`K2 add-only union: ${set.types.types.length} sheets, Character's 11 sections with Stats' 4 attributes and Dinosaur Age's size; every merged sheet gets a bucket; origins is total (${origins.size} ids); every book element deep-equals its own copy; the output is bookless and canonical`)
 }
@@ -1378,7 +1544,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
   // F2b: a book file written for another version takes the WHOLE book with it
   const stale = withZZ({ types: { version: 4, types: [], sectionsFor: {}, fieldsFor: {} } })
   const staleResult = mergeLayers({ books: stale, game: pinning(stale) })
-  assert.deepEqual(faultLines(staleResult), ['books["zz"].types.version: must be 5 (found 4) — this book was written for another version; the book is skipped'])
+  assert.deepEqual(faultLines(staleResult), ['books["zz"].types.version: must be 6 (found 4) — this book was written for another version; the book is skipped'])
   assert.equal([...staleResult.origins.values()].includes('zz 1'), false, 'nothing of a skipped book reaches origins')
   assert.equal(staleResult.order.includes('zz 1'), false, 'nor the layer order')
   ok(`K4 bad additions: F7–F12 each ONE fault at the catalogue's path with the rest still merged; F11 keeps the section and offers nothing; a GAME orphan bucket is a leftover, not a fault; a book file at version 4 is F2b and the whole book is skipped`)
@@ -1617,7 +1783,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
     ['book.edition: must be 1 — the folder\'s edition (found 2)'])
   bookCase('a book that requires itself', book => { book.manifest.requires = [{ name: 'stats', edition: 1 }] },
     ['book.requires[0]: a book cannot require itself'])
-  bookCase('a book that arranges a shelf', book => { book.things = { version: 5, things: {}, order: { 'basic:place': ['x'] } } },
+  bookCase('a book that arranges a shelf', book => { book.things = { version: 6, things: {}, order: { 'basic:place': ['x'] } } },
     ['things.order: a book may not arrange a shelf (order is the game\'s)'])
   // a requirement the shelf cannot answer: the merge names it at book.requires[i]
   assert.deepEqual(validateBook(statsFx(), {}).map(problemText), ['book.requires[0]: "basic" 1 is not on the shelf'])
@@ -1637,6 +1803,493 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
 // The editor's address grammar and the server's games/books modules are pure
 // functions, so they are pinned here, in milliseconds, before the slow half
 // proves the same answers over HTTP (oracles.mjs, M1–M12).
+
+// ───────────────────────── K10 the merge carries the sheet and the binding (NEW) ─────────────────────────
+// Two new keys cross the merge, and they cross it DIFFERENTLY from everything
+// else: `content.sheet` is the game's alone (no book proposes one in this stage),
+// while `fills` joins the per-key cascade that label/query/showWhen already ride.
+// The rule both obey: a key NOBODY wrote is not written — so a game that says
+// nothing about sheets still merges to itself, byte for byte.
+{
+  const withSheet = (game, sheet) => { game.content = { ...game.content, sheet }; return game }
+  const bound = () => {
+    // Dinosaur Age proposes its four rows; here it also BINDS one of them, so the
+    // "the game's override beats the book's proposal" case has a proposal to beat
+    const book = dinoAgeFx(1)
+    book.proposals.groups = book.proposals.groups.map(row => row.id === 'dinosaur-age:row-gear' ? { ...row, fills: 'basic:character.gear' } : row)
+    return book
+  }
+  const layers = () => [basicFx(), statsFx(), bound()]
+
+  // (a) the declaration is the game's, and only the game's
+  const game = withSheet(gameFx(), 'basic:character')
+  const merged = mergeLayers({ books: layers(), game }).set
+  assert.equal(merged.content.sheet, 'basic:character')
+  assert.deepEqual(Object.keys(merged.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'], 'sheet after books, before groups')
+  // ABSENT STAYS ABSENT: a book-less game with no sheet merges to ITSELF
+  const plain = gameFx()
+  plain.content.books = []
+  assert.equal('sheet' in plain.content, false, 'the fixture declares nothing')
+  const alone = mergeLayers({ books: [], game: plain })
+  assert.equal('sheet' in alone.set.content, false, 'and the merge writes no no-op key')
+  assert.deepEqual(Object.keys(alone.set.content), ['version', 'meta', 'books', 'groups', 'rowOverrides'])
+
+  // (b) the binding cascades per key, exactly as the label does
+  const rowOf = (set, id) => set.content.groups.find(row => row.id === id)
+  const beaten = withSheet(gameFx(), 'basic:character')
+  beaten.content.rowOverrides['dinosaur-age:row-gear'] = { fills: 'basic:character.companions' }
+  assert.equal(rowOf(mergeLayers({ books: layers(), game: beaten }).set, 'dinosaur-age:row-gear').fills, 'basic:character.companions', 'the game\'s override beats the book\'s proposal')
+  assert.equal(rowOf(merged, 'dinosaur-age:row-gear').fills, 'basic:character.gear', 'an absent override lets the proposal through')
+  assert.equal('fills' in rowOf(merged, 'dinosaur-age:row-lairs'), false, 'and a row NOBODY bound carries no `fills` key at all')
+  // a game may bind a row a FROZEN book proposes and never wrote a binding for —
+  // the whole reason `fills` is on the rowOverride sheet
+  const late = withSheet(gameFx(), 'basic:character')
+  late.content.rowOverrides['dinosaur-age:row-lairs'] = { label: 'Now select a Lair!', fills: 'basic:character.places' }
+  const lateRow = rowOf(mergeLayers({ books: layers(), game: late }).set, 'dinosaur-age:row-lairs')
+  assert.deepEqual(Object.keys(lateRow), ['id', 'label', 'query', 'fills', 'showWhen', 'children'], 'a merged bound row is in the canonical order')
+  assert.deepEqual([lateRow.label, lateRow.fills], ['Now select a Lair!', 'basic:character.places'], 'label and binding, per key, from one slot')
+
+  // (c) the flattened game is still a fixed point WITH a sheet and four bindings
+  const four = withSheet(gameFx(), 'basic:character')
+  Object.entries({ 'dinosaur-age:row-companions': 'basic:character.companions', 'dinosaur-age:row-gear': 'basic:character.gear',
+                   'dinosaur-age:row-lairs': 'basic:character.places', 'dinosaur-age:row-locations': 'basic:character.places' })
+    .forEach(([id, fills]) => { four.content.rowOverrides[id] = { ...four.content.rowOverrides[id], fills } })
+  const flat = flattenGame({ books: layers(), game: four })
+  assert.deepEqual(flat.content.groups.filter(row => row.fills).map(row => row.fills), ['basic:character.companions', 'basic:character.gear', 'basic:character.places', 'basic:character.places'])
+  assert.deepEqual(mergeLayers({ books: [], game: flattenGame({ books: layers(), game: four }) }).set, flat, 'flattenGame is a fixed point with a sheet and four bindings present')
+  assert.deepEqual(validateSet(flat), [], 'and the flattened game fits alone')
+
+  // (d) still order-blind: permuting the pins changes nothing
+  const shuffled = withSheet(gameFx(), 'basic:character')
+  shuffled.content.books = [...shuffled.content.books].reverse()
+  const shuffledBooks = [...layers()].reverse()
+  assert.deepEqual(mergeLayers({ books: shuffledBooks, game: shuffled }).set, merged, 'permuting content.books merges identically')
+  ok('K10 the merge carries the sheet and the binding: content.sheet is the game\'s alone and lands after books; absent stays absent (a bookless game with no sheet merges to itself); a rowOverride\'s fills beats a proposal, an absent one lets it through, a row nobody bound has no `fills` key; a merged bound row is id,label,query,fills,showWhen,children; flattenGame is still a fixed point; pin order still changes nothing')
+}
+
+// ═════════════════════ the player's sheet: P1–P9 (NEW, v6) ═════════════════════
+// sheet.js says what a sheet IS; kept.js says how one is written down and read
+// back. Both are PURE — no DOM, no fetch, no work at import time — so every claim
+// about them belongs here, in the half that runs in milliseconds.
+//
+// The fixture is the MERGED Character of K2, built from the same three hand-made
+// layers: Basic's eleven sections, Stats' four attributes and Dinosaur Age's
+// size. That is the real shelf's SHAPE without reading a byte of the shelf — a
+// `gear` list section with one number placement field `quantity` (default 1), a
+// `skills` list section with `level` (default 1), the `identity` and `attributes`
+// fields sections, and `notes`, a fields section that comes AFTER both list
+// sections. That last one is not decoration: it is where the key-order claim of
+// §2.4 bites, and P4 asserts it.
+const MERGED_SET = mergeLayers({ books: THREE(), game: gameFx() }).set
+const CHARACTER = MERGED_SET.types.types.find(type => type.id === 'basic:character')
+const sectionKeyed = (key) => CHARACTER.sections.find(section => section.key === key)
+const GEAR = sectionKeyed('gear')
+const SKILLS = sectionKeyed('skills')
+const PLACES = sectionKeyed('places')
+const COMPANIONS = sectionKeyed('companions')
+const NOTES_SECTION = sectionKeyed('notes')
+const IDENTITY_SECTION = sectionKeyed('identity')
+// §2.4's key order, measured over the real merged dino and reproduced here
+const SHEET_KEYS = ['name', 'cost', 'imageURL', 'concept', 'size', 'strength', 'dexterity', 'intelligence', 'health', 'notes',
+                    'origin', 'advantages', 'disadvantages', 'skills', 'gear', 'companions', 'places', 'ties']
+// §2.5's eight typed slots, with the defaults three books between them decided
+const BLANK_FIELDS = { name: '', concept: '', size: 'tiny', strength: 10, dexterity: 10, intelligence: 10, health: 10, notes: [] }
+
+// ───────────────────────── P1 sheet walkers ─────────────────────────
+{
+  assert.equal(sectionById(CHARACTER, 'basic:character.gear'), GEAR, 'found by id')
+  assert.equal(sectionById(CHARACTER, 'basic:character.gearz'), undefined, 'and a miss is undefined, not a throw')
+  // THE measured fact that kills inference: Character lists basic:trait TWICE
+  assert.deepEqual(fillableSections(CHARACTER, 'basic:trait').map(section => section.id),
+    ['basic:character.advantages', 'basic:character.disadvantages'], 'two sections list traits — "the obvious one" does not exist')
+  assert.deepEqual(fillableSections(CHARACTER, 'basic:item').map(section => section.id), ['basic:character.gear'])
+  assert.deepEqual(fillableSections(CHARACTER, 'basic:origin').map(section => section.id), ['basic:character.origin'])
+  assert.deepEqual(fillableSections(CHARACTER, 'own-sheet'), [], 'and a type nothing lists gives nothing — inference could not even say this')
+  assert.deepEqual(fillableSections(CHARACTER, 'basic:character').map(section => section.id), ['basic:character.companions'], 'a sheet may list itself')
+  // the typed half: Name first, then every field of every FIELDS section in sheet order
+  assert.equal(playerFields(CHARACTER)[0], NAME_ENTRY, 'the same object, so the name slot cannot drift')
+  assert.deepEqual(playerFields(CHARACTER).map(field => field.key), ['name', ...fieldsOfType(CHARACTER).map(field => field.key)])
+  assert.deepEqual(playerFields(CHARACTER).map(field => field.default), Object.values(BLANK_FIELDS), 'each slot dressed with its own default')
+  assert.deepEqual(blankFields(CHARACTER), BLANK_FIELDS)
+  assert.deepEqual(Object.keys(blankFields(CHARACTER)), Object.keys(BLANK_FIELDS), 'in that key order')
+  assert.notEqual(blankFields(CHARACTER).notes, blankFields(CHARACTER).notes, 'two blanks share no array — a `lines` default handed out twice would tie two sheets together')
+  // one pick's placement values, blank
+  assert.deepEqual(blankValues(GEAR), { quantity: 1 })
+  assert.deepEqual(blankValues(SKILLS), { level: 1 })
+  assert.deepEqual(blankValues(COMPANIONS), {}, 'a section with no placement fields')
+  assert.deepEqual(blankValues(null), {}, 'and a row that fills nothing — one shape, always')
+  ok('P1 sheet walkers: sectionById finds and misses; fillableSections gives BOTH trait sections, one for item, none for a type nothing lists; playerFields is Name + fieldsOfType in order with defaults; blankFields is §2.5\'s eight slots in order and shares no array; blankValues is {} for no placement and for no binding')
+}
+
+// ───────────────────────── P2 checkFills, six answers ─────────────────────────
+// Six sentences, asserted by FULL STRING EQUALITY, because the editor's badge,
+// the engine's warning and the validator's message are the same bytes.
+{
+  const rowShowing = (type, fills) => ({ id: 'r', label: 'Gear', query: { type, where: null }, fills, showWhen: { kind: 'always' }, children: [] })
+  assert.equal(checkFills(rowShowing('basic:item', ''), CHARACTER), null, 'a plain picker — today\'s row, exactly')
+  assert.equal(checkFills({ id: 'r', label: 'Gear', query: { type: 'basic:item', where: null }, showWhen: { kind: 'always' }, children: [] }, CHARACTER), null, 'and an absent key reads the same (a frozen book\'s proposal has none)')
+  assert.equal(checkFills(rowShowing('basic:item', 'basic:character.gear'), CHARACTER), null, 'a good binding')
+  assert.equal(checkFills(rowShowing('basic:item', 'basic:character.gear'), null), 'fills a section but this game builds no sheet (basic:character.gear)')
+  assert.equal(checkFills(rowShowing('basic:item', 'basic:character.gearz'), CHARACTER), 'fills a section that is not on the player\'s sheet (basic:character.gearz)')
+  assert.equal(checkFills(rowShowing('basic:item', 'basic:character.notes'), CHARACTER), 'fills "Notes", which holds fields, not entries (basic:character.notes)')
+  assert.equal(checkFills(rowShowing('basic:item', 'basic:character.skills'), CHARACTER), 'shows basic:item but fills "Skills", which lists basic:skill (basic:character.skills)')
+  assert.equal(checkFills(rowShowing('', 'basic:character.gear'), CHARACTER), 'shows nothing but fills "Gear", which lists basic:item (basic:character.gear)', 'a row that shows nothing yet still says what it would land in')
+  // P2.7 THE TRAP, documented rather than left: this takes the RAW row, while
+  // `fills` is still an ID. gameConfig calls it BEFORE it replaces the id with the
+  // section object — get that order wrong and every message reads [object Object].
+  const alreadyResolved = { ...rowShowing('basic:item', ''), fills: GEAR }
+  assert.equal(checkFills(alreadyResolved, CHARACTER), 'fills a section that is not on the player\'s sheet ([object Object])', 'the border must ask BEFORE it resolves')
+  ok('P2 checkFills: six answers by full string equality (nothing · a good binding · no sheet · an unknown id · a FIELDS section · a shelf mismatch), an absent key reads as "", a row showing nothing still names its section, and a row whose fills was already resolved proves the border must ask first')
+}
+
+// ───────────────────────── P3 quantity and cost ─────────────────────────
+{
+  const table = [
+    [{ quantity: 3 }, 3], [{ quantity: '3' }, 3], [{ quantity: 2.7 }, 2], [{ quantity: 0 }, 1], [{ quantity: -2 }, 1],
+    [{ quantity: NaN }, 1], [{ quantity: 'x' }, 1], [{}, 1], [undefined, 1]
+  ]
+  table.forEach(([values, want]) => assert.equal(quantityOf(GEAR, values), want, `quantityOf(gear, ${JSON.stringify(values) ?? 'undefined'})`))
+  assert.equal(quantityOf(COMPANIONS, { quantity: 3 }), 1, 'a section with no quantity field never multiplies')
+  assert.equal(quantityOf(null, { quantity: 3 }), 1, 'and neither does a row that fills nothing')
+  // a book may author its own default, and an absent value reads as THAT
+  const threePerPick = { ...GEAR, placement: [{ ...quantityFieldOf(GEAR), default: 3 }] }
+  assert.equal(quantityOf(threePerPick, {}), 3, 'an absent value is the FIELD\'s default, not 1')
+  // the cost rule itself
+  const rock = thingOf('rock', 'Cute rock', 0)
+  const banana = thingOf('banana', 'THE BANANA', 2)
+  const stomp = thingOf('stomp', 'Stomp', 1)
+  const tinyArms = thingOf('tiny-arms', 'Tiny Arms', -1)
+  assert.equal(entryCost(rock, GEAR, { quantity: 3 }), 0, 'a free rock is free at any quantity')
+  assert.equal(entryCost(banana, GEAR, { quantity: 2 }), 4)
+  assert.equal(entryCost(stomp, SKILLS, { level: 9 }), 1, 'a LEVEL does not multiply — only `quantity` does')
+  assert.equal(entryCost(banana, null, {}), banana.cost, 'an unbound row prices an item at exactly item.cost')
+  assert.equal(entryCost(tinyArms, GEAR, { quantity: 2 }), -2, 'and a negative cost refunds twice as much at two')
+  // quantityFieldOf: a FUNCTION, so the day this becomes a `multiplies` flag no caller changes
+  assert.equal(quantityFieldOf(GEAR).key, QUANTITY_KEY)
+  assert.equal(quantityFieldOf(GEAR).type, 'number')
+  assert.equal(quantityFieldOf(SKILLS), null, 'a number field keyed `level` is not a quantity')
+  assert.equal(quantityFieldOf(NOTES_SECTION), null, 'a FIELDS section has no placement at all')
+  assert.equal(quantityFieldOf(null), null)
+  assert.equal(quantityFieldOf(undefined), null)
+  assert.equal(quantityFieldOf({ ...GEAR, placement: [{ id: 'q', key: 'quantity', caption: 'Quantity', type: 'text' }] }), null, 'a TEXT field keyed quantity multiplies nothing (validate.js refuses one on save)')
+  assert.equal(quantityFieldOf({ ...GEAR, placement: [{ id: 'c', key: 'count', caption: 'Count', type: 'number', default: 1 }] }), null, 'and a number keyed `count` is not the convention')
+  ok(`P3 quantity and cost: ${table.length + 2} inputs to quantityOf all give a whole number ≥ 1 (an absent value reads the field's own default); entryCost multiplies 0 × 3 = 0, 2 × 2 = 4, −1 × 2 = −2, prices a level at ×1 and an unbound row at item.cost; quantityFieldOf refuses a text "quantity", a number "count", a fields section and null`)
+}
+
+// ───────────────────────── P4 buildSheet ─────────────────────────
+{
+  const hydrated = (id, fills) => ({ id, label: `row ${id}`, fills })
+  const gearA = hydrated('gear-a', GEAR)
+  const gearB = hydrated('gear-b', GEAR)
+  const lairs = hydrated('lairs', PLACES)
+  const plain = hydrated('plain', null)
+  const rock = thingOf('rock', 'Cute rock', 0)
+  const banana = thingOf('banana', 'THE BANANA', 2)
+  const skates = thingOf('skates', 'Dino Skates', 1)
+  const lavaPit = thingOf('lava-pit', 'Lava Pit', 3)
+  const hat = thingOf('hat', 'Party hat', 1)
+  const picked = { 'gear-a': [rock, banana], 'gear-b': [skates], lairs: [lavaPit], plain: [hat] }
+  const values = { 'gear-a': { rock: { quantity: 3 }, banana: { quantity: 2 } }, 'gear-b': { skates: { quantity: 1 } }, lairs: {}, plain: {} }
+  const typed = { ...BLANK_FIELDS, name: 'Rexina', concept: 'A dino parent', size: 'big', strength: 12, notes: ['Allergic to ferns'] }
+  const build = (rows) => buildSheet({
+    type: CHARACTER, rows, typed, spent: 9,
+    picksOf: (row) => picked[row.id] ?? [],
+    valuesFor: (row, item) => values[row.id]?.[item.id] ?? {}
+  })
+  const built = build([gearA, gearB, lairs, plain])
+  // (2) THE headline claim: the player's sheet is a THING of its type
+  assert.deepEqual(Object.keys(built), thingKeys(CHARACTER), 'the built sheet\'s keys ARE thingKeys(type)')
+  assert.deepEqual(Object.keys(built), SHEET_KEYS, '§2.4\'s measured order — `notes` (a fields section, and the LAST one) lands before `origin` (a list section, the third)')
+  // (1) sections in sheet order; entries in ROW order, then pick order
+  assert.deepEqual(built.gear, [{ thing: 'rock', quantity: 3 }, { thing: 'banana', quantity: 2 }, { thing: 'skates', quantity: 1 }], 'two rows into one section: row order, then pick order')
+  assert.deepEqual(built.places, [{ thing: 'lava-pit' }], 'a section with no placement fields holds bare pointers')
+  // (3) a thing that costs what it cost to build, and (4) the quiet sections
+  assert.equal(built.cost, 9)
+  assert.equal(built.name, 'Rexina')
+  assert.equal(built.imageURL, '', 'a player has no assets folder')
+  assert.equal('id' in built, false, 'and no id: the sheet is on no shelf, and minting one would break mint-free')
+  assert.deepEqual(built.origin, [], 'an unfilled list section is [], never absent')
+  assert.deepEqual(build([plain]).gear, [], 'and an unbound row contributes nothing anywhere')
+  assert.deepEqual(Object.keys(build([plain])), SHEET_KEYS, 'the document is the same shape either way')
+  // (5) a picked Origin can never overwrite a typed name: the two key spaces are disjoint
+  const typedKeys = Object.keys(blankFields(CHARACTER))
+  const listKeys = listSectionsOf(CHARACTER).map(section => section.key)
+  assert.deepEqual(typedKeys.filter(key => listKeys.includes(key)), [], 'no typed slot shares a key with a list section')
+  // (6) an order-blind projection that mutates nothing
+  // a section with TWO placement fields, so "differing only in key insertion
+  // order" is a thing that can actually differ
+  const twoFields = { ...GEAR, placement: [...GEAR.placement, { id: 'basic:character.gear.note', key: 'note', caption: 'Note', type: 'text' }] }
+  const twoRow = hydrated('gear-a', twoFields)
+  const oneWay = buildSheet({ type: CHARACTER, rows: [twoRow], typed, spent: 9, picksOf: () => [rock], valuesFor: () => ({ quantity: 3, note: 'shiny' }) })
+  const other = buildSheet({ type: CHARACTER, rows: [twoRow], typed, spent: 9, picksOf: () => [rock], valuesFor: () => ({ note: 'shiny', quantity: 3 }) })
+  assert.deepEqual(other, oneWay, 'the projection is order-blind')
+  assert.deepEqual(oneWay.gear, [{ thing: 'rock', quantity: 3, note: 'shiny' }])
+  const beforeTyped = JSON.stringify(typed)
+  build([gearA, gearB, lairs, plain])
+  assert.equal(JSON.stringify(typed), beforeTyped, 'building twice mutates nothing')
+  assert.notEqual(build([gearA]).gear, built.gear, 'and every call builds its own arrays')
+  ok('P4 buildSheet: Object.keys IS thingKeys(type) (notes before origin, measured); two rows filling one section interleave in row order then pick order; cost is what was spent; no id, no image; an unfilled section is [] and an unbound row adds nothing; typed keys and list-section keys are provably disjoint; the projection is order-blind and mutates nothing')
+}
+
+// ───────────────────────── P5 readValue, the player's typing border ─────────────────────────
+{
+  const strength = playerFields(CHARACTER).find(field => field.key === 'strength')
+  const size = playerFields(CHARACTER).find(field => field.key === 'size')
+  const notes = playerFields(CHARACTER).find(field => field.key === 'notes')
+  const concept = playerFields(CHARACTER).find(field => field.key === 'concept')
+  assert.equal(readValue(strength, '12'), 12)
+  // ONE CONTRACT, TWO DOORS: an empty number box reads 0 here because that is
+  // exactly what the editor's own Number(inputEl.value) already gives.
+  assert.equal(readValue(strength, ''), Number(''))
+  assert.equal(readValue(strength, ''), 0)
+  assert.equal(readValue(strength, 'x'), 10, 'and what cannot be a number falls back to the FIELD\'s default')
+  assert.equal(readValue(concept, 3), '3')
+  assert.deepEqual(readValue(notes, 'a\n\n b '), ['a', 'b'], 'blank lines dropped, every line trimmed')
+  assert.deepEqual(readValue(notes, ''), [])
+  assert.equal(readValue(size, 'big'), 'big')
+  assert.equal(readValue(size, 'huge'), 'tiny', 'fail closed on a choice: never store an option the author never offered')
+  ok('P5 readValue: number("12") → 12; number("") → 0, asserted EQUAL to the editor\'s own Number(input.value); number("x") → the field\'s default 10; text(3) → "3"; lines("a\\n\\n b ") → ["a","b"]; choice("big") → itself; choice("huge") → the default')
+}
+
+// ───────── the kept file: one world, the four dino rows, hydrated ─────────
+// `world.rows` is what flattenGroups(groups) hands state.js: HYDRATED rows, so
+// `fills` is a SECTION OBJECT (never an id), `items` are the things this row
+// offers, and `max` is a number. Two rows fill `places`, exactly as dino's Lairs
+// and Locations do — the shape every claim below needs.
+const TALI = 'a8d09a0f-f269-4a04-a173-d694dc36b105'
+const playRow = (id, label, fills, items, max = Infinity) => ({ id, label, fills, items, max })
+const ROW_LABELS = {
+  companions: 'Choose your Dino pet uWu',
+  gear: 'Now give your Dino stuffables!',
+  lairs: 'Now select a Lair! Do you have a Lair? Dino needs a Lair!',
+  locations: 'Lair Location'
+}
+const THINGS = {
+  tali: thingOf(TALI, 'Tali', 1),
+  rock: thingOf('dinosaur-age:cute-rock', 'Cute rock', 0),
+  banana: thingOf('dinosaur-age:the-banana', 'THE BANANA', 2),
+  lavaPit: thingOf('dinosaur-age:lava-pit', 'Lava Pit', 3),
+  playPen: thingOf('dinosaur-age:play-pen', 'Play pen', 2),
+  nest: thingOf('dinosaur-age:nest', 'Nest', 1),
+  volcanoRim: thingOf('dinosaur-age:volcano-rim', 'Volcano Rim', 1)
+}
+const keptRows = ({ gear = [THINGS.rock, THINGS.banana], lairMax = 3, lairs = [THINGS.lavaPit, THINGS.playPen, THINGS.nest], gearSection = GEAR } = {}) => [
+  playRow('dinosaur-age:row-companions', ROW_LABELS.companions, COMPANIONS, [THINGS.tali], 1),
+  playRow('dinosaur-age:row-gear', ROW_LABELS.gear, gearSection, gear),
+  playRow('dinosaur-age:row-lairs', ROW_LABELS.lairs, PLACES, lairs, lairMax),
+  playRow('dinosaur-age:row-locations', ROW_LABELS.locations, PLACES, [THINGS.volcanoRim])
+]
+const keptWorld = (over = {}) => ({ title: 'Adopt a Dino! CYOA', sheetId: 'basic:character', type: CHARACTER, rows: keptRows(), ...over })
+// the §2.6 play, as the two stores hold it at step 8
+const PLAYED_TYPED = { name: 'Rexina', concept: 'A dino parent', size: 'big', strength: 12, dexterity: 10, intelligence: 10, health: 10, notes: ['Allergic to ferns'] }
+const PLAYED_PICKS = {
+  'dinosaur-age:row-companions': [THINGS.tali],
+  'dinosaur-age:row-gear': [THINGS.rock, THINGS.banana],
+  'dinosaur-age:row-lairs': [THINGS.lavaPit],
+  'dinosaur-age:row-locations': [THINGS.volcanoRim]
+}
+const PLAYED_VALUES = { 'dinosaur-age:cute-rock': { quantity: 3 }, 'dinosaur-age:the-banana': { quantity: 2 } }
+const keptOf = (world, typed = PLAYED_TYPED, picks = PLAYED_PICKS, values = PLAYED_VALUES) => keptFrom({
+  title: world.title, sheetId: world.sheetId, type: world.type, rows: world.rows, typed,
+  picksOf: (row) => picks[row.id] ?? [],
+  valuesFor: (row, item) => values[item.id] ?? {}
+})
+// §2.7, whole — the real bytes of the play above, and the literal P6 pins
+const KEPT_FILE = {
+  kept: 1,
+  game: 'Adopt a Dino! CYOA',
+  sheet: 'basic:character',
+  fields: { name: 'Rexina', concept: 'A dino parent', size: 'big', strength: 12, dexterity: 10, intelligence: 10, health: 10, notes: ['Allergic to ferns'] },
+  picks: [
+    { row: 'dinosaur-age:row-companions', thing: TALI, name: 'Tali', values: {} },
+    { row: 'dinosaur-age:row-gear', thing: 'dinosaur-age:cute-rock', name: 'Cute rock', values: { quantity: 3 } },
+    { row: 'dinosaur-age:row-gear', thing: 'dinosaur-age:the-banana', name: 'THE BANANA', values: { quantity: 2 } },
+    { row: 'dinosaur-age:row-lairs', thing: 'dinosaur-age:lava-pit', name: 'Lava Pit', values: {} },
+    { row: 'dinosaur-age:row-locations', thing: 'dinosaur-age:volcano-rim', name: 'Volcano Rim', values: {} }
+  ]
+}
+const KEPT_TEXT = JSON.stringify(KEPT_FILE, null, 2) + '\n'
+// read a file back and write it out again, through the two halves of kept.js —
+// the round trip P6 asserts is byte-exact BY CONSTRUCTION (every rule in
+// keptFrom is a writer's rule) rather than by care
+const rewrite = (text, world) => {
+  const answer = readKept(text, world)
+  assert.equal(answer.ok, true, 'rewrite: the file was refused')
+  const held = new Map(answer.places.map(place => [`${place.row.id} ${place.item.id}`, place.values]))
+  return sheetText(keptFrom({
+    title: world.title, sheetId: world.sheetId, type: world.type, rows: world.rows, typed: answer.fields,
+    picksOf: (row) => answer.places.filter(place => place.row === row).map(place => place.item),
+    valuesFor: (row, item) => held.get(`${row.id} ${item.id}`)
+  }))
+}
+
+// ───────────────────────── P6 the kept file is canonical and byte-exact ─────────────────────────
+{
+  const world = keptWorld()
+  const file = keptOf(world)
+  assert.deepEqual(Object.keys(file), ['kept', 'game', 'sheet', 'fields', 'picks'])
+  assert.equal(file.kept, KEPT_VERSION)
+  assert.equal(KEPT_VERSION, 1, 'the FILE\'s own edition, deliberately not SCHEMA_VERSION')
+  assert.deepEqual(Object.keys(file.fields), ['name', ...fieldsOfType(CHARACTER).map(field => field.key)])
+  assert.deepEqual(file.picks.map(pickEntry => Object.keys(pickEntry).join(',')), Array(5).fill('row,thing,name,values'), 'every pick is ONE shape, all four keys')
+  assert.deepEqual(Object.keys(file.picks[1].values), placementSheet(GEAR).map(field => field.key), 'values in placementSheet order')
+  assert.deepEqual(file, KEPT_FILE, '§2.7, whole')
+  assert.equal(sheetText(file), KEPT_TEXT, 'two-space, trailing newline — the same spelling every JSON file in this project is written with')
+  // a row with no picks contributes nothing; picks are in FLATTENED ROW order
+  // whatever order they were made in
+  const backwards = keptOf(world, PLAYED_TYPED, { 'dinosaur-age:row-locations': [THINGS.volcanoRim], 'dinosaur-age:row-gear': [THINGS.banana, THINGS.rock] })
+  assert.deepEqual(backwards.picks.map(pickEntry => pickEntry.thing),
+    ['dinosaur-age:the-banana', 'dinosaur-age:cute-rock', 'dinosaur-age:volcano-rim'], 'row order first, then pick order — and the two empty rows say nothing')
+  // fields are ALWAYS COMPLETE: a document says 10, not "nothing"
+  assert.deepEqual(keptOf(world, { name: 'Blank' }).fields, { ...BLANK_FIELDS, name: 'Blank' }, 'every untouched slot is written with its default')
+  // values are complete too, and a pick in a row that fills nothing has {}
+  const unbound = keptWorld({ rows: keptRows({ gearSection: null }) })
+  assert.deepEqual(keptOf(unbound).picks[1].values, {}, 'a pick in an unbound row carries {} — one shape, always')
+  assert.deepEqual(keptOf(world, PLAYED_TYPED, PLAYED_PICKS, {}).picks[1].values, { quantity: 1 }, 'and a pick made before a value existed is written with the field\'s default')
+  // the round trip, twice
+  assert.equal(rewrite(KEPT_TEXT, world), KEPT_TEXT, 'read → write is byte-exact')
+  assert.equal(rewrite(rewrite(KEPT_TEXT, world), world), KEPT_TEXT, 'and stays byte-exact')
+  // the file's name comes off the sheet, then the game, then a floor
+  assert.equal(keptFileName(file), 'rexina-sheet.json')
+  assert.equal(keptFileName({ ...file, fields: { ...file.fields, name: '' } }), 'adopt-a-dino-cyoa-sheet.json')
+  assert.equal(keptFileName({ ...file, game: '', fields: { ...file.fields, name: '🦖' } }), 'sheet-sheet.json', 'a name that slugs away to nothing still has to produce a filename')
+  ok('P6 the kept file: keys kept,game,sheet,fields,picks; fields = name + fieldsOfType in order, always complete; every pick row,thing,name,values with values in placementSheet order; §2.7\'s literal byte for byte; rows with no picks say nothing and picks are in flattened row order; read → write is byte-exact twice; the filename falls back sheet name → game title → "sheet"')
+}
+
+// ───────────────────────── P7 readKept refusals ─────────────────────────
+// IDENTITY is wrong → NOTHING is loaded, one sentence, and nothing else on the
+// answer. Touching a player's current sheet with a file that could not have
+// belonged to it would be vandalism.
+{
+  const world = keptWorld()
+  const refusals = [
+    ['F1 not JSON',        'that is not json at all', world, 'That is not a kept sheet — the text is not JSON. Nothing was loaded.'],
+    ['F2 not our shape',   JSON.stringify({ hello: 'world' }), world, 'That is not a kept sheet. Nothing was loaded.'],
+    ['F2 kept a string',   JSON.stringify({ ...KEPT_FILE, kept: '1' }), world, 'That is not a kept sheet. Nothing was loaded.'],
+    ['F2 picks an object', JSON.stringify({ ...KEPT_FILE, picks: {} }), world, 'That is not a kept sheet. Nothing was loaded.'],
+    ['F3 a newer format',  JSON.stringify({ ...KEPT_FILE, kept: KEPT_VERSION + 1 }), world, 'That sheet was kept by a newer version of this game. Nothing was loaded.'],
+    ['F4 no sheet here',   KEPT_TEXT, { ...world, type: null, sheetId: '' }, 'This game does not build a sheet, so there is nothing to load into.'],
+    ['F5 another kind',    JSON.stringify({ ...KEPT_FILE, game: 'Vampire CYOA', sheet: 'basic:place' }), world, 'That sheet was kept for "Vampire CYOA", which builds a different kind of sheet. Nothing was loaded.'],
+    ['F5 nameless',        JSON.stringify({ ...KEPT_FILE, game: '', sheet: 'basic:place' }), world, 'That sheet was kept for "another game", which builds a different kind of sheet. Nothing was loaded.']
+  ]
+  refusals.forEach(([label, text, into, sentence]) => {
+    const answer = readKept(text, into)
+    assert.equal(answer.ok, false, `${label}: refused`)
+    assert.equal(answer.refusal, sentence, `${label}: the sentence`)
+    assert.deepEqual(Object.keys(answer), ['ok', 'refusal'], `${label}: nothing else on the answer — a refusal loaded nothing`)
+  })
+  // 1e999 parses to Infinity: "the edition is Infinity" is a broken file, not a newer one
+  assert.equal(readKept('{"kept":1e999,"game":"g","sheet":"basic:character","fields":{},"picks":[]}', world).refusal, 'That is not a kept sheet. Nothing was loaded.')
+  ok(`P7 readKept refusals: ${refusals.length} files refused whole with §7.6's exact sentence (F1 not JSON · F2 not our shape, three ways · F3 a newer format · F4 this game builds none · F5 another kind, named and nameless), each { ok: false, refusal } and nothing more; a kept of Infinity is broken, not newer`)
+}
+
+// ───────────────────────── P8 readKept notes ─────────────────────────
+// A REFERENCE is gone → that entry is dropped, BY NAME, and the rest loads. A
+// removed rock must not cost a player their character.
+{
+  const world = keptWorld()
+  const load = (patch, into = world) => readKept(JSON.stringify({ ...KEPT_FILE, ...patch }), into)
+  const noteOf = (answer) => { assert.equal(answer.ok, true); assert.equal(answer.notes.length, 1, `one note, got ${JSON.stringify(answer.notes)}`); return answer.notes[0] }
+  const thingsIn = (answer) => answer.places.map(place => place.item.id)
+
+  // F6 — the shelf no longer offers it. Only the file's own `name` can say which.
+  const shelfChanged = keptWorld({ rows: keptRows({ gear: [THINGS.rock] }) })
+  const f6 = load({}, shelfChanged)
+  assert.equal(noteOf(f6), '"THE BANANA" is no longer offered in Now give your Dino stuffables!; it was dropped.')
+  assert.deepEqual(thingsIn(f6), [TALI, 'dinosaur-age:cute-rock', 'dinosaur-age:lava-pit', 'dinosaur-age:volcano-rim'], 'everything else loads')
+
+  // F7 — the row itself is gone. GROUPED with a count: a whole section
+  // disappearing is ONE piece of news, not five.
+  const rowsGone = keptWorld({ rows: keptRows().filter(row => !row.id.endsWith('row-gear')) })
+  const f7 = load({}, rowsGone)
+  assert.equal(noteOf(f7), '2 picks were dropped — the part of the game they came from is gone.')
+  assert.deepEqual(thingsIn(f7), [TALI, 'dinosaur-age:lava-pit', 'dinosaur-age:volcano-rim'])
+  assert.equal(noteOf(load({ picks: [KEPT_FILE.picks[1]] }, rowsGone)), '1 pick was dropped — the part of the game it came from is gone.', 'and one is said in the singular')
+
+  // F8 — the same thing twice in one row: a hand-edit, or two files spliced
+  const f8 = load({ picks: [...KEPT_FILE.picks, KEPT_FILE.picks[0]] })
+  assert.equal(noteOf(f8), '"Tali" was picked twice in Choose your Dino pet uWu; the second was dropped.')
+  assert.deepEqual(thingsIn(f8).length, 5)
+
+  // F9 — the max was LOWERED. The TAIL in file order goes: the picks made first
+  // are the ones meant most, and "keep the first n" is a rule anybody can predict.
+  const threeLairs = [
+    { row: 'dinosaur-age:row-lairs', thing: 'dinosaur-age:lava-pit', name: 'Lava Pit', values: {} },
+    { row: 'dinosaur-age:row-lairs', thing: 'dinosaur-age:play-pen', name: 'Play pen', values: {} },
+    { row: 'dinosaur-age:row-lairs', thing: 'dinosaur-age:nest', name: 'Nest', values: {} }
+  ]
+  const lowered = keptWorld({ rows: keptRows({ lairMax: 1 }) })
+  const f9 = load({ picks: threeLairs }, lowered)
+  assert.equal(noteOf(f9), '"Now select a Lair! Do you have a Lair? Dino needs a Lair!" now allows 1 pick, not 3 — 2 picks were dropped.')
+  assert.deepEqual(thingsIn(f9), ['dinosaur-age:lava-pit'], 'the FIRST in file order survives')
+
+  // F10 — a typed slot that is no longer on the sheet. The slot the file lost
+  // keeps its DEFAULT, and every other typed value is kept.
+  const sizeless = structuredClone(CHARACTER)
+  sizeless.sections[0].fields = sizeless.sections[0].fields.filter(field => field.key !== 'size')
+  const f10 = load({}, keptWorld({ type: sizeless }))
+  assert.equal(noteOf(f10), 'The field "size" is no longer on this sheet; what you typed there was dropped.')
+  assert.equal('size' in f10.fields, false, 'the key is gone with the slot')
+  assert.equal(f10.fields.strength, 12, 'and everything else the player typed is kept')
+
+  // F11 — a value that does not fit its kind, ending with the VALIDATOR's own
+  // phrase, verbatim. One contract, two doors, and the true reason.
+  const f11 = load({ fields: { ...KEPT_FILE.fields, strength: 'ten' } })
+  assert.equal(noteOf(f11), '"Strength" was dropped — it must be a number (found "ten").')
+  assert.equal(f11.fields.strength, 10, 'the slot holds its DEFAULT, not nothing')
+  assert.equal(f11.fields.dexterity, 10)
+
+  // F12 — a placement field that is no longer part of the game. Its caption went
+  // with it, so the KEY is all there is left to show, dressed as a caption reads.
+  const noQuantity = { ...GEAR, placement: [] }
+  const f12 = load({}, keptWorld({ rows: keptRows({ gearSection: noQuantity }) }))
+  // CHANGED: ONE note, however many picks carried the field. A field leaving the
+  // game is one cause, and one cause is one sentence — repeating it per pick would
+  // read as several different losses.
+  assert.deepEqual(f12.notes, ['"Gear · Quantity" is no longer part of this game; it was dropped.'])
+  assert.deepEqual(f12.places.map(place => place.values), [{}, {}, {}, {}, {}], 'and no pick keeps a value the game cannot hold')
+
+  // F13 — a placement value of the wrong kind, again with the validator's phrase
+  const f13 = load({ picks: KEPT_FILE.picks.map(each => each.thing === 'dinosaur-age:cute-rock' ? { ...each, values: { quantity: 'three' } } : each) })
+  assert.equal(noteOf(f13), '"Quantity" on "Cute rock" was dropped — it must be a number (found "three").')
+  assert.deepEqual(f13.places.find(place => place.item.id === 'dinosaur-age:cute-rock').values, { quantity: 1 }, 'the field keeps its default')
+
+  // the add-only rule from the player's side: an ABSENT key is not news. This is
+  // exactly what a pinned book being UPGRADED looks like, and books are add-only.
+  const quiet = load({ fields: { name: 'Rexina' }, picks: [{ row: 'dinosaur-age:row-gear', thing: 'dinosaur-age:cute-rock', name: 'Cute rock', values: {} }] })
+  assert.deepEqual(quiet.notes, [], 'absent key = default, and nothing is said')
+  assert.deepEqual(quiet.fields, { ...BLANK_FIELDS, name: 'Rexina' })
+  assert.deepEqual(quiet.places[0].values, { quantity: 1 })
+  ok('P8 readKept notes: F6 a thing no longer offered (named from the file, because the shelf cannot name it) · F7 a whole row gone, grouped with a count and pluralised · F8 the same pick twice · F9 a lowered max, the tail in file order · F10 a typed slot removed · F11 a typed value of the wrong kind, ending with the validator\'s own phrase · F12 a placement field removed · F13 a placement value of the wrong kind — each dropped slot holding its DEFAULT, everything else loaded, and an ABSENT key saying nothing at all')
+}
+
+// ───────────────────────── P9 readKept is total and pure ─────────────────────────
+{
+  const world = keptWorld()
+  const garbage = ['', '{', 'null', '[]', '"hi"', '3', '{}', 'undefined', '[1,2]']
+  garbage.forEach(text => {
+    const answer = readKept(text, world)
+    assert.equal(answer.ok, false, `${JSON.stringify(text)} is refused`)
+    assert.equal(typeof answer.refusal, 'string', `${JSON.stringify(text)} is refused with a sentence, not a throw`)
+  })
+  // pure: neither the world nor the text is touched
+  const before = structuredClone(world)
+  const text = KEPT_TEXT
+  const answer = readKept(text, world)
+  assert.equal(answer.ok, true)
+  assert.deepEqual(world, before, 'the world is untouched — readKept DECIDES, it never DOES')
+  assert.equal(text, KEPT_TEXT, 'and so is the text')
+  // the answer holds the world's own rows and items, so the caller can place them
+  assert.equal(answer.places[0].row, world.rows[0], 'places name the row objects the caller handed in')
+  assert.equal(answer.places[0].item, world.rows[0].items[0])
+  assert.deepEqual(Object.keys(answer), ['ok', 'fields', 'places', 'notes'])
+  // and a "__proto__" key in the file is an unknown slot like any other, not a hole
+  const nasty = readKept('{"kept":1,"game":"g","sheet":"basic:character","fields":{"__proto__":{"x":1}},"picks":[]}', world)
+  assert.equal(nasty.ok, true)
+  assert.deepEqual(nasty.notes, ['The field "__proto__" is no longer on this sheet; what you typed there was dropped.'])
+  assert.equal(({}).x, undefined, 'and nothing was polluted')
+  ok(`P9 readKept is total and pure: ${garbage.length} kinds of garbage each give { ok: false } with a sentence and no throw; the world deep-equals its clone afterwards and the text is unchanged; places carry the caller's own row and item objects; "__proto__" is just an unknown slot`)
+}
 
 // ───────────────────────── N1 hash grammar ─────────────────────────
 {
@@ -1730,7 +2383,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
   assert.deepEqual(crossChecks(seed), [], 'nothing dangles in an empty game')
   FILE_NAMES.forEach(name => assert.deepEqual(validateFile(name, seed[name]), [], `${name} alone fits`))
   // the key orders migrations.js writes and B2/B5 pin
-  assert.deepEqual(Object.keys(seed.content), ['version', 'meta', 'books', 'groups', 'rowOverrides'])
+  assert.deepEqual(Object.keys(seed.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'])
   assert.deepEqual(Object.keys(seed.rules),   ['version', 'totalBudget', 'groupRules'])
   assert.deepEqual(Object.keys(seed.themes),  ['version', 'page', 'groupThemes'])
   assert.deepEqual(Object.keys(seed.types),   ['version', 'types', 'sectionsFor', 'fieldsFor'])
@@ -1752,7 +2405,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
   // NEW: a newborn may be born ON BOOKS — the pin lands, and the key keeps its place
   const pinned = seedSet('T', [{ name: 'basic', edition: 1 }])
   assert.deepEqual(pinned.content.books, [{ name: 'basic', edition: 1 }])
-  assert.deepEqual(Object.keys(pinned.content), ['version', 'meta', 'books', 'groups', 'rowOverrides'], 'assigning a key that is already there never moves it')
+  assert.deepEqual(Object.keys(pinned.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'], 'assigning a key that is already there never moves it')
   assert.deepEqual(validateGame({ own: pinned, books: [basicFx()] }), [], 'and the newborn fits, judged against the book it stands on')
   assert.deepEqual(validateGame({ own: pinned, books: [null] }).map(problemText), ['content.books[0]: "basic" 1 is not on the shelf; the book is skipped'])
   // two seeds are equal but share nothing — a default that leaked its object would tie every new game together
