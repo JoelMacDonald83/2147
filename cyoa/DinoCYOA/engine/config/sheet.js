@@ -77,6 +77,16 @@ export const blankValues = (section) => section === null || section === undefine
 export const checkFills = (row, sheetType) => {
   const id = row.fills ?? ""
   if (id === "") return null                                                   // this row fills nothing: today's row, exactly
+  // NEW: `@sheet` is RESERVED — and it is reserved BY BEING REFUSED. The day a row may
+  // hand the player a whole starting sheet ("start from this template"), that row will
+  // say so by filling `@sheet`: `@` can begin no book id (BOOK_ID is `^[a-z0-9]…`) and
+  // no uuid, so the sentinel collides with nothing and costs no new key and no
+  // migration. That day is not today, and a value nothing implements must not be
+  // squattable by a hand-edit in the meantime — so it gets the same treatment every
+  // other binding this engine cannot honour gets: named, refused, failed closed, in one
+  // sentence three readers share. Before the sheet question on purpose: this answer does
+  // not depend on what the game declares, so it must not depend on it being declared.
+  if (id === "@sheet") return `gives a whole sheet, which this version cannot do yet (${id})`
   if (!sheetType) return `fills a section but this game builds no sheet (${id})`
   const section = sectionById(sheetType, id)
   if (!section) return `fills a section that is not on the player's sheet (${id})`
