@@ -1,6 +1,6 @@
 // The shape edition this contract describes. Files carrying an older
 // version get migrated up to this at the border.
-export const SCHEMA_VERSION = 6   // CHANGED: 5 → 6 — the player has a sheet
+export const SCHEMA_VERSION = 7   // CHANGED: 6 → 7 — an entry may DEMAND something of that sheet
 
 // NEW: the shelf's grammars. BOOK_NAME is the game-name grammar (server/games.js NAME) written
 // here so engine/config never imports server/ — oracle N2 pins the two regexes equal.
@@ -180,7 +180,22 @@ export const groupSchema = [
 export const coreThingSchema = [
   { id: "core:name", key: "name",     caption: "Name",           type: "text",   default: "New thing" },
   { id: "core:cost", key: "cost",     caption: "Cost",           type: "number", default: 0 },
-  {                  key: "imageURL", caption: "Image filename", type: "text",   default: "" }
+  {                  key: "imageURL", caption: "Image filename", type: "text",   default: "" },
+  // NEW: what this entry DEMANDS of the player's sheet — a list of conditions, ALL of
+  // which must hold. It is CORE and not an author's field because a book may only
+  // define ids in its own namespace: `dinosaur-age` could not put a prerequisite slot
+  // on Basic's Trait sheet without a new edition of `basic` and of everything that
+  // requires it. Same argument that made QUANTITY_KEY a convention (sheet.js).
+  //   default: null  → newborn never writes it, so a new thing is byte-identical to today's
+  //   optional: true → the validator forgives absence, so the eight frozen book files are
+  //                    never rewritten and no migration writes one key
+  //   onSheet: false → a THING may hold this key; the player's SHEET never does. A sheet
+  //                    demands nothing — it is what demands are ABOUT. sheetKeys and
+  //                    thingKeys below are the two readers.
+  // It carries NO id, and that is what keeps it off a row's filter for free: queryableFields
+  // below takes only the entries that have one, and "things whose prerequisites are…" is
+  // not a shelf question.
+  { key: "demands", caption: "Demands", type: "demands", default: null, optional: true, onSheet: false }
 ]
 
 // NEW: a choice option is written as a bare string in DATA (value = label) and as { value, label }
@@ -223,9 +238,21 @@ export const queryableFields = (type) => [...coreThingSchema.filter(entry => ent
 // NEW: one queryable field by its id, or undefined — the "does this field
 // still exist?" question every border check starts with.
 export const fieldById = (type, id) => queryableFields(type).find(field => field.id === id)   // unchanged text, new reach
-// NEW: every key a thing of this type may hold — the namespace RULES.type keeps unique.
+// NEW: the core entries a player's SHEET holds — every core entry except the ones marked
+// `onSheet: false`. buildSheet writes exactly these three by hand, and that is what makes
+// "the player's sheet is a thing" a fact the oracles check rather than a claim.
+export const sheetCoreSchema = coreThingSchema.filter(entry => entry.onSheet !== false)
+
+// CHANGED: split in two, because the two questions stopped having one answer the day a
+// thing gained a key a sheet never holds (`demands`).
+//   sheetKeys — what a filled SHEET holds. buildSheet's own key order, by construction.
+//   thingKeys — every key a THING may hold: the sheet's, plus `demands`. This is the
+//               namespace RULES.type keeps unique and merge.js's F10 guards, and it is
+//               what dinoEdit/state.js walks to write a thing in canonical order — both
+//               of those want the WIDER list, and both keep working unchanged.
 // A fields section's KEY is addressing only (nothing is stored under "identity"), so
 // only its fields' keys count; a LIST section's key is where the placements live.
+export const sheetKeys = (type) => [...sheetCoreSchema.map(entry => entry.key), ...fieldsOfType(type).map(field => field.key), ...listSectionsOf(type).map(section => section.key)]
 export const thingKeys = (type) => [...coreThingSchema.map(entry => entry.key), ...fieldsOfType(type).map(field => field.key), ...listSectionsOf(type).map(section => section.key)]
 
 
