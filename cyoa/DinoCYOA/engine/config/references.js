@@ -2,6 +2,7 @@ import { listSectionsOf } from "./schema.js"
 import { checkWhere } from "./query.js"
 import { checkShowWhen, idsBelow } from "./visibility.js"
 import { checkFills } from "./sheet.js"        // NEW: the row's fourth pointer asks its question there
+import { demandFieldById, demandOperatorOf, checkDemand } from "./demands.js"   // NEW: the thing's own pointers — see the demand audit below
 
 // NEW: who points where, and the repairs. Every reference in the data runs
 // ONE way: presentation → content. Rows point at type ids, field ids, thing
@@ -13,6 +14,13 @@ import { checkFills } from "./sheet.js"        // NEW: the row's fourth pointer 
 // list section's key) name things on another sheet's shelf — the one pointer
 // that runs content → content. So the audit has a second walk, over the
 // things, and two more repairs — same shape, same promise.
+// CHANGED again: and a thing's DEMANDS point at two more — a slot on a sheet
+// (demands[j].field) and, for a list section's operators, a thing on that
+// section's shelf (demands[j].value). Third walk, two more repairs, same shape.
+// THE ONE RULE THAT SPLITS THIS FILE FROM THE BORDER: "does it point at anything
+// at all?" is a FAULT and lives here; "can THIS game judge it?" is a WARNING and
+// an entry that is not offered, and lives in gameConfig.js. Conflating them would
+// make a book unpinnable — the long version is on demandProblems below.
 
 // NEW: visit every row at every depth, this level first, then its children.
 // CHANGED: the visitor also receives the row's PATH (content.groups[2].children[0]).
@@ -44,6 +52,10 @@ export const rowsIn  = (rows) => { const out = []; eachRow(rows, row => out.push
 //                         row.fills                            the key goes to ""          (forgetFills)
 //   the TYPE that is the player's sheet
 //                         content.sheet                        the key goes to ""          (forgetPlayerSheet)
+//   NEW, the same idiom one more time — a thing's own demands:
+//   field / section       thing.demands[j].field               the demand is spliced out (forgetDemandField)
+//   thing                 thing.demands[j].value               the demand is spliced out (forgetDemanded)
+//   content.sheet CHANGED thing.demands                        NOTHING — see forgetDemandField's last paragraph
 export const forgetType = (rows, typeId) => {        // rows showing the type → show nothing, no condition
   const changed = []
   eachRow(rows, row => {
@@ -142,6 +154,55 @@ export const forgetSectionPlacements = (things, types, sectionId) => {
   return changed
 }
 
+// NEW: every thing that carries demands — the one walk both repairs below share.
+// It reads NO types: a demand lives on the thing itself, not under a section's key,
+// so unlike a placement it needs no section walker to find. A `demands` that is not
+// an array is left alone: the CHECKER already said so, and a repair that guessed at
+// a hand-edit's meaning would be inventing content.
+const eachDemander = (things, visit) =>
+  Object.values(things.things).flat().forEach(thing => { if (Array.isArray(thing.demands)) visit(thing, thing.demands) })
+
+// NEW: the shared body of both repairs. SPLICE in place, and DELETE the key outright
+// when the list empties, so "no empty demands array is ever written" is kept by the
+// repair as well as by the editor. Reported ONCE per thing that lost something, so a
+// second run — which finds nothing left to match — returns [] and changes nothing.
+const forgetDemandsWhere = (things, doomed, what) => {
+  const changed = []
+  eachDemander(things, (thing, list) => {
+    const before = list.length
+    for (let j = list.length - 1; j >= 0; j--) if (doomed(list[j])) list.splice(j, 1)
+    if (list.length === before) return
+    if (list.length === 0) delete thing.demands
+    changed.push({ thing, what })
+  })
+  return changed
+}
+
+// NEW: a FIELD or a SECTION left the merged world — removed, its kind changed, or a
+// list section re-aimed at another shelf — so every demand asking about it goes.
+// `fieldId` is a field's id OR a list section's id, because a demand may name either
+// (demands.js's asDemandField gives a section the same shape a field has).
+// SPLICE, never neutralise, and this is the difference from forgetField: a row's gate
+// on a removed thing becomes `always` because a row with NO gate is a sensible row,
+// but a demand on a removed slot has no sensible neutral value at all — "always true"
+// would silently drop the author's rule and "always false" would kill the entry — so
+// the honest repair is that the condition ceases to exist and the author is told.
+// WHAT HAS NO REPAIR, deliberately: changing `content.sheet`. A demand is a fact about
+// the ENTRY, true in every game that ships it, so a new sheet makes some entries
+// unofferable (the border says so, once, by name) and repairs nothing. This is the one
+// place `fills` and `demands` differ, and it is what "it travels in the book" means.
+export const forgetDemandField = (things, fieldId) =>
+  forgetDemandsWhere(things, demand => demand?.field === fieldId,
+    `lost a demand — the slot it asked about changed or was removed`)
+
+// NEW: a THING was removed, so every demand naming it goes. Only a list section's
+// operators name a thing, and their value is that thing's id — which is why matching
+// on the value alone is enough here, exactly as forgetPlaced matches on `.thing`.
+// The name is read BEFORE the walk, because the caller removes the thing itself next.
+export const forgetDemanded = (things, thingId) =>
+  forgetDemandsWhere(things, demand => demand?.value === thingId,
+    `lost a demand — ${nameOf(things, thingId)} was removed`)
+
 // the same words validate.js uses for "found …" (kept in step by the oracles;
 // references.js cannot import them — validate.js imports THIS file)
 const describe = (v) =>
@@ -171,6 +232,49 @@ const placementProblems = ({ types, things }) => {
       if (!shelf.has(placement.thing)) found.push({ thing, path, pointer: `${pointer}.thing`, what: `places a thing that does not exist (${placement.thing})` })
     })
   })
+  return found
+}
+
+// NEW: the demand audit. A third walk beside the row walk and the placement walk,
+// producing the same { thing, path, pointer, what } shape, so crossChecks turns it
+// into { path, message } with no change at all.
+//
+// IT ASKS ONE QUESTION, AND IT IS NOT THE BORDER'S:
+//   does this demand POINT AT ANYTHING AT ALL, anywhere in the merged library?
+// What is NOT a fault here: a demand THIS GAME'S SHEET cannot answer. A prerequisite
+// travels in the book — "Fireball requires the Mage origin" is true wherever Fireball
+// is — so a game that pins the book without the sheet that answers it has an entry it
+// cannot sell, which the border says out loud once by name, and a file that is
+// perfectly well-formed. Making that a fault would make the book UNPINNABLE: a game
+// could never be saved while it pinned it, and the book could never be pinned without
+// the other one. That is why the field is resolved against ANY merged type, not
+// against content.sheet — and it is also what lets validateBook, which merges a book
+// against no game at all, still judge every demand a book ships.
+const demandProblems = ({ types, things }) => {
+  const found = []
+  const owners = types.types.filter(type => Array.isArray(type.sections))    // a shapeless type is the walk's problem, already reported
+  Object.entries(things.things).forEach(([sheetId, bucket]) => bucket.forEach((thing, i) => {
+    const path = `things.things[${JSON.stringify(sheetId)}][${i}]`
+    const list = thing.demands
+    if (list === undefined) return                                           // the honest spelling of "demands nothing"
+    if (!Array.isArray(list)) return                                         // the CHECKER already said so
+    list.forEach((demand, j) => {
+      const pointer = `demands[${j}]`
+      if (!isPlainObject(demand) || typeof demand.field !== "string") return  // the CHECKER already said so
+      const owner = owners.find(type => demandFieldById(type, demand.field))
+      if (!owner) { found.push({ thing, path, pointer: `${pointer}.field`, what: `demand names a field that does not exist (${demand.field})` }); return }
+      const field = demandFieldById(owner, demand.field)
+      const shelf = field.section ? new Set((things.things[field.section.of] ?? []).map(target => target.id)) : null
+      const problem = checkDemand(demand, field, shelf)
+      // WHICH KEY the sentence is about, so validate.js attaches it to the exact line.
+      // Asked of the DEMAND, never of the message: the sentence is written once, in
+      // demands.js, and reading it back would be a second contract to keep in step.
+      // Once the slot resolves there are exactly two answers left — either the op does
+      // not belong to this slot's table (`op`), or the op is fine and the value is the
+      // intruder: wrong type, off-shelf, or present at all under `any` / `none`.
+      if (problem) found.push({ thing, path, pointer: `${pointer}.${demandOperatorOf(field, demand.op) === undefined ? "op" : "value"}`, what: `demand ${problem}` })
+    })
+  }))
   return found
 }
 
@@ -218,5 +322,7 @@ export const danglingReferences = ({ content, types, things }) => {
   })
   // the one cause, said first: the sheet line comes before the rows it invalidates
   if (sheetDangles) found.unshift({ path: "content", pointer: "sheet", what: `builds a sheet that does not exist (${sheetId})` })
-  return [...found, ...placementProblems({ types, things })]
+  // CHANGED: and the third walk — a thing's own demands. Last, because a row's
+  // faults are the coarser ones and the report reads top-down.
+  return [...found, ...placementProblems({ types, things }), ...demandProblems({ types, things })]
 }

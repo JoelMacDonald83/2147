@@ -7,6 +7,11 @@ import { danglingReferences } from "./references.js"
 // import graph in sheet.js's header. Importing it the other way round WOULD be
 // one: references.js already imports sheet.js, and this file imports references.js.
 import { QUANTITY_KEY } from "./sheet.js"
+// NEW: the operator values a DEMAND may carry, derived in demands.js from the two
+// tables rather than typed out here — so the shape sentence below can never fall
+// behind the vocabulary. demands.js is a LEAF too (schema.js + query.js and nothing
+// else), and references.js already imports it, so this adds no cycle.
+import { DEMAND_OPS } from "./demands.js"
 
 // NEW: the border's contract, read from the sheet. The game trusts the files it
 // loads and the editor trusts the files it saves; THIS is where a file is
@@ -23,7 +28,7 @@ export const problemText = ({ path, message }) => `${path}: ${message}`
 const ALL_OPS      = [...new Set(Object.values(OPERATORS).flat().map(op => op.value))]           // every operator of every kind, ONCE: choice and text share one table (query.js)
 const VALUE_TYPES  = [...new Set(Object.values(WHERE_VALUE_TYPE))]                              // ["string", "number"]
 const AUTHOR_KINDS = Object.keys(GATES).filter(kind => !GATES[kind].borderOnly)                 // never is the border's own
-const RESERVED_THING_KEYS = ["id", ...coreThingSchema.map(entry => entry.key)]                  // id, name, cost, imageURL
+const RESERVED_THING_KEYS = ["id", ...coreThingSchema.map(entry => entry.key)]                  // CHANGED: id, name, cost, imageURL, demands — derived, so the new core entry joined with no edit
 const NOUN = { string: "a string", number: "a number", array: "an array", object: "an object" }
 
 const isPlainObject  = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
@@ -127,7 +132,27 @@ const CHECKERS = {
   // and the existence sentence both live in references.js's placement audit,
   // reached through crossChecks. Listed here so CHECKED_TYPES names every kind a
   // sheet can produce (sheetOfType makes one of these per list section; oracle V1).
-  placements:     () => {}
+  placements:     () => {},
+  // NEW: what a thing DEMANDS of the player's sheet — a list of conditions, ALL of
+  // which must hold. Each one is `field, op, value`: the SAME three keys, in the same
+  // order, that a row's `where` has carried since v4, so the SAME function judges both
+  // (checkCondition below) and the two are refused by identical sentences.
+  // WHICH ops fit WHICH slot, and whether the slot exists at all, is a reference
+  // question — the demand audit in references.js, reached through crossChecks — for
+  // exactly the reason checkQuery gives about `where`: the field lives in another file.
+  // An EMPTY array is refused with its own sentence because "this entry demands
+  // nothing" already has a spelling and it is the key's ABSENCE. The file never
+  // carries a no-op: the editor deletes the key with the last demand, and so do the
+  // two repairs in references.js.
+  demands:        (entry, v, path, out) => {
+    if (!expectType(out, v, path, "array")) return
+    if (v.length === 0) { problem(out, path, `must not be empty — a thing that demands nothing carries no "demands" key`); return }
+    v.forEach((demand, i) => {
+      const demandPath = `${path}[${i}]`
+      if (!expectType(out, demand, demandPath, "object")) return
+      checkCondition(demand, demandPath, out, DEMAND_OPS)
+    })
+  }
 }
 export const CHECKED_TYPES = Object.keys(CHECKERS)
 
@@ -218,27 +243,48 @@ const checkId = (space, element, path, out, ctx) => {
 // Its placements are the audit's (crossChecks): they point at other things.
 const checkThing = (thing, path, out, ctx) => {
   if (!expectType(out, thing, path, "object")) return
-  coreThingSchema.forEach(entry => CHECKERS[entry.type](entry, thing[entry.key], `${path}.${entry.key}`, out, ctx))
+  coreThingSchema.forEach(entry => {
+    // NEW: honour `optional`, exactly as checkSheet already does — this line removes
+    // an inconsistency rather than adding one. `demands` is born ABSENT, and absent
+    // means "this entry demands nothing", which is what every thing on the shelf and
+    // in both games means today. Without it a new optional core entry would report
+    // `…[i].demands: must be an array (found absent)` on every one of them, every
+    // book would fail validateBookFile, and both games would fall closed.
+    if (entry.optional && thing[entry.key] === undefined) return
+    CHECKERS[entry.type](entry, thing[entry.key], `${path}.${entry.key}`, out, ctx)
+  })
   checkId("thing", thing, path, out, ctx)
 }
 
-// { type, where }: type a string; where null, or { field, op, value } with op
-// any kind's operator and value a string or a number. WHICH kind fits is a
-// reference question (crossChecks): the type lives in another file.
+// NEW: ONE condition — `field, op, value` and nothing else — checked at whatever
+// path it sits at. EXTRACTED, not copied: a row's `where` and a thing's `demands[i]`
+// are the same three keys in the same order, so they get the same four sentences,
+// and the day one of them gains a key the other gains it too. `ops` is the only
+// difference between the two callers: a row's filter may carry any FIELD KIND's
+// operator (ALL_OPS, 10 of them), a demand may also carry a LIST section's four
+// (DEMAND_OPS, 13) — and both lists are derived from the tables, never typed out.
+// WHICH op fits THIS field is a reference question either way (crossChecks): the
+// field lives in another file.
+const CONDITION_KEYS = ["field", "op", "value"]
+export const checkCondition = (condition, path, out, ops) => {
+  expectType(out, condition.field, `${path}.field`, "string")
+  if (expectType(out, condition.op, `${path}.op`, "string") && !ops.includes(condition.op))
+    problem(out, `${path}.op`, `${JSON.stringify(condition.op)} is not an operator (${ops.join(", ")})`)
+  if (!(VALUE_TYPES.includes(typeof condition.value) && (typeof condition.value === "string" || isFiniteNumber(condition.value))))
+    problem(out, `${path}.value`, `must be ${VALUE_TYPES.map(type => `a ${type}`).join(" or ")} (found ${describe(condition.value)})`)
+  Object.keys(condition).forEach(key => { if (!CONDITION_KEYS.includes(key)) problem(out, at(path, key), `unexpected key ${JSON.stringify(key)}`) })
+}
+
+// { type, where }: type a string; where null, or ONE condition (above) whose op is
+// any field kind's. CHANGED: the condition's own four sentences moved into
+// checkCondition, which CHECKERS.demands calls too — same keys, same words.
 const checkQuery = (query, path, out) => {
   if (!expectType(out, query, path, "object")) return
   expectType(out, query.type, `${path}.type`, "string")
   const where = query.where
   if (where === null) { /* no condition */ }
   else if (!isPlainObject(where)) problem(out, `${path}.where`, `must be null or an object (found ${describe(where)})`)
-  else {
-    expectType(out, where.field, `${path}.where.field`, "string")
-    if (expectType(out, where.op, `${path}.where.op`, "string") && !ALL_OPS.includes(where.op))
-      problem(out, `${path}.where.op`, `${JSON.stringify(where.op)} is not an operator (${ALL_OPS.join(", ")})`)
-    if (!(VALUE_TYPES.includes(typeof where.value) && (typeof where.value === "string" || isFiniteNumber(where.value))))
-      problem(out, `${path}.where.value`, `must be ${VALUE_TYPES.map(type => `a ${type}`).join(" or ")} (found ${describe(where.value)})`)
-    Object.keys(where).forEach(key => { if (!["field", "op", "value"].includes(key)) problem(out, at(`${path}.where`, key), `unexpected key ${JSON.stringify(key)}`) })
-  }
+  else checkCondition(where, `${path}.where`, out, ALL_OPS)
   Object.keys(query).forEach(key => { if (!["type", "where"].includes(key)) problem(out, at(path, key), `unexpected key ${JSON.stringify(key)}`) })
 }
 
