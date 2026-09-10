@@ -25,43 +25,62 @@
 //   V3  the breakage table          V7  problem format
 //   V4  leftovers are not problems  V8  the breakage table, books (NEW)
 //   V9  the breakage table, the player's sheet (NEW)
+//   V10 the breakage table, demands (NEW, v7)
+//   V11 the tables agree at v7 (NEW, v7)
 // NEW: the MERGE (engine/config/merge.js) — a game is the last layer of a stack:
 //   K1  order-independence, purity  K6  conflicts (F13/F14)
 //   K2  add-only union              K7  the cascade and the arrangement
 //   K3  duplicates (F6)             K8  flatten fixed point
 //   K4  bad additions (F7–F12)      K9  validators (set / game / book)
 //   K5  pins and requires (F1–F5)  K10 the sheet and the binding cross it (NEW)
+//   K11 demands cross it too (NEW, v7)
 // NEW (v6): the PLAYER'S SHEET — engine/config/sheet.js and kept.js, both pure:
 //   P1  sheet walkers               P6  the kept file is canonical
 //   P2  checkFills, six answers     P7  readKept refusals (F1–F5)
 //   P3  quantity and cost           P8  readKept notes (F6–F13)
 //   P4  buildSheet                  P9  readKept is total and pure
-//   P5  readValue
-// the manager's pure parts — the editor's hash grammar and the server's games
-// module, both import-time pure (no DOM, no HTTP, no disk touched):
-//   N1  hash grammar                N2  names            N3  the seed
+//   P5  readValue                   P10 the sheet is a thing that demands nothing (NEW, v7)
+// NEW (v7): WHAT AN ENTRY DEMANDS — engine/config/demands.js, and the one door and
+// the one loop in engine/state.js that run it:
+//   L20 the tables                  L26 the door (place's third guard)
+//   L21 what a demand may name      L27 the loop — six adversarial cases
+//   L22 checkDemand's sentences     L28 termination and determinism, 400 worlds
+//   L23 meetsDemand's truth table   L29 the guarded-click theorem, 200 worlds
+//   L24 demandText and firstUnmet   L30 the two demand repairs
+//   L25 the subject IS buildSheet   L31 migration v6 → v7 (a pure stamp)
+//
+// CHANGED (v7): L26–L29 drive the REAL engine/state.js. gameConfig.js loads at
+// IMPORT time, once per process, so ONE process holds ONE world — the world those
+// four share is built IN MEMORY and served through a fake `fetch` that is put back
+// the instant the import finishes. No disk, no shelf, no child process: this file's
+// promise is kept. What the BORDER refuses is a different question and is asked of a
+// real hydration in oracles.mjs (G4).
 //
 // CHANGED (v5): validateSet is imported from merge.js — judging a set means
 // merging the layers under it, so it moved out of validate.js.
 
 import assert from 'node:assert/strict'
-import { FIELD_DEFAULTS, fieldDefault, asOption, sheetOfType, placementSheet, fieldsOfType, listSectionsOf, queryableFields, fieldById, thingKeys, SCHEMA_VERSION, BOOK_NAME, isBookName, isEdition, BOOK_ID, FILE_SHEETS, BOOK_FILE_SHEETS, SHEETS, fieldDefSchema, coreThingSchema, metaSchema, pageThemeSchema, totalBudgetSchema, contentSchema, typesSchema } from '../engine/config/schema.js'
+import { FIELD_DEFAULTS, fieldDefault, asOption, sheetOfType, placementSheet, fieldsOfType, listSectionsOf, queryableFields, fieldById, thingKeys, sheetKeys, sheetCoreSchema, SCHEMA_VERSION, BOOK_NAME, isBookName, isEdition, BOOK_ID, FILE_SHEETS, BOOK_FILE_SHEETS, SHEETS, fieldDefSchema, coreThingSchema, metaSchema, pageThemeSchema, totalBudgetSchema, contentSchema, typesSchema } from '../engine/config/schema.js'
 import { migrateSet } from '../engine/config/migrations.js'
 import { OPERATORS, operatorOf, WHERE_VALUE_TYPE, WHERE_VALUE_DEFAULT, readAs, checkWhere, matchesWhere, filterThings, valuesOf } from '../engine/config/query.js'
 import { GATES, SHOW_WHEN_KINDS, idsBelow, computeVisible, dropHidden, checkShowWhen, deadRows } from '../engine/config/visibility.js'
-import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, danglingReferences } from '../engine/config/references.js'
-import { validateFile, validateBookFile, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES, checkFieldValue } from '../engine/config/validate.js'
+import { eachRow, rowsIn, forgetType, forgetField, forgetThing, forgetRow, forgetPlaced, forgetSectionPlacements, forgetFills, forgetPlayerSheet, forgetDemandField, forgetDemanded, danglingReferences } from '../engine/config/references.js'
+import { validateFile, validateBookFile, crossChecks, problemText, FILE_NAMES, CHECKED_TYPES, checkFieldValue, checkCondition } from '../engine/config/validate.js'
 // NEW (v6): the two files this stage adds. Both are pure and leaf-ish — sheet.js
 // imports schema.js and nothing else; kept.js imports schema, sheet and validate —
 // so both run here, in the half that never reads the shelf.
 import { QUANTITY_KEY, NAME_ENTRY, sectionById, fillableSections, playerFields, blankFields, blankValues, checkFills, quantityFieldOf, quantityOf, entryCost, readValue, buildSheet } from '../engine/config/sheet.js'
 import { KEPT_VERSION, keptFrom, sheetText, keptFileName, readKept } from '../engine/config/kept.js'
 import { GAME_LAYER, bookLabel, emptyGame, orderBooks, mergeLayers, flattenGame, validateGame, validateSet, validateBook } from '../engine/config/merge.js'
+// NEW (v7): what an entry DEMANDS of the player's sheet — the vocabulary, its three
+// readers and the two repairs. demands.js is a leaf (schema.js + query.js only), so it
+// runs here, in the half that never reads the shelf.
+import { asDemandField, demandFields, demandFieldById, PLACEMENT_OPERATORS, placementOperatorOf, demandOperators, demandOperatorOf, DEMAND_OPS, meetsDemand, firstUnmet, demandsOf, checkDemand, demandText } from '../engine/config/demands.js'
 import { parseHash, hashFor, uiState, TABS } from '../dinoEdit/uiState.js'
 import { NAME, NAME_MAX, RESERVED, isGameName, slugOf, titleProblems, seedSet } from '../server/games.js'
 import { EDITION, isEditionName } from '../server/books.js'
 
-assert.equal(SCHEMA_VERSION, 6, 'these oracles describe schema version 6')
+assert.equal(SCHEMA_VERSION, 7, 'these oracles describe schema version 7')
 
 let checks = 0
 const ok = (label) => { checks += 1; console.log(`  ok  ${label}`) }
@@ -398,10 +417,10 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
     types:  { version: 3, types: [{ id: 'type-1', label: 'One', fields: [] }, { id: 'type-2', label: 'Two', fields: [] }] },
     things: { version: 3, things: { 'type-1': [], 'type-2': [] } }
   }
-  assert.throws(() => migrateSet({ ...v3, types: null, things: null }), /Missing data files for version 6: types, things/, 'stamp keeps a null a null')
+  assert.throws(() => migrateSet({ ...v3, types: null, things: null }), /Missing data files for version 7: types, things/, 'stamp keeps a null a null')
   const frozen = deepFreeze(structuredClone(v3))
   const out = migrateSet(frozen)
-  FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${name} stamped 6`))
+  FILE_NAMES.forEach(name => assert.equal(out[name].version, 7, `${name} stamped 7`))
   assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'])
   const checkRow = (migrated, original) => {
     assert.deepEqual(Object.keys(migrated), ['id', 'label', 'query', 'fills', 'showWhen', 'children'], `row ${migrated.id} has the six keys in order`)
@@ -413,9 +432,9 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   }
   out.content.groups.forEach((group, index) => checkRow(group, v3.content.groups[index]))
   assert.equal(JSON.stringify(migrateSet(frozen)), JSON.stringify(out), 'migrating twice is byte-identical: nothing minted')
-  assert.equal(migrateSet(out), out, 'a v6 set passes the border as the same object')
+  assert.equal(migrateSet(out), out, 'a v7 set passes the border as the same object')
   assert.deepEqual(danglingReferences(out), [], 'a migrated set is closed')
-  ok('L12 migration border (v3 → 6): missing files named; canonical row shape; where null; showWhen always; byte-identical twice')
+  ok('L12 migration border (v3 → 7): missing files named; canonical row shape; where null; showWhen always; byte-identical twice')
 }
 
 // ───────────────────────── L13 repairs ─────────────────────────
@@ -430,10 +449,10 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
       row('R4', { kind: 'thingPicked', thing: 't-lava' }, [], { type: '', where: null })
     ]
     return {
-      content: { version: 6, meta: {}, books: [], groups: rows, rowOverrides: {} },
+      content: { version: 7, meta: {}, books: [], groups: rows, rowOverrides: {} },
       // fresh copies: a removal below splices a section's fields and a bucket, and the next build must not see it
-      types:   { version: 6, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
-      things:  { version: 6, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
+      types:   { version: 7, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
+      things:  { version: 7, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
     }
   }
   const touched = (changed) => changed.map(({ row }) => row.id).join(',')
@@ -576,7 +595,11 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   assert.deepEqual(queryableFields(walkType).map(field => field.id), ['core:name', 'core:cost', 'w:a.n', 'w:b.c'], 'the two core fields that carry an id, then the type\'s own')
   assert.equal(fieldById(walkType, 'w:b.c'), choiceField, 'a field in the THIRD section is found')
   assert.equal(fieldById(walkType, 'w:list.level'), undefined, 'a placement field is not queryable (Stage 2)')
-  assert.deepEqual(thingKeys(walkType), ['name', 'cost', 'imageURL', 'n', 'c', 'friends'], 'the keys a thing may hold: core, the fields, the LIST sections\' keys')
+  // AMENDED (v7): the literal is what a filled SHEET holds, so it is sheetKeys now. thingKeys
+  // is the WIDER list — every key a THING may hold — and the one key that separates them is
+  // `demands`, which a thing may carry and a sheet never does.
+  assert.deepEqual(sheetKeys(walkType), ['name', 'cost', 'imageURL', 'n', 'c', 'friends'], 'the keys a SHEET holds: the core three, the fields, the LIST sections\' keys')
+  assert.deepEqual(thingKeys(walkType), ['name', 'cost', 'imageURL', 'demands', 'n', 'c', 'friends'], 'the keys a THING may hold: sheetKeys plus `demands`, in core order')
   // dressing: `default` (what newborn writes) and `hydrateDefault` (what the engine fills) are fieldDefault(field)
   assert.deepEqual([sheet[0].default, sheet[0].hydrateDefault], [10, 10], 'a field with default 10 dresses to 10')
   assert.deepEqual([sheet[2].default, sheet[2].hydrateDefault], ['x', 'x'], 'a choice dresses to its first option')
@@ -605,7 +628,7 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   })
   const input = v4()
   const out = migrateSet(input)
-  FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${name} stamped 6`))
+  FILE_NAMES.forEach(name => assert.equal(out[name].version, 7, `${name} stamped 7`))
   // every type gains EXACTLY ONE section, its id derived (never minted)
   out.types.types.forEach((type, i) => {
     assert.deepEqual(Object.keys(type), ['id', 'label', 'sections'])
@@ -631,11 +654,11 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   assert.equal(out.rules.totalBudget, 10, 'a written budget is the game\'s own and stays written')
   // deterministic, mint-free, closed, and a fixed point
   assert.equal(JSON.stringify(migrateSet(v4())), JSON.stringify(out), 'migrating twice is byte-identical')
-  assert.equal(migrateSet(out), out, 'a v6 set comes back as the same object')
+  assert.equal(migrateSet(out), out, 'a v7 set comes back as the same object')
   assert.deepEqual(danglingReferences(out), [], 'the migrated set is closed')
   assert.deepEqual(validateSet(out), [], 'and it fits the contract')
-  assert.throws(() => migrateSet({ ...v4(), types: null, things: null }), /Missing data files for version 6: types, things/)
-  ok('L16 migration v4 → v6: one derived "identity" section per type, the same field objects; content gains books: [] and rowOverrides: {}; types gains the two addition cabinets; twice is byte-identical; missing files named')
+  assert.throws(() => migrateSet({ ...v4(), types: null, things: null }), /Missing data files for version 7: types, things/)
+  ok('L16 migration v4 → v7: one derived "identity" section per type, the same field objects; content gains books: [] and rowOverrides: {}; types gains the two addition cabinets; twice is byte-identical; missing files named')
 }
 
 // ───────────────────────── L17 placements: the audit and the two repairs ─────────────────────────
@@ -644,12 +667,12 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
 {
   const listSection = { id: 'a:s.friends', key: 'friends', caption: 'Friends', kind: 'list', of: 'a:s', placement: [] }
   const build = (friends) => ({
-    content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], groups: [], rowOverrides: {} },
-    types: { version: 6, sectionsFor: {}, fieldsFor: {}, types: [
+    content: { version: 7, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], groups: [], rowOverrides: {} },
+    types: { version: 7, sectionsFor: {}, fieldsFor: {}, types: [
       { id: 'a:s', label: 'S', sections: [identityOf('a:s', []), listSection] },
       { id: 'b:t', label: 'T', sections: [identityOf('b:t', [])] }
     ] },
-    things: { version: 6, things: {
+    things: { version: 7, things: {
       'a:s': [{ id: 'a:one', name: 'One', cost: 0, imageURL: '', friends }, { id: 'a:two', name: 'Two', cost: 0, imageURL: '' }],
       'b:t': [{ id: 'b:elsewhere', name: 'Elsewhere', cost: 0, imageURL: '' }]
     } }
@@ -717,7 +740,7 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   Object.entries(fixtures).forEach(([label, input]) => {
     const before = JSON.stringify(input)
     const out = migrateSet(deepFreeze(structuredClone(input)))
-    FILE_NAMES.forEach(name => assert.equal(out[name].version, 6, `${label}: ${name} stamped 6`))
+    FILE_NAMES.forEach(name => assert.equal(out[name].version, 7, `${label}: ${name} stamped 7`))
     assert.deepEqual(Object.keys(out.content), ['version', 'meta', 'books', 'sheet', 'groups', 'rowOverrides'], `${label}: the canonical content order, with sheet after books`)
     assert.equal(out.content.sheet, '', `${label}: a v5 game declared no sheet, so it builds none`)
     assert.deepEqual(out.content.books, input.content.books, `${label}: the pins are carried through untouched`)
@@ -729,10 +752,10 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
     assert.equal(JSON.stringify(migrateSet(structuredClone(input))), JSON.stringify(out), `${label}: migrating twice is byte-identical`)
     assert.equal(JSON.stringify(input), before, `${label}: the input is untouched`)
     assert.equal(ids(uuidsOf(JSON.stringify(out))), ids(uuidsOf(before)), `${label}: the same set of uuids out — the step mints nothing and loses nothing`)
-    assert.equal(migrateSet(out), out, `${label}: a v6 set comes back as the SAME OBJECT`)
+    assert.equal(migrateSet(out), out, `${label}: a v7 set comes back as the SAME OBJECT`)
   })
-  assert.throws(() => migrateSet({ ...fixtures['a bookless game'], types: null }), /Missing data files for version 6: types/, 'a null file is still NAMED, not climbed')
-  ok(`L18 migration v5 → v6: 3 fixtures, five files stamped 6, content = version,meta,books,sheet,groups,rowOverrides with sheet ""; every row at every depth id,label,query,fills,showWhen,children with fills ""; twice is byte-identical; mint-free; a v6 set is returned unchanged; a null file is named`)
+  assert.throws(() => migrateSet({ ...fixtures['a bookless game'], types: null }), /Missing data files for version 7: types/, 'a null file is still NAMED, not climbed')
+  ok(`L18 migration v5 → v7: 3 fixtures, five files stamped 7, content = version,meta,books,sheet,groups,rowOverrides with sheet ""; every row at every depth id,label,query,fills,showWhen,children with fills ""; twice is byte-identical; mint-free; a v7 set is returned unchanged; a null file is named`)
 }
 
 // ───────────────────────── L19 the two new repairs (NEW) ─────────────────────────
@@ -743,13 +766,13 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
   const gearSection = () => ({ id: 'a:s.gear', key: 'gear', caption: 'Gear', kind: 'list', of: 'b:t', placement: [] })
   const boundRow = (id, fills, children = []) => ({ id, label: `row ${id}`, query: { type: 'b:t', where: null }, fills, showWhen: { kind: 'always' }, children })
   const build = () => ({
-    content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], sheet: 'a:s',
+    content: { version: 7, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], sheet: 'a:s',
       groups: [boundRow('r1', 'a:s.gear', [boundRow('r2', 'a:s.gear')]), boundRow('r3', '')], rowOverrides: {} },
-    types:  { version: 6, types: [
+    types:  { version: 7, types: [
       { id: 'a:s', label: 'S', sections: [identityOf('a:s', []), gearSection()] },
       { id: 'b:t', label: 'T', sections: [identityOf('b:t', [])] }
     ], sectionsFor: {}, fieldsFor: {} },
-    things: { version: 6, things: { 'a:s': [], 'b:t': [] } }
+    things: { version: 7, things: { 'a:s': [], 'b:t': [] } }
   })
   assert.deepEqual(danglingReferences(build()), [], 'the healthy set points at nothing missing')
 
@@ -797,16 +820,16 @@ const fieldOfKind = { text: FIELD_LABEL, lines: FIELD_TRAITS, number: FIELD_RATI
 // (t-king's traits is a string, t-egg lacks every author field): H is clean
 // UNDER D2, by design.
 const H = () => ({
-  content: { version: 6, meta: { pageTitle: 'T', heroTitle: 'H' }, books: [], groups: [
+  content: { version: 7, meta: { pageTitle: 'T', heroTitle: 'H' }, books: [], groups: [
     row('R1', { kind: 'always' }, [ row('R1a', { kind: 'anyInRow', row: 'R1' }, [], { type: 'type-dino', where: { field: FIELD_LABEL, op: 'is', value: 'Gayer' } }) ], { type: 'type-dino', where: null }),
     row('R2', { kind: 'thingPicked', thing: 't-tali' }, [], { type: 'type-lair', where: { field: 'core:cost', op: 'gte', value: 1 } }),
     row('R3', { kind: 'anyInRow', row: 'R1a' }, [], { type: 'type-lair', where: null }),
     row('R4', { kind: 'thingPicked', thing: 't-lava' }, [], { type: '', where: null })
   ], rowOverrides: {} },
-  rules:  { version: 6, totalBudget: 10, groupRules: { R1: { min: 1, max: 1 }, R2: {}, R3: { max: 2 } } },
-  themes: { version: 6, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: { R1: { background: 'red' }, R2: {} } },
-  types:  { version: 6, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
-  things: { version: 6, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
+  rules:  { version: 7, totalBudget: 10, groupRules: { R1: { min: 1, max: 1 }, R2: {}, R3: { max: 2 } } },
+  themes: { version: 7, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: { R1: { background: 'red' }, R2: {} } },
+  types:  { version: 7, types: [structuredClone(dinoType), structuredClone(lairType)], sectionsFor: {}, fieldsFor: {} },
+  things: { version: 7, things: { 'type-dino': structuredClone(rawDinos), 'type-lair': [{ id: 't-lava', name: 'Lava Pit', cost: 3, imageURL: '' }] } }
 })
 // every problem V3 and V8 produce, kept for V7's format check
 const everyProblem = []
@@ -890,7 +913,7 @@ const everyProblem = []
   const kindRow = (kind) => [`13 showWhen kind ${JSON.stringify(kind)}`, s => { s.content.groups[0].showWhen = { kind } }, [`${G}[0].showWhen.kind`], [new RegExp(`${JSON.stringify(kind)} is not a show-when kind \\(always, thingPicked, anyInRow\\)`)]]
   const fieldKindRow = (type) => [`40 field kind ${JSON.stringify(type)}`, s => { s.types.types[0].sections[0].fields[0].type = type }, [`${S}.fields[0].type`], [new RegExp(`${JSON.stringify(type)} is not one of text, number, lines, choice`)]]
   const table = [
-    ['1 old version, no walk',     s => { s.content.version = 4; delete s.content.meta },                    ['content.version'],                 [/must be 6 \(found 4\) — open the game in the editor and Save/]],
+    ['1 old version, no walk',     s => { s.content.version = 4; delete s.content.meta },                    ['content.version'],                 [/must be 7 \(found 4\) — open the game in the editor and Save/]],
     ['2 version as a string',      s => { s.rules.version = '5' },                                          ['rules.version'],                   [/found "5"/]],
     ['3 showWhen absent',          s => { delete s.content.groups[1].showWhen },                            [`${G}[1].showWhen`],                [/must be an object \(found absent\)/]],
     ['4 totalBudget a string',     s => { s.rules.totalBudget = '10' },                                     ['rules.totalBudget'],               [/must be a number or absent \(found "10"\)/]],
@@ -932,7 +955,10 @@ const everyProblem = []
     ['36 page: absent + typo',     s => { delete s.themes.page.statusColor; s.themes.page.fontFamly = 'x' }, ['themes.page.statusColor', 'themes.page.fontFamly'], [/found absent/, /unexpected key "fontFamly"/]],
     ['37 background null',         s => { s.themes.groupThemes.R1.background = null },                      ['themes.groupThemes["R1"].background'], [/must be a string or absent \(found null\)/]],
     ['38 duplicate field key',     s => { s.types.types[0].sections[0].fields.push({ id: 'f-dup', key: 'label', caption: 'D', type: 'text' }) }, [`${S}.fields[4].key`], [new RegExp(`duplicate key "label" — also at ${S.replace(/[[\]]/g, m => '\\' + m)}\\.fields\\[0\\]`)]],
-    ['39 reserved field key',      s => { s.types.types[0].sections[0].fields.push({ id: 'f-n', key: 'name', caption: 'N', type: 'text' }) },    [`${S}.fields[4].key`], [/"name" is a key every thing already has \(id, name, cost, imageURL\)/]],
+    // AMENDED (v7): RESERVED_THING_KEYS is DERIVED from coreThingSchema, so the day a
+    // fourth core entry exists the sentence names five keys. That is the point of
+    // deriving it — the check moves with the schema instead of pinning a stale list.
+    ['39 reserved field key',      s => { s.types.types[0].sections[0].fields.push({ id: 'f-n', key: 'name', caption: 'N', type: 'text' }) },    [`${S}.fields[4].key`], [/"name" is a key every thing already has \(id, name, cost, imageURL, demands\)/]],
     fieldKindRow('date'), fieldKindRow('constructor'),
     ['41 empty field key',         s => { s.types.types[0].sections[0].fields[0].key = '' },                [`${S}.fields[0].key`],              [/must be a non-empty string \(found ""\)/]],
     ['42 duplicate type id',       s => { s.types.types[1].id = 'type-dino' },                              ['types.types[1].id'],               [/duplicate id "type-dino" — also at types\.types\[0\]/]],
@@ -1004,7 +1030,7 @@ const everyProblem = []
   both.content.groups[0].query.type = 'type-gone'
   assert.deepEqual(validateSet(both).map(problem => problem.path), ['types.types[0].sections[0].fields'], 'the dangle waits for the shape')
   // (b) total: junk in, an array out, never a throw; a missing file is validateSet's word
-  const junk = [[], 'x', 42, {}, { version: 6 }, { version: 6, extra: 1 }]
+  const junk = [[], 'x', 42, {}, { version: 7 }, { version: 7, extra: 1 }]
   FILE_NAMES.forEach(name => junk.forEach(value => {
     const problems = validateFile(name, value)
     assert.ok(Array.isArray(problems) && problems.length > 0, `${name} over ${JSON.stringify(value)} is refused, quietly`)
@@ -1154,14 +1180,14 @@ const everyProblem = []
   const bookTable = [
     ['the manifest fits',        'book',      manifest(),                                                        null,             null],
     ['an edition that is text',  'book',      manifest({ edition: '1' }),                                        'book.edition',   /must be a number \(found "1"\)/],
-    ['a manifest with a version', 'book',     { ...manifest(), version: 6 },                                     'book.version',   /unexpected key "version"/],
+    ['a manifest with a version', 'book',     { ...manifest(), version: 7 },                                     'book.version',   /unexpected key "version"/],
     ['requires that is not a list', 'book',   manifest({ requires: {} }),                                        'book.requires',  /must be an array \(found an object\)/],
     ['a requirement with no edition', 'book', manifest({ requires: [{ name: 'basic' }] }),                       'book.requires[0].edition', /must be a positive integer \(found absent\)/],
-    ['a book file at version 4', 'types',     { version: 4, types: [], sectionsFor: {}, fieldsFor: {} },         'types.version',  /must be 6 \(found 4\) — this book was written for another version/],
-    ['proposals without groups', 'proposals', { version: 6, groupRules: {} },                                    'proposals.groups', /must be an array \(found absent\)/],
-    ['proposals fit',            'proposals', { version: 6, totalBudget: 10, groups: [], groupRules: {} },       null,             null],
-    ['a book may write order',   'things',    { version: 6, things: {}, order: { 'basic:place': ['x'] } },       null,             null],
-    ['things at version 4',      'things',    { version: 6, things: { 'basic:place': [{ id: 'x', name: 'X', cost: 0, imageURL: '' }] } }, null, null]
+    ['a book file at version 4', 'types',     { version: 4, types: [], sectionsFor: {}, fieldsFor: {} },         'types.version',  /must be 7 \(found 4\) — this book was written for another version/],
+    ['proposals without groups', 'proposals', { version: 7, groupRules: {} },                                    'proposals.groups', /must be an array \(found absent\)/],
+    ['proposals fit',            'proposals', { version: 7, totalBudget: 10, groups: [], groupRules: {} },       null,             null],
+    ['a book may write order',   'things',    { version: 7, things: {}, order: { 'basic:place': ['x'] } },       null,             null],
+    ['things at version 4',      'things',    { version: 7, things: { 'basic:place': [{ id: 'x', name: 'X', cost: 0, imageURL: '' }] } }, null, null]
   ]
   bookTable.forEach(([label, file, value, path, regex]) => {
     const problems = validateBookFile(file, value)
@@ -1229,6 +1255,112 @@ const everyProblem = []
   ok(`V9 the breakage table, the player's sheet: ${table.length} mutations (a sheet of the wrong kind, four bad bindings, a binding with no sheet, a dangling declaration, a bad override slot, a text "quantity") each ONE problem at ONE path with §3.10's sentence; a dangling sheet silences its rows; every sheet type still has a checker`)
 }
 
+// ───────────────────────── V10 the breakage table, demands (NEW) ─────────────────────────
+// A thing may now carry `demands` — a list of conditions, ALL of which must hold.
+// Each mutation below is ONE mistake and must produce exactly ONE problem at exactly
+// ONE path, in the sentence CHECKERS.demands / checkCondition write. Every fixture is
+// judged by validateFile ALONE, because a demand's SHAPE is a file question: whether
+// the field exists and whether the operator fits it is a REFERENCE question and lives
+// in the audit (V11 and L30), exactly as a row's `where` has always been split.
+{
+  const thingWith = (demands) => ({
+    version: 7,
+    things: { 'type-dino': [{ id: 't-a', name: 'A', cost: 0, imageURL: '', ...(demands === undefined ? {} : { demands }) }] }
+  })
+  const D = 'things.things["type-dino"][0].demands'
+  const table = [
+    ['1 not an array',        'x',                                              D,              'must be an array (found "x")'],
+    ['2 the empty list',      [],                                               D,              'must not be empty — a thing that demands nothing carries no "demands" key'],
+    ['3 an element that is not an object', [3],                                 `${D}[0]`,      'must be an object (found 3)'],
+    ['4 field absent',        [{ op: 'is', value: '' }],                        `${D}[0].field`, 'must be a string (found absent)'],
+    ['5 op not a string',     [{ field: 'f-label', op: 3, value: '' }],         `${D}[0].op`,   'must be a string (found 3)'],
+    ['6 an unknown op',       [{ field: 'f-label', op: 'nope', value: '' }],    `${D}[0].op`,   '"nope" is not an operator (is, isNot, eq, ne, lt, lte, gt, gte, has, lacks, holds, any, none)'],
+    ['7 value an array',      [{ field: 'f-label', op: 'is', value: [] }],      `${D}[0].value`, 'must be a string or a number (found an array)'],
+    ['8 value null',          [{ field: 'f-label', op: 'is', value: null }],    `${D}[0].value`, 'must be a string or a number (found null)'],
+    ['9 an unexpected key',   [{ field: 'f-label', op: 'is', value: '', not: 1 }], `${D}[0].not`, 'unexpected key "not"']
+  ]
+  table.forEach(([label, demands, path, message]) => {
+    const problems = validateFile('things', thingWith(demands))
+    assert.deepEqual(problems, [{ path, message }], `V10 ${label}: exactly one problem, at its path, in its words`)
+    everyProblem.push(...problems)
+  })
+  // 10 — the reserved key. It is a TYPES fault and not a things one, and it costs no
+  // new code at all: RESERVED_THING_KEYS is derived from coreThingSchema, so the day a
+  // fourth core entry existed the sentence named five keys. (V3 row 39 is the same
+  // sentence for `name`; this is the new key saying it for itself.)
+  const reserved = structuredClone(H().types)
+  reserved.types[0].sections[0].fields.push({ id: 'f-d', key: 'demands', caption: 'D', type: 'text' })
+  const reservedProblems = validateFile('types', reserved)
+  assert.deepEqual(reservedProblems, [{ path: 'types.types[0].sections[0].fields[4].key', message: '"demands" is a key every thing already has (id, name, cost, imageURL, demands)' }])
+  everyProblem.push(...reservedProblems)
+  // 11 — the healthy shapes, and the one that matters most is the LAST: a thing with
+  // NO `demands` key at all. Every one of the ~60 things on the shelf and in both games
+  // is that shape, so if `optional` were not honoured this line would be the whole
+  // stage failing at once (checkThing walks coreThingSchema unconditionally otherwise).
+  assert.deepEqual(validateFile('things', thingWith([{ field: 'f-label', op: 'is', value: 'x' }])), [], 'one healthy demand')
+  assert.deepEqual(validateFile('things', thingWith([{ field: 'f-rating', op: 'gte', value: 12 }, { field: 'a:s.friends', op: 'none', value: '' }])), [], 'two of them, of two shapes')
+  assert.deepEqual(validateFile('things', thingWith(undefined)), [], 'and a thing with NO demands key — the shape every committed thing has')
+  ok(`V10 the breakage table, demands: ${table.length} shape mutations each ONE problem at ONE path by full string equality (an empty list refused with its own sentence, an unknown op listing all 13, an unexpected key inside a condition), the reserved key naming five, and three healthy things — the last of them carrying no \`demands\` key at all`)
+}
+
+// ───────────────────────── V11 the tables agree at v7 (NEW) ─────────────────────────
+// One condition, two homes. A row's `where` and a thing's `demands[i]` are the same
+// three keys in the same order, so they are refused by the SAME function — and the
+// only thing that differs between the two callers is which operator list is legal.
+{
+  assert.ok(CHECKED_TYPES.includes('demands'), 'CHECKERS has a checker for the new sheet type')
+  // the split: what a SHEET holds is coreThingSchema minus the entries marked onSheet: false
+  assert.deepEqual(sheetCoreSchema, coreThingSchema.filter(entry => entry.onSheet !== false))
+  assert.deepEqual(sheetCoreSchema.map(entry => entry.key), ['name', 'cost', 'imageURL'])
+  assert.deepEqual(coreThingSchema.map(entry => entry.key), ['name', 'cost', 'imageURL', 'demands'])
+  assert.deepEqual(['id', ...coreThingSchema.map(entry => entry.key)], ['id', 'name', 'cost', 'imageURL', 'demands'], 'RESERVED_THING_KEYS, derived — V10 row 10 reads it back out of the sentence')
+  // (a) THE SAME SENTENCES. The same broken condition, in a row's query and on a
+  // thing, reported at its own path in identical words.
+  const rowFault = (where) => {
+    const set = H()
+    set.content.groups[0].query.where = where
+    return validateFile('content', set.content).map(problem => problem.message)
+  }
+  const thingFault = (demand) => validateFile('things', { version: 7, things: { 'type-dino': [{ id: 't-a', name: 'A', cost: 0, imageURL: '', demands: [demand] }] } })
+    .map(problem => problem.message)
+  const shared = [
+    { field: undefined, op: 'is', value: '' },
+    { field: 'f-label', op: 'is', value: null },
+    { field: 'f-label', op: 'is', value: '', extra: 1 }
+  ]
+  shared.forEach(condition => {
+    const where = { ...condition }
+    if (condition.field === undefined) delete where.field
+    assert.deepEqual(rowFault(where), thingFault(where), `one condition, one set of words: ${JSON.stringify(where)}`)
+    assert.equal(rowFault(where).length, 1)
+  })
+  // …at their OWN paths, which is the half a shared function must NOT flatten
+  const set = H()
+  set.content.groups[0].query.where = { field: 'f-label', op: 'is', value: null }
+  assert.deepEqual(validateFile('content', set.content).map(problem => problem.path), ['content.groups[0].query.where.value'])
+  assert.deepEqual(validateFile('things', { version: 7, things: { 'type-dino': [{ id: 't-a', name: 'A', cost: 0, imageURL: '', demands: [{ field: 'f-label', op: 'is', value: null }] }] } })
+    .map(problem => problem.path), ['things.things["type-dino"][0].demands[0].value'])
+  // (b) and the ONE difference: which operators are legal. A row filters a FIELD, so
+  // it may carry any field kind's operator; a demand may also name a LIST section, so
+  // it may carry that table's four as well. Both lists are derived, never typed out.
+  assert.match(rowFault({ field: 'f-label', op: 'holds', value: '' })[0], /^"holds" is not an operator \(is, isNot, eq, ne, lt, lte, gt, gte, has, lacks\)$/, 'a row knows 10')
+  assert.match(thingFault({ field: 'f-label', op: 'holds', value: '' })[0] ?? '', /^$/, 'and a demand accepts `holds` at the SHAPE level — whether it FITS is the audit\'s question (L30)')
+  // (c) checkCondition is exported and is the one both call — asked directly, at a
+  // path of the caller's choosing, with the caller's own operator list
+  const out = []
+  checkCondition({ field: 7, op: 'nope', value: {} }, 'somewhere', out, ['only'])
+  assert.deepEqual(out, [
+    { path: 'somewhere.field', message: 'must be a string (found 7)' },
+    { path: 'somewhere.op', message: '"nope" is not an operator (only)' },
+    { path: 'somewhere.value', message: 'must be a string or a number (found an object)' }
+  ], 'three faults, three paths, one function')
+  // (d) checkThing honours `optional` — and only for the entries that carry it
+  const thingsOf = (thing) => validateFile('things', { version: 7, things: { 'type-dino': [thing] } }).map(problem => problem.message)
+  assert.deepEqual(thingsOf({ id: 't-a', name: 'A', cost: 0, imageURL: '' }), [], 'no demands key: fine')
+  assert.deepEqual(thingsOf({ id: 't-a', name: 'A', cost: 0 }), ['must be a string (found absent)'], 'a missing imageURL is STILL a fault — the skip is `optional`, not a general forgiveness')
+  ok('V11 the tables agree at v7: CHECKED_TYPES holds `demands`; sheetCoreSchema is coreThingSchema minus onSheet:false and the reserved list is the five derived keys; a row\'s `where` and a thing\'s demand are refused by checkCondition in IDENTICAL words at their own paths, differing only in the operator list (10 vs 13); checkCondition asked directly gives three faults at three paths; checkThing forgives an absent `demands` and still refuses an absent `imageURL`')
+}
+
 // ───────────────────────── V7 problem format ─────────────────────────
 // Runs last: it inspects every problem V3 and V8 produced.
 {
@@ -1262,9 +1394,9 @@ const layerOf = (name, edition, requires, files = {}) => ({
   manifest: { name, title: name, edition, requires },
   types: files.types ?? null, things: files.things ?? null, proposals: files.proposals ?? null
 })
-const typesFile     = (types = [], sectionsFor = {}, fieldsFor = {}) => ({ version: 6, types, sectionsFor, fieldsFor })
-const thingsFile    = (things) => ({ version: 6, things })
-const proposalsFile = (totalBudget, groups, groupRules = {}) => ({ version: 6, totalBudget, groups, groupRules })
+const typesFile     = (types = [], sectionsFor = {}, fieldsFor = {}) => ({ version: 7, types, sectionsFor, fieldsFor })
+const thingsFile    = (things) => ({ version: 7, things })
+const proposalsFile = (totalBudget, groups, groupRules = {}) => ({ version: 7, totalBudget, groups, groupRules })
 const thingOf = (id, name, cost = 0, rest = {}) => ({ id, name, cost, imageURL: '', ...rest })
 
 // ── Basic 1: the seven sheets, structure only (§10.1) ──
@@ -1364,13 +1496,13 @@ const dupFx = () => layerOf('dup', 1, [{ name: 'basic', edition: 1 }], {
 // ── the game: pins the three books, one own sheet, one own thing on a BOOK
 // sheet with a placement, one own row, one label override, one arrangement ──
 const gameFx = () => ({
-  content: { version: 6, meta: { pageTitle: 'Dino', heroTitle: 'Dino' }, books: [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 1 }],
+  content: { version: 7, meta: { pageTitle: 'Dino', heroTitle: 'Dino' }, books: [{ name: 'basic', edition: 1 }, { name: 'stats', edition: 1 }, { name: 'dinosaur-age', edition: 1 }],
     groups: [{ id: 'own-row', label: 'Own row', query: { type: 'own-sheet', where: null }, showWhen: { kind: 'always' }, children: [] }],
     rowOverrides: { 'dinosaur-age:row-lairs': { label: 'Now select a Lair!' } } },
-  rules:  { version: 6, groupRules: {} },
-  themes: { version: 6, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
+  rules:  { version: 7, groupRules: {} },
+  themes: { version: 7, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
   types:  typesFile([{ id: 'own-sheet', label: 'Own', sections: [fieldsSection('own-sheet', 'identity', 'Identity', [{ id: 'own-sheet.identity.note', key: 'note', caption: 'Note', type: 'text' }])] }]),
-  things: { version: 6, things: {
+  things: { version: 7, things: {
     'basic:character': [thingOf('own-tali', 'Tali', 1, { concept: 'A biggie dino!', size: 'biggie', origin: [{ thing: 'dinosaur-age:tyrannosaurus' }], notes: ['stompies'] })],
     'basic:item': [thingOf('own-hat', 'Party hat', 1, { description: 'Squeak', tags: [] })],
     'own-sheet': [thingOf('own-thing', 'Own thing', 0, { note: '' })]
@@ -1445,7 +1577,7 @@ const faultLines = (result) => result.faults.map(problemText)
   assert.deepEqual(set.content.rowOverrides, {})
   assert.deepEqual([set.types.sectionsFor, set.types.fieldsFor], [{}, {}])
   assert.equal(set.things.order, undefined, 'the arrangement has been applied, not carried')
-  FILE_NAMES.forEach(name => assert.equal(set[name].version, 6))
+  FILE_NAMES.forEach(name => assert.equal(set[name].version, 7))
   assert.deepEqual(validateSet(set), [], 'and the flattened world fits the contract on its own')
   ok(`K2 add-only union: ${set.types.types.length} sheets, Character's 11 sections with Stats' 4 attributes and Dinosaur Age's size; every merged sheet gets a bucket; origins is total (${origins.size} ids); every book element deep-equals its own copy; the output is bookless and canonical`)
 }
@@ -1544,7 +1676,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
   // F2b: a book file written for another version takes the WHOLE book with it
   const stale = withZZ({ types: { version: 4, types: [], sectionsFor: {}, fieldsFor: {} } })
   const staleResult = mergeLayers({ books: stale, game: pinning(stale) })
-  assert.deepEqual(faultLines(staleResult), ['books["zz"].types.version: must be 6 (found 4) — this book was written for another version; the book is skipped'])
+  assert.deepEqual(faultLines(staleResult), ['books["zz"].types.version: must be 7 (found 4) — this book was written for another version; the book is skipped'])
   assert.equal([...staleResult.origins.values()].includes('zz 1'), false, 'nothing of a skipped book reaches origins')
   assert.equal(staleResult.order.includes('zz 1'), false, 'nor the layer order')
   ok(`K4 bad additions: F7–F12 each ONE fault at the catalogue's path with the rest still merged; F11 keeps the section and offers nothing; a GAME orphan bucket is a leftover, not a fault; a book file at version 4 is F2b and the whole book is skipped`)
@@ -1783,7 +1915,7 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
     ['book.edition: must be 1 — the folder\'s edition (found 2)'])
   bookCase('a book that requires itself', book => { book.manifest.requires = [{ name: 'stats', edition: 1 }] },
     ['book.requires[0]: a book cannot require itself'])
-  bookCase('a book that arranges a shelf', book => { book.things = { version: 6, things: {}, order: { 'basic:place': ['x'] } } },
+  bookCase('a book that arranges a shelf', book => { book.things = { version: 7, things: {}, order: { 'basic:place': ['x'] } } },
     ['things.order: a book may not arrange a shelf (order is the game\'s)'])
   // a requirement the shelf cannot answer: the merge names it at book.requires[i]
   assert.deepEqual(validateBook(statsFx(), {}).map(problemText), ['book.requires[0]: "basic" 1 is not on the shelf'])
@@ -1865,6 +1997,86 @@ const withZZ = (files) => [basicFx(), statsFx(), dinoAgeFx(1), zzFx(files)]
   const shuffledBooks = [...layers()].reverse()
   assert.deepEqual(mergeLayers({ books: shuffledBooks, game: shuffled }).set, merged, 'permuting content.books merges identically')
   ok('K10 the merge carries the sheet and the binding: content.sheet is the game\'s alone and lands after books; absent stays absent (a bookless game with no sheet merges to itself); a rowOverride\'s fills beats a proposal, an absent one lets it through, a row nobody bound has no `fills` key; a merged bound row is id,label,query,fills,showWhen,children; flattenGame is still a fixed point; pin order still changes nothing')
+}
+
+// ───────────────────────── K11 demands cross the merge (NEW) ─────────────────────────
+// A prerequisite REFERENCES ids while DEFINING none, so it crosses a book boundary the
+// way nothing else in this data does: Dinosaur Age's trait may demand something of the
+// section BASIC defines, and no new fault code is needed for it. Three claims, and the
+// middle one is the decision §6.1 makes:
+//   pinned together        zero faults, zero cross faults, the thing's bytes unmoved
+//   the sheet NOT there    STILL zero faults — a book that ships a rule a game cannot
+//                          run is a well-formed book; the BORDER refuses to offer the
+//                          entry, once, by name (that sentence is oracles.mjs's G4).
+//                          Making it a FAULT would make the book unpinnable.
+//   the book un-pinnable   its requirement missing is the ordinary F3, unchanged
+{
+  // one shelf-and-sheet book, and one book that demands something of it
+  const alphaFx = () => layerOf('alpha', 1, [], { types: typesFile([
+    { id: 'alpha:hero', label: 'Hero', sections: [
+      fieldsSection('alpha:hero', 'identity', 'Identity', [bookField('alpha:hero.identity', 'concept', 'Concept', 'text')]),
+      listSectionOf('alpha:hero', 'traits', 'Traits', 'alpha:trait')
+    ] },
+    { id: 'alpha:trait', label: 'Trait', sections: [fieldsSection('alpha:trait', 'identity', 'Identity', [bookField('alpha:trait.identity', 'description', 'Description', 'text')])] }
+  ]), things: thingsFile({ 'alpha:trait': [thingOf('alpha:brave', 'Brave', 0, { description: 'Stands up.' })] }) })
+  const DEMAND = { field: 'alpha:hero.traits', op: 'holds', value: 'alpha:brave' }
+  // `null` means the thing carries NO `demands` key at all — the honest spelling of
+  // "demands nothing", and the shape every committed thing on the shelf has.
+  const betaFx = (demands = [DEMAND]) => layerOf('beta', 1, [{ name: 'alpha', edition: 1 }], {
+    things: thingsFile({ 'alpha:trait': [{ ...thingOf('beta:braver', 'Braver', 1, { description: 'Stands up twice.' }), ...(demands === null ? {} : { demands }) }] })
+  })
+  const gameOn = (pins, sheet) => {
+    const game = pinning([], pins)
+    game.content.sheet = sheet
+    return game
+  }
+  const BOTH = [{ name: 'alpha', edition: 1 }, { name: 'beta', edition: 1 }]
+
+  // (a) pinned together: nothing to report, and the thing arrives BYTE-IDENTICAL
+  const layers = [alphaFx(), betaFx()]
+  const own = gameOn(BOTH, 'alpha:hero')
+  assert.deepEqual(validateGame({ own, books: layers }), [], 'a demand that crosses a book boundary is no fault at all')
+  const result = mergeLayers({ books: layers, game: own })
+  assert.deepEqual(faultLines(result), [])
+  assert.deepEqual(crossChecks(result.set), [], 'and nothing dangles')
+  const merged = result.set.things.things['alpha:trait'].find(thing => thing.id === 'beta:braver')
+  assert.deepEqual(merged, betaFx().things.things['alpha:trait'][0], 'the thing crosses the merge unchanged, demands and all')
+  assert.deepEqual(Object.keys(merged), ['id', 'name', 'cost', 'imageURL', 'description', 'demands'], 'including its own key order — the merge moves no byte')
+
+  // (b) A DEMAND CLAIMS NO ID. The one line that says a prerequisite is a reference and
+  // never a definition: adding one leaves the id space exactly as it was.
+  const without = mergeLayers({ books: [alphaFx(), betaFx(null)], game: own })
+  assert.equal(result.origins.size, without.origins.size, 'the same number of ids either way')
+  assert.deepEqual([...result.origins.keys()].sort(), [...without.origins.keys()].sort(), 'and the same ids: a demand defines nothing')
+
+  // (c) §6.1's decision, asserted: a game whose sheet cannot answer the demand is still
+  // a WELL-FORMED game. The file is fine; the entry is simply not on sale, and the
+  // border says so once by name (oracles.mjs G4 pins that sentence over a real game).
+  const otherSheet = gameOn(BOTH, 'alpha:trait')
+  assert.deepEqual(validateGame({ own: otherSheet, books: layers }), [], 'another sheet: still zero faults')
+  const otherType = mergeLayers({ books: layers, game: otherSheet }).set.types.types.find(type => type.id === 'alpha:trait')
+  assert.equal(demandFieldById(otherType, DEMAND.field), undefined, 'though THIS sheet has no such slot — which is exactly what the border refuses to offer')
+  const noSheet = gameOn(BOTH, '')
+  assert.deepEqual(validateGame({ own: noSheet, books: layers }), [], 'and a game that builds no sheet at all: still zero faults')
+
+  // (d) the ordinary F3 is untouched: un-pinning alpha is a REQUIREMENT fault, not a
+  // demand fault, and beta's whole layer is skipped exactly as it always was
+  const alone = gameOn([{ name: 'beta', edition: 1 }], '')
+  assert.deepEqual(mergeLayers({ books: [betaFx()], game: alone }).faults.map(problemText),
+    ['content.books[0]: "beta" 1 requires "alpha" 1 — not pinned; the book is skipped'])
+
+  // (e) a BOOK validates against NO game, and it judges the demands it ships
+  const shelf = { alpha: { 1: alphaFx() } }
+  assert.deepEqual(validateBook(betaFx(), shelf), [], 'a book carrying a demand fits')
+  assert.deepEqual(validateBook(betaFx([{ field: 'alpha:hero.traits', op: 'gte', value: 2 }]), shelf).map(problemText),
+    ['things.things["alpha:trait"][1].demands[0].op: demand operator "gte" does not fit a list field (traits)'],
+    'and a demand it cannot answer is the book\'s own fault — reported over the merged shelf validateBook builds from its requirements, which is where the section it names lives')
+
+  // (f) flattenGame is still its own fixed point with demands present (K8's twin)
+  const flat = flattenGame({ books: layers, game: own })
+  assert.deepEqual(mergeLayers({ books: [], game: flattenGame({ books: layers, game: own }) }).set, flat, 'flattening twice is flattening once')
+  assert.deepEqual(validateSet(flat), [], 'and the flattened game fits alone, demands and all')
+  ok('K11 demands cross the merge: a book\'s thing demanding another book\'s section is zero faults and crosses byte-identical (key order included); a demand claims no id, so origins is unchanged by one; a game whose sheet cannot answer it is STILL well-formed (§6.1 — the border refuses to offer it, the file is fine) while un-pinning the required book is the ordinary F3; validateBook judges a book\'s own demands against no game; flattenGame is still a fixed point')
 }
 
 // ═════════════════════ the player's sheet: P1–P9 (NEW, v6) ═════════════════════
@@ -1998,7 +2210,10 @@ const BLANK_FIELDS = { name: '', concept: '', size: 'tiny', strength: 10, dexter
   })
   const built = build([gearA, gearB, lairs, plain])
   // (2) THE headline claim: the player's sheet is a THING of its type
-  assert.deepEqual(Object.keys(built), thingKeys(CHARACTER), 'the built sheet\'s keys ARE thingKeys(type)')
+  // AMENDED (v7): sheetKeys, not thingKeys. A THING may carry `demands`; a SHEET never does —
+  // a sheet is what demands are ABOUT. The claim is unchanged in substance: the built sheet's
+  // keys ARE the schema's own list, walked rather than repeated here.
+  assert.deepEqual(Object.keys(built), sheetKeys(CHARACTER), 'the built sheet\'s keys ARE sheetKeys(type)')
   assert.deepEqual(Object.keys(built), SHEET_KEYS, '§2.4\'s measured order — `notes` (a fields section, and the LAST one) lands before `origin` (a list section, the third)')
   // (1) sections in sheet order; entries in ROW order, then pick order
   assert.deepEqual(built.gear, [{ thing: 'rock', quantity: 3 }, { thing: 'banana', quantity: 2 }, { thing: 'skates', quantity: 1 }], 'two rows into one section: row order, then pick order')
@@ -2028,7 +2243,7 @@ const BLANK_FIELDS = { name: '', concept: '', size: 'tiny', strength: 10, dexter
   build([gearA, gearB, lairs, plain])
   assert.equal(JSON.stringify(typed), beforeTyped, 'building twice mutates nothing')
   assert.notEqual(build([gearA]).gear, built.gear, 'and every call builds its own arrays')
-  ok('P4 buildSheet: Object.keys IS thingKeys(type) (notes before origin, measured); two rows filling one section interleave in row order then pick order; cost is what was spent; no id, no image; an unfilled section is [] and an unbound row adds nothing; typed keys and list-section keys are provably disjoint; the projection is order-blind and mutates nothing')
+  ok('P4 buildSheet: Object.keys IS sheetKeys(type) (notes before origin, measured); two rows filling one section interleave in row order then pick order; cost is what was spent; no id, no image; an unfilled section is [] and an unbound row adds nothing; typed keys and list-section keys are provably disjoint; the projection is order-blind and mutates nothing')
 }
 
 // ───────────────────────── P5 readValue, the player's typing border ─────────────────────────
@@ -2289,6 +2504,672 @@ const rewrite = (text, world) => {
   assert.deepEqual(nasty.notes, ['The field "__proto__" is no longer on this sheet; what you typed there was dropped.'])
   assert.equal(({}).x, undefined, 'and nothing was polluted')
   ok(`P9 readKept is total and pure: ${garbage.length} kinds of garbage each give { ok: false } with a sentence and no throw; the world deep-equals its clone afterwards and the text is unchanged; places carry the caller's own row and item objects; "__proto__" is just an unknown slot`)
+}
+
+// ═══════════ what an entry DEMANDS: L20–L31, P10 (NEW, v7) ═══════════
+// demands.js says what a demand IS and how it is judged, checked and said; state.js
+// runs it at the ONE door and in the ONE loop. The first six checks below are pure —
+// tables, walkers and sentences over hand-made types. The four after them need the
+// REAL gameState, and that costs one thing worth saying out loud:
+//
+//   gameConfig.js does its loading at IMPORT time, once per process, so ONE node
+//   process holds exactly ONE world. The world below is built in memory and served
+//   through a fake `fetch` — no disk, no shelf, no child process, so this file's
+//   promise is kept — and every scenario is then written into it by giving a thing
+//   its `demands` and asking the state to settle. That is not a shortcut around the
+//   border: the border's own refusals are a different question, asked of a real
+//   hydration in oracles.mjs (G4), and what these four checks are about is the
+//   EVALUATOR, which is a pure function of (selections, typed) and of nothing else.
+
+// ───────────────────────── L20 the tables ─────────────────────────
+{
+  // THE UNTOUCHED HALF, and it is the reason PLACEMENT_OPERATORS is a separate table:
+  // OPERATORS names the four fieldDef KINDS an author may choose for a field, V1 pins
+  // that, and a LIST section is not a field an author defines.
+  assert.deepEqual(Object.keys(OPERATORS), ['text', 'number', 'lines', 'choice'], 'OPERATORS is UNTOUCHED at v7')
+  assert.deepEqual(PLACEMENT_OPERATORS.map(operator => operator.value), ['holds', 'lacks', 'any', 'none'])
+  assert.deepEqual(PLACEMENT_OPERATORS.map(operator => operator.label), ['holds', 'does not hold', 'holds anything', 'holds nothing'])
+  assert.deepEqual(PLACEMENT_OPERATORS.map(operator => operator.valueless === true), [false, false, true, true], 'only the two that name nothing are valueless')
+  assert.equal(placementOperatorOf('holds'), PLACEMENT_OPERATORS[0], 'found by its stored value')
+  assert.equal(placementOperatorOf('is'), undefined, 'a field kind\'s operator is not in this table')
+  assert.equal(placementOperatorOf('constructor'), undefined, 'and neither is a name every object already has')
+  // EVERY KIND IS CLOSED UNDER NEGATION, including the new one — which is the whole
+  // reason a thing needs no second `excludes` key. Over a MATCHING and a NON-MATCHING
+  // sample for all five pairs: P.test(h, w) === !N.test(h, w), both ways.
+  const pairs = [
+    ['text', OPERATORS.text[0], OPERATORS.text[1], ['a', 'a'], ['z', 'a']],
+    ['number', OPERATORS.number[0], OPERATORS.number[1], [3, 3], [4, 3]],
+    ['lines', OPERATORS.lines[0], OPERATORS.lines[1], [['x'], 'x'], [[], 'x']],
+    ['holds/lacks', PLACEMENT_OPERATORS[0], PLACEMENT_OPERATORS[1], [[{ thing: 'a' }], 'a'], [[], 'a']],
+    ['any/none', PLACEMENT_OPERATORS[2], PLACEMENT_OPERATORS[3], [[{ thing: 'a' }], ''], [[], '']]
+  ]
+  pairs.forEach(([label, positive, negative, matching, missing]) => {
+    assert.equal(positive.test(...matching), !negative.test(...matching), `${label}: closed over a matching sample`)
+    assert.equal(positive.test(...missing), !negative.test(...missing), `${label}: closed over a non-matching sample`)
+  })
+  // DEMAND_OPS is derived from both tables, so it can never fall behind one. `lacks`
+  // is in BOTH and appears ONCE — the same meaning, a different subject — and the Set
+  // is what makes that a fact instead of a duplicate.
+  assert.deepEqual(DEMAND_OPS, ['is', 'isNot', 'eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'has', 'lacks', 'holds', 'any', 'none'])
+  assert.equal(DEMAND_OPS.length, 13)
+  assert.equal(new Set(DEMAND_OPS).size, 13, '13 DISTINCT values')
+  assert.equal(DEMAND_OPS.filter(value => value === 'lacks').length, 1, 'and `lacks` is in it exactly once, on purpose')
+  ok('L20 the tables: OPERATORS still its four fieldDef kinds; PLACEMENT_OPERATORS is a separate holds/lacks/any/none with `valueless` on the two that name nothing; all five kinds closed under negation over a matching AND a non-matching sample; DEMAND_OPS is 13 distinct values with `lacks` appearing once')
+}
+
+// ───────────────────────── L21 what a demand may name ─────────────────────────
+{
+  const walked = { id: 'w:s', label: 'S', sections: [
+    fieldsSection('w:s', 'stats', 'Stats', [bookField('w:s.stats', 'strength', 'Strength', 'number', { default: 10 })]),
+    listSectionOf('w:s', 'traits', 'Traits', 'w:trait')
+  ] }
+  const slots = demandFields(walked)
+  assert.deepEqual(slots.map(field => field.id), ['w:s.stats.strength', 'w:s.traits'], 'what the player TYPES, then what the player PICKED')
+  assert.deepEqual(slots.slice(0, 1), fieldsOfType(walked), 'the fields half IS fieldsOfType, by identity of contents')
+  assert.deepEqual(slots[1], asDemandField(listSectionsOf(walked)[0]), 'and the list half is asDemandField of each list section')
+  assert.deepEqual(Object.keys(slots[1]), ['id', 'key', 'caption', 'type', 'section'])
+  assert.equal(slots[1].type, 'placements', 'a section wears the same kind name the card walkers use')
+  assert.equal(slots[1].section, listSectionsOf(walked)[0], 'and carries the section itself, which is what every reader dispatches on')
+  // THE CORE THREE ARE UNREACHABLE, and `cost` is the one that matters: a sheet's cost
+  // is `spent`, DERIVED FROM THE VERY PICKS BEING JUDGED, so a demand on it would be the
+  // only circular condition in the language.
+  assert.equal(demandFieldById(walked, 'core:cost'), undefined, 'cost is spent — the one circular condition, excluded')
+  assert.equal(demandFieldById(walked, 'core:name'), undefined)
+  assert.equal(demandFieldById(walked, 'w:s.stats.strength'), slots[0], 'and a real slot is found by id')
+  assert.equal(demandFieldById(walked, 'w:s.nope'), undefined)
+  // over the REAL merged dino Character: seven typed slots then eight list sections
+  assert.equal(demandFields(CHARACTER).length, 15)
+  assert.deepEqual(demandFields(CHARACTER).map(field => field.key),
+    ['concept', 'size', 'strength', 'dexterity', 'intelligence', 'health', 'notes',
+     'origin', 'advantages', 'disadvantages', 'skills', 'gear', 'companions', 'places', 'ties'])
+  assert.deepEqual(demandFields(CHARACTER).filter(field => field.id.startsWith('core:')), [], 'not one core slot is offered')
+  ok('L21 what a demand may name: demandFields is fieldsOfType then listSectionsOf dressed by asDemandField (id, key, caption, type "placements", section); core:cost and core:name are undefined; over the real merged Character it is 15 slots and none of them core')
+}
+
+// ───────────────────────── L22 checkDemand, one sentence per fault ─────────────────────────
+// Full string equality, because the border warns with these words, the validator
+// reports them by path and the editor badges the card with them.
+{
+  const type = { id: 't:s', label: 'S', sections: [
+    fieldsSection('t:s', 'stats', 'Stats', [
+      bookField('t:s.stats', 'strength', 'Strength', 'number', { default: 10 }),
+      bookField('t:s.stats', 'concept', 'Concept', 'text'),
+      bookField('t:s.stats', 'notes', 'Notes', 'lines'),
+      bookField('t:s.stats', 'size', 'Size', 'choice', { options: ['small', 'biggie'] })
+    ]),
+    listSectionOf('t:s', 'origin', 'Origin', 't:origin')
+  ] }
+  const shelf = new Set(['t:rex'])
+  const check = (demand) => checkDemand(demand, demandFieldById(type, demand.field), shelf)
+  assert.equal(check({ field: 't:s.nope', op: 'holds', value: '' }), 'names a field that does not exist (t:s.nope)')
+  assert.equal(check({ field: 't:s.origin', op: 'gte', value: 1 }), 'operator "gte" does not fit a list field (origin)')
+  assert.equal(check({ field: 't:s.stats.strength', op: 'holds', value: 'x' }), 'operator "holds" does not fit a number field (strength)')
+  assert.equal(check({ field: 't:s.origin', op: 'none', value: 'x' }), 'operator "holds nothing" takes no value (found "x")')
+  assert.equal(check({ field: 't:s.stats.strength', op: 'gte', value: '12' }), 'value "12" is not a number (strength)')
+  assert.equal(check({ field: 't:s.origin', op: 'holds', value: 't:nope' }), 'names a thing that is not on the Origin shelf (t:nope)')
+  // null for one healthy demand of each of the five operator families
+  const healthy = [
+    { field: 't:s.stats.concept', op: 'is', value: 'x' },
+    { field: 't:s.stats.strength', op: 'gte', value: 12 },
+    { field: 't:s.stats.notes', op: 'has', value: 'a line' },
+    { field: 't:s.stats.size', op: 'isNot', value: 'biggie' },
+    { field: 't:s.origin', op: 'holds', value: 't:rex' },
+    { field: 't:s.origin', op: 'none', value: '' }
+  ]
+  healthy.forEach(demand => assert.equal(check(demand), null, `healthy: ${JSON.stringify(demand)}`))
+  assert.equal(checkDemand({ field: 't:s.origin', op: 'holds', value: 't:nope' }, demandFieldById(type, 't:s.origin'), null), null,
+    'and `shelfIds: null` skips the shelf question — the one caller that cannot know the shelf asks it that way')
+  // TOTAL on garbage: a sentence every time, and never a throw
+  const junk = [{ field: 1 }, { field: 't:s.origin', op: '__proto__', value: '' }, { field: 't:s.origin', op: 'holds', value: undefined },
+                { field: 't:s.origin', op: 'toString', value: '' }, { field: 't:s.stats.strength', op: 'gte', value: {} }]
+  junk.forEach(demand => {
+    const answer = check(demand)
+    assert.equal(typeof answer, 'string', `garbage gets a sentence, never a throw: ${JSON.stringify(demand)}`)
+    assert.ok(answer.length > 0 && !answer.includes('\n'), 'one line')
+  })
+  // THE SPLIT, said out loud because a reader will look for NaN here and not find it:
+  // checkDemand asks "can this demand be JUDGED?", so it asks the value's JSON TYPE and
+  // nothing more. Whether a number is FINITE is a SHAPE question, and shape questions
+  // are the validator's — checkCondition refuses NaN at the file's own path (V10).
+  assert.equal(check({ field: 't:s.stats.strength', op: 'gte', value: NaN }), null, 'a NaN is a number to this question…')
+  const shapeOut = []
+  checkCondition({ field: 't:s.stats.strength', op: 'gte', value: NaN }, 'somewhere', shapeOut, DEMAND_OPS)
+  assert.deepEqual(shapeOut, [{ path: 'somewhere.value', message: 'must be a string or a number (found NaN)' }], '…and the validator is where it is refused')
+  ok('L22 checkDemand: the six sentences by full string equality (a missing slot, an op that fits neither a list nor a number, a valueless op carrying a value, a wrongly typed value, a thing off the shelf), null for a healthy demand of every operator family, `shelfIds: null` skipping the shelf question, a sentence with no throw for five kinds of garbage, and NaN passing here while the validator refuses it — judging and shape are two questions')
+}
+
+// ───────────────────────── L23 meetsDemand, the truth table ─────────────────────────
+{
+  const type = { id: 't:s', label: 'S', sections: [
+    fieldsSection('t:s', 'stats', 'Stats', [bookField('t:s.stats', 'strength', 'Strength', 'number', { default: 10 })]),
+    listSectionOf('t:s', 'origin', 'Origin', 't:origin')
+  ] }
+  const holds = (subject, op, value) => meetsDemand({ field: 't:s.origin', op, value }, demandFieldById(type, 't:s.origin'), subject)
+  const present = { origin: [{ thing: 't:rex' }] }
+  const absent  = { origin: [{ thing: 't:ptero' }] }
+  const empty   = { origin: [] }
+  // 4 placement operators × (present / absent / empty)
+  const rows = [
+    ['holds', 't:rex', [true, false, false]],
+    ['lacks', 't:rex', [false, true, true]],
+    ['any',   '',      [true, true, false]],
+    ['none',  '',      [false, false, true]]
+  ]
+  rows.forEach(([op, value, want]) => assert.deepEqual([holds(present, op, value), holds(absent, op, value), holds(empty, op, value)], want, `origin ${op}`))
+  // 6 number operators × (below / equal / above)
+  const strength = (value, op, want) => meetsDemand({ field: 't:s.stats.strength', op, value: 12 }, demandFieldById(type, 't:s.stats.strength'), { strength: value })
+  const table = { eq: [false, true, false], ne: [true, false, true], lt: [true, false, false], lte: [true, true, false], gt: [false, false, true], gte: [false, true, true] }
+  Object.entries(table).forEach(([op, want]) => assert.deepEqual([11, 12, 13].map(value => strength(value, op)), want, `strength ${op} 12`))
+  // a MISSING typed value reads as the FIELD's own default — L4's promise, one storey up
+  assert.equal(meetsDemand({ field: 't:s.stats.strength', op: 'gte', value: 10 }, demandFieldById(type, 't:s.stats.strength'), {}), true, 'an untouched Strength is the book\'s 10, not 0')
+  assert.equal(meetsDemand({ field: 't:s.stats.strength', op: 'gte', value: 11 }, demandFieldById(type, 't:s.stats.strength'), {}), false)
+  // FAIL CLOSED, four ways, and never a throw
+  assert.equal(holds({ origin: 'oops' }, 'holds', 't:rex'), false, 'a section holding a non-array reads as []')
+  assert.equal(holds({ origin: 'oops' }, 'none', ''), true, '…so `holds nothing` is honestly true of it')
+  assert.equal(holds({}, 'holds', 't:rex'), false, 'and an absent section is [] too')
+  assert.equal(meetsDemand({ field: 't:s.nope', op: 'holds', value: 'x' }, demandFieldById(type, 't:s.nope'), present), false, 'an unknown slot is FALSE')
+  assert.equal(meetsDemand({ field: 't:s.origin', op: '__proto__', value: 'x' }, demandFieldById(type, 't:s.origin'), present), false, 'an unknown operator is FALSE')
+  assert.equal(holds({ origin: [null, { thing: 't:rex' }] }, 'holds', 't:rex'), true, 'a hole in the list is stepped over, not thrown on')
+  ok('L23 meetsDemand: 12 placement rows (4 operators × present/absent/empty) and 18 number rows (6 × below/equal/above); a missing typed value reads the FIELD\'s default (10, not 0); a section holding a non-array reads as [], an unknown slot and an unknown operator are false, and nothing throws')
+}
+
+// ───────────────────────── L24 demandText, and the first unmet ─────────────────────────
+{
+  const type = { id: 't:s', label: 'S', sections: [
+    fieldsSection('t:s', 'stats', 'Stats', [bookField('t:s.stats', 'strength', 'Strength', 'number', { default: 10 })]),
+    listSectionOf('t:s', 'origin', 'Origin', 't:origin')
+  ] }
+  const nameOf = (id) => id === 't:rex' ? 'Tyrannosaurus' : id
+  const said = (demand) => demandText(demand, demandFieldById(type, demand.field), nameOf)
+  assert.equal(said({ field: 't:s.origin', op: 'holds', value: 't:rex' }), 'Origin holds Tyrannosaurus')
+  assert.equal(said({ field: 't:s.origin', op: 'lacks', value: 't:rex' }), 'Origin does not hold Tyrannosaurus')
+  assert.equal(said({ field: 't:s.origin', op: 'any',   value: '' }),      'Origin holds anything')
+  assert.equal(said({ field: 't:s.origin', op: 'none',  value: '' }),      'Origin holds nothing')
+  assert.equal(said({ field: 't:s.stats.strength', op: 'gte', value: 12 }), 'Strength ≥ 12')
+  assert.equal(said({ field: 't:nope', op: 'gte', value: 12 }), 'an unknown demand (t:nope)', 'a slot that is gone: ONE sentence, no throw')
+  assert.equal(said({ field: 't:s.origin', op: '__proto__', value: 'x' }), 'an unknown demand (t:s.origin)', 'and so is an operator that is gone')
+  assert.equal(said({ field: 't:s.origin', op: 'holds', value: 't:unknown' }), 'Origin holds t:unknown', 'nameOf falls back to the id, so a name is never blank')
+  // firstUnmet: the FIRST failing demand in AUTHOR order, or null
+  const subject = { origin: [{ thing: 't:rex' }], strength: 10 }
+  const list = [{ field: 't:s.origin', op: 'holds', value: 't:rex' },
+                { field: 't:s.stats.strength', op: 'gte', value: 12 },
+                { field: 't:s.origin', op: 'none', value: '' }]
+  assert.deepEqual(firstUnmet(list, type, subject), list[1], 'the first failing one, not the last and not all of them')
+  assert.equal(firstUnmet([list[0]], type, subject), null, 'all met → null')
+  assert.equal(firstUnmet([], type, subject), null)
+  assert.equal(firstUnmet(undefined, type, subject), null, 'and an absent list is no demands at all')
+  // demandsOf: TOTAL, so no caller ever tests the key
+  assert.deepEqual(demandsOf({ id: 'x' }), [], 'a thing that demands nothing carries NO key, and this is the one function that knows it')
+  assert.deepEqual(demandsOf({ id: 'x', demands: 'oops' }), [])
+  assert.equal(demandsOf({ id: 'x', demands: list }), list, 'and a real list comes back as the same array')
+  ok('L24 demandText: the five sentences verbatim, an unknown slot and an unknown operator each ONE sentence with no throw, nameOf falling back to the id; firstUnmet is the FIRST failing demand in author order and null for met/empty/absent; demandsOf is total')
+}
+
+// ══════ the REAL gameState: one world, in memory, through a fake fetch ══════
+// The world is two rows over one sheet: Traits (always, filling a list section) and
+// Gear (gated on Traits, filling another). Every thing is born WITHOUT demands and a
+// scenario writes them; the border therefore has nothing to refuse here, which is the
+// point — G4 in oracles.mjs is where the border is asked its own question.
+const D_TRAITS = 'd:sheet.traits'
+const D_SIZE   = 'd:sheet.stats.size'
+const dHolds = (id) => ({ field: D_TRAITS, op: 'holds', value: id })
+const dLacks = (id) => ({ field: D_TRAITS, op: 'lacks', value: id })
+const dNone  = ()   => ({ field: D_TRAITS, op: 'none',  value: '' })
+const CHAIN = 50
+const demandWorld = () => ({
+  content: { version: 7, meta: { pageTitle: 'Demands', heroTitle: 'Demands' }, books: [], sheet: 'd:sheet', groups: [
+    { id: 'r-traits', label: 'Traits', query: { type: 'd:trait', where: null }, fills: D_TRAITS, showWhen: { kind: 'always' }, children: [] },
+    { id: 'r-gear', label: 'Gear', query: { type: 'd:gear', where: null }, fills: 'd:sheet.gear', showWhen: { kind: 'anyInRow', row: 'r-traits' }, children: [] }
+  ], rowOverrides: {} },
+  rules:  { version: 7, totalBudget: 100, groupRules: {} },
+  themes: { version: 7, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
+  types:  typesFile([
+    { id: 'd:sheet', label: 'Sheet', sections: [
+      fieldsSection('d:sheet', 'stats', 'Stats', [
+        bookField('d:sheet.stats', 'strength', 'Strength', 'number', { default: 10 }),
+        bookField('d:sheet.stats', 'size', 'Size', 'choice', { options: ['small', 'biggie'] })
+      ]),
+      listSectionOf('d:sheet', 'traits', 'Traits', 'd:trait'),
+      listSectionOf('d:sheet', 'gear', 'Gear', 'd:gear')
+    ] },
+    { id: 'd:trait', label: 'Trait', sections: [fieldsSection('d:trait', 'identity', 'Identity', [])] },
+    { id: 'd:gear', label: 'Gear', sections: [fieldsSection('d:gear', 'identity', 'Identity', [])] }
+  ]),
+  things: thingsFile({
+    'd:trait': [
+      thingOf('d:sun', 'Sunbather'), thingOf('d:night', 'Nightborn'), thingOf('d:clean', 'Clean Living'),
+      thingOf('d:else', 'Something Else'), thingOf('d:mage', 'Mage'), thingOf('d:fireball', 'Fireball'),
+      thingOf('d:inferno', 'Inferno'), thingOf('d:trigger', 'Trigger'), thingOf('d:unrelated', 'Unrelated'),
+      ...Array.from({ length: CHAIN }, (unused, i) => thingOf(`d:c${i}`, `C${i}`))
+    ],
+    'd:gear': [thingOf('d:passenger', 'Passenger'), thingOf('d:doomed', 'Doomed')]
+  })
+})
+// the fake fetch, and it is put back the moment the import has finished — nothing
+// else in this file or in oracles.mjs may inherit it
+const { gameState, worldRows, WORLD_SHEET, importWarnings } = await (async () => {
+  const files = demandWorld()
+  const realFetch = globalThis.fetch
+  const realWarn = console.warn
+  const warnings = []
+  console.warn = (...parts) => warnings.push(parts.join(' '))
+  globalThis.fetch = async (url) => {
+    const name = String(url).replace(/^\/?data\//, '').replace(/\.json$/, '')
+    return files[name] === undefined
+      ? { ok: false, status: 404, json: async () => { throw new Error(`404 ${url}`) } }
+      : { ok: true, status: 200, json: async () => structuredClone(files[name]) }
+  }
+  try {
+    const state = await import('../engine/state.js')
+    const border = await import('../engine/config/gameConfig.js')
+    return { gameState: state.gameState, worldRows: border.groups, WORLD_SHEET: border.playerSheet, importWarnings: warnings }
+  } finally { globalThis.fetch = realFetch; console.warn = realWarn }
+})()
+const TRAITS_ROW = worldRows.find(row => row.id === 'r-traits')
+const GEAR_ROW   = worldRows.find(row => row.id === 'r-gear')
+const EVERY_ITEM = [...TRAITS_ROW.items, ...GEAR_ROW.items]
+const itemOf  = (id) => EVERY_ITEM.find(item => item.id === id)
+const rowOf   = (item) => TRAITS_ROW.items.includes(item) ? TRAITS_ROW : GEAR_ROW
+const held    = () => gameState.picksInOrder.map(({ item }) => item.name)
+// every scenario starts from the same blank world, with every rule taken back off
+const clear = () => {
+  EVERY_ITEM.forEach(item => { item.demands = [] })
+  gameState.startOver()
+}
+const demand = (id, list) => { itemOf(id).demands = list; return itemOf(id) }
+const take   = (id, guards) => gameState.place(rowOf(itemOf(id)), itemOf(id), {}, guards)
+const plant  = (id) => take(id, { gate: false, budget: false, demands: false })
+// settle(), with the ONE number the loop's proof is about. lastUnmetPick is called
+// exactly ONCE per round, so wrapping it counts rounds without changing an answer —
+// which is the only way to measure a loop whose own state says only what it removed.
+const settleRounds = () => {
+  let rounds = 0
+  const real = gameState.lastUnmetPick
+  gameState.lastUnmetPick = function counted(...args) { rounds += 1; return real.apply(this, args) }
+  try { gameState.settle() } finally { gameState.lastUnmetPick = real }
+  return rounds
+}
+
+// ───────────────────────── L25 the subject IS buildSheet ─────────────────────────
+{
+  clear()
+  assert.deepEqual(importWarnings, [], 'the demand world hydrates with no warning at all')
+  plant('d:sun'); plant('d:night')
+  const sun = itemOf('d:sun'), night = itemOf('d:night'), clean = itemOf('d:clean')
+  assert.deepEqual(gameState.sheetWith().traits, [{ thing: 'd:sun' }, { thing: 'd:night' }])
+  assert.deepEqual(gameState.sheetWith({ skip: { row: TRAITS_ROW, item: sun } }).traits, [{ thing: 'd:night' }], 'skip removes EXACTLY one entry')
+  assert.deepEqual(gameState.sheetWith({ add: { row: TRAITS_ROW, item: clean } }).traits,
+    [{ thing: 'd:sun' }, { thing: 'd:night' }, { thing: 'd:clean' }], 'add appends the candidate')
+  assert.deepEqual(gameState.sheetWith({ add: { row: TRAITS_ROW, item: clean }, skip: { row: TRAITS_ROW, item: sun } }).traits,
+    [{ thing: 'd:night' }, { thing: 'd:clean' }], 'both together do both')
+  assert.deepEqual(gameState.sheetWith({ skip: { row: GEAR_ROW, item: sun } }).traits, [{ thing: 'd:sun' }, { thing: 'd:night' }], 'a skip in ANOTHER row touches nothing')
+  // ONE projection, not two — the ordinary sheet, in the ordinary order
+  assert.deepEqual(Object.keys(gameState.sheetWith()), sheetKeys(WORLD_SHEET.type))
+  assert.deepEqual(gameState.sheet, gameState.sheetWith(), '`sheet` IS sheetWith with no adjustments')
+  // and it MUTATES NOTHING: the hypothetical is a closure over picksOf, never a copy
+  const before = JSON.stringify({ selections: Object.fromEntries(Object.entries(gameState.selections).map(([id, picks]) => [id, picks.map(item => item.id)])), typed: gameState.typed })
+  gameState.sheetWith({ add: { row: TRAITS_ROW, item: clean }, skip: { row: TRAITS_ROW, item: night } })
+  assert.equal(JSON.stringify({ selections: Object.fromEntries(Object.entries(gameState.selections).map(([id, picks]) => [id, picks.map(item => item.id)])), typed: gameState.typed }), before, 'asking a hypothetical changes nothing')
+  // sheet.js gained ZERO lines this stage: no second sheet-shaped projection exists
+  const sheetModule = await import('../engine/config/sheet.js')
+  assert.deepEqual(Object.keys(sheetModule).sort(),
+    ['NAME_ENTRY', 'QUANTITY_KEY', 'blankFields', 'blankValues', 'buildSheet', 'checkFills', 'entryCost', 'fillableSections',
+     'playerFields', 'quantityFieldOf', 'quantityOf', 'readValue', 'sectionById'].sort(),
+    'sheet.js exports exactly what it exported at v6 — the subject is buildSheet with one closure, and there is no second projection anywhere')
+  ok('L25 the subject IS buildSheet: sheetWith({skip}) removes exactly one entry, {add} appends the candidate, both do both, a skip in another row does nothing; the keys ARE sheetKeys(type) and `sheet` is the same call with no adjustments; a hypothetical mutates nothing; sheet.js exports exactly its v6 thirteen')
+}
+
+// ───────────────────────── L26 the door ─────────────────────────
+{
+  clear()
+  const picture = () => JSON.stringify({
+    selections: Object.fromEntries(Object.entries(gameState.selections).map(([id, picks]) => [id, picks.map(item => item.id)])),
+    values: gameState.values
+  })
+  // (a) an entry's OWN demands, unmet: the sentence names the entry and its rule
+  demand('d:fireball', [dHolds('d:mage')])
+  const before = picture()
+  assert.equal(take('d:fireball'), 'Fireball needs: Traits holds Mage')
+  assert.equal(picture(), before, 'a refusal changes NOTHING — not selections, not values')
+  assert.deepEqual(gameState.whyNot(TRAITS_ROW, itemOf('d:fireball')), { kind: 'own', item: itemOf('d:fireball'), demand: dHolds('d:mage') })
+  // …and the guard turned OFF places it anyway, which is the restore door
+  assert.equal(take('d:fireball', { gate: false, budget: false, demands: false }), null, '{ demands: false } places it anyway')
+  // (b) BREAKS: the one-sided authored shape. The rule is on Sunbather; Nightborn
+  // carries nothing, so an asymmetric guard would admit the click and the settle
+  // would then evict a purchase the player already made.
+  clear()
+  demand('d:sun', [dLacks('d:night')])
+  assert.equal(take('d:sun'), null)
+  gameState.settle()
+  const standing = picture()
+  assert.equal(take('d:night'), 'Nightborn would break Sunbather, which needs: Traits does not hold Nightborn')
+  assert.equal(picture(), standing, 'and the earlier purchase is untouched')
+  const no = gameState.whyNot(TRAITS_ROW, itemOf('d:night'))
+  assert.equal(no.kind, 'breaks')
+  assert.equal(no.item, itemOf('d:sun'), 'the refusal names the VICTIM, not the thing clicked')
+  assert.deepEqual(held(), ['Sunbather'])
+  // (c) the guard order is the card's button ladder: the RULES come before the MONEY
+  clear()
+  demand('d:fireball', [dHolds('d:mage')])
+  itemOf('d:fireball').cost = 1000
+  assert.equal(take('d:fireball'), 'Fireball needs: Traits holds Mage', 'an entry you may not have at all is not an entry you cannot afford')
+  itemOf('d:fireball').cost = 0
+  // (d) an entry with no demands, in a world with no demands, is never refused —
+  // and `whyNot` with no sheet at all is proven by vampire, which builds none and
+  // plays through this very door (oracles.mjs C3/C7)
+  clear()
+  assert.equal(gameState.whyNot(TRAITS_ROW, itemOf('d:unrelated')), null)
+  assert.equal(take('d:unrelated'), null)
+  ok('L26 the door: an unmet OWN demand and a BREAKS refusal are the two sentences byte-for-byte, and a refusal changes nothing at all; the breaks refusal names the victim; the rules are asked before the budget; { demands: false } places it anyway')
+}
+
+// ───────────────────────── L27 the loop — six adversarial cases ─────────────────────────
+{
+  // (a) MUTUAL EXCLUSION, arriving from a kept FILE (the click door refuses it, so a
+  // file is the only way in). Never both, never neither: the tail in file order goes,
+  // which is kept.js check 13's rule, already written down in this project.
+  const loaded = (order) => {
+    clear()
+    demand('d:sun', [dLacks('d:night')])
+    demand('d:night', [dLacks('d:sun')])
+    order.forEach(plant)
+    const rounds = settleRounds()
+    return { rounds, evicted: gameState.evicted.map(each => each.item.name), held: held() }
+  }
+  assert.deepEqual(loaded(['d:sun', 'd:night']), { rounds: 2, evicted: ['Nightborn'], held: ['Sunbather'] })
+  assert.deepEqual(loaded(['d:night', 'd:sun']), { rounds: 2, evicted: ['Sunbather'], held: ['Nightborn'] }, 'the mirrored file keeps the other — the FILE\'s order decides, and it is the player\'s own')
+  // (b) the one-sided shape is refused at the door, so the settle never sees it
+  clear()
+  demand('d:sun', [dLacks('d:night')])
+  take('d:sun'); gameState.settle()
+  assert.equal(take('d:night'), 'Nightborn would break Sunbather, which needs: Traits does not hold Nightborn')
+  assert.deepEqual(held(), ['Sunbather'])
+  // (c) MINUS ME: a thing that demands "Traits holds nothing" and itself LANDS in
+  // Traits is takeable and stable in ONE round — and the section stays honest
+  // afterwards, because the guard's second question refuses the next entry.
+  clear()
+  demand('d:clean', [dNone()])
+  assert.equal(take('d:clean'), null, 'takeable — a demand can never evict itself')
+  assert.equal(settleRounds(), 1, 'and stable in one round')
+  assert.deepEqual(gameState.evicted, [])
+  assert.deepEqual(held(), ['Clean Living'])
+  assert.equal(take('d:else'), 'Something Else would break Clean Living, which needs: Traits holds nothing')
+  // (d) A CHAIN OF THREE. Built by clicking, it settles in one round — a guarded
+  // build never removes anything. Unpick the head and both dependants fall, in order,
+  // each named with the rule that took it.
+  clear()
+  demand('d:fireball', [dHolds('d:mage')])
+  demand('d:inferno', [dHolds('d:fireball')])
+  ;['d:mage', 'd:fireball', 'd:inferno'].forEach(id => assert.equal(take(id), null, `${id} is takeable in order`))
+  assert.equal(settleRounds(), 1, 'a guarded build settles in ONE round')
+  gameState.unSelect(TRAITS_ROW, itemOf('d:mage'))
+  assert.equal(settleRounds(), 3, 'two removals plus the confirming round')
+  assert.deepEqual(gameState.evicted.map(each => `${each.item.name} — ${each.said}`),
+    ['Fireball — Traits holds Mage', 'Inferno — Traits holds Fireball'], 'both named, in the order they fell, with the rule that took each')
+  assert.deepEqual(held(), [])
+  // (e) A DEMAND REMOVAL CLOSES A GATE, WHICH REFUNDS AGAIN — two causes, two lists,
+  // two sentences, never conflated.
+  clear()
+  demand('d:trigger', [{ field: D_SIZE, op: 'isNot', value: 'biggie' }])
+  assert.equal(take('d:trigger'), null)
+  gameState.settle()
+  assert.equal(take('d:passenger'), null, 'the gated row opened')
+  gameState.settle()
+  assert.deepEqual(held(), ['Trigger', 'Passenger'])
+  gameState.setTyped(WORLD_SHEET.fields.find(field => field.key === 'size'), 'biggie')
+  assert.equal(settleRounds(), 2)
+  assert.deepEqual(gameState.evicted.map(each => each.item.name), ['Trigger'], 'the DEMAND took Trigger…')
+  assert.deepEqual(gameState.dropped.map(item => item.name), ['Passenger'], '…and the GATE took Passenger, because the row it sat in went dark')
+  assert.match(gameState.statusMessage, / — removed: Passenger \(their row is no longer shown\) — removed: Trigger \(your sheet no longer meets what they ask\)/)
+  // (f) RULE 1 RUNS BEFORE RULE 2 inside a round: a pick doomed by BOTH is told the
+  // coarser, truer reason — the whole row went away.
+  clear()
+  demand('d:doomed', [dHolds('d:mage')])
+  take('d:mage'); gameState.settle()
+  assert.equal(take('d:doomed'), null)
+  gameState.settle()
+  gameState.unSelect(TRAITS_ROW, itemOf('d:mage'))
+  assert.equal(settleRounds(), 1)
+  assert.deepEqual(gameState.dropped.map(item => item.name), ['Doomed'], 'DROPPED, not evicted')
+  assert.deepEqual(gameState.evicted, [])
+  ok('L27 the loop, six adversarial cases: mutual exclusion from a file keeps the earlier pick in 2 rounds and the mirror keeps the other; the one-sided shape is refused at the door; minus-me makes a self-referring demand takeable and stable in 1 round; a chain of three builds in 1 round and cascades in 3, naming both losses; an eviction can close a gate and the two causes get two lists and two sentences; a pick doomed by both is dropped, not evicted')
+}
+
+// ───────────────────────── L28 termination and determinism ─────────────────────────
+// 400 seeded worlds. `rounds` is measured, not reasoned about (settleRounds above),
+// and the wall-clock ceiling is there so a regression to something exponential is
+// caught as a FAILURE rather than as a slow suite.
+{
+  let seed = 20260910
+  const random = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 }
+  const pool = Array.from({ length: 8 }, (unused, i) => `d:c${i}`)
+  const started = Date.now()
+  let worlds = 0, worstRounds = 0, cycles = 0
+  for (let run = 0; run < 400; run++) {
+    clear()
+    pool.forEach(id => {
+      const list = []
+      const many = Math.floor(random() * 3)
+      for (let k = 0; k < many; k++) {
+        const other = pool[Math.floor(random() * pool.length)]
+        if (other === id) continue
+        list.push(random() < 0.5 ? dHolds(other) : dLacks(other))
+      }
+      itemOf(id).demands = list
+    })
+    if (pool.some(id => itemOf(id).demands.some(one => one.op === 'lacks'))) cycles++
+    const picks = pool.filter(() => random() < 0.8)
+    if (picks.length < 2) continue
+    picks.forEach(plant)
+    const rounds = settleRounds()
+    worlds++
+    worstRounds = Math.max(worstRounds, rounds)
+    assert.ok(rounds <= picks.length + 1, `run ${run}: ${rounds} rounds for ${picks.length} picks — the bound is picks + 1`)
+    // THE INVARIANT that makes a deadlock unreachable: after every settle, NOTHING
+    // held is unmet — so there is no "already unmet" pick for a door to block with.
+    assert.equal(gameState.lastUnmetPick(), null, `run ${run}: settle leaves no unmet pick standing`)
+    // idempotence: settling a settled play removes nothing at all
+    const survivors = held()
+    assert.equal(settleRounds(), 1, `run ${run}: a second settle is one confirming round`)
+    assert.deepEqual(held(), survivors)
+    assert.deepEqual(gameState.evicted, [], `run ${run}: and it evicts nothing`)
+    // path-independence: the survivors re-placed ALONE reach the same answer
+    const survivingIds = gameState.picksInOrder.map(({ item }) => item.id)
+    gameState.startOver()
+    survivingIds.forEach(plant)
+    gameState.settle()
+    assert.deepEqual(held(), survivors, `run ${run}: the survivors re-placed alone settle to the same answer`)
+  }
+  const elapsed = Date.now() - started
+  assert.ok(worlds >= 350, `${worlds} worlds actually ran`)
+  assert.ok(cycles > 0, 'and exclusions really were generated')
+  assert.ok(elapsed < 1000, `the whole sweep took ${elapsed} ms — a ceiling, so an exponential regression fails rather than crawls`)
+  ok(`L28 termination and determinism: ${worlds} seeded worlds of 2–8 picks with random holds/lacks (exclusion cycles included) — every settle halts, rounds ≤ picks + 1 in every one (worst ${worstRounds}), settle∘settle = settle with evicted [], the survivors re-placed alone settle to the same answer, and after EVERY settle lastUnmetPick() is null, so the deadlock cannot be reached; ${elapsed} ms under a 1 s ceiling`)
+}
+
+// ───────────────────────── L29 the guarded-click theorem ─────────────────────────
+{
+  let seed = 4242
+  const random = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296 }
+  const pool = Array.from({ length: 6 }, (unused, i) => `d:c${i}`)
+  let takes = 0, refusals = 0, removalsAfterAGuardedTake = 0, refusalsThatWouldHaveCost = 0
+  for (let run = 0; run < 200; run++) {
+    clear()
+    pool.forEach(id => {
+      const list = []
+      const many = Math.floor(random() * 3)
+      for (let k = 0; k < many; k++) {
+        const other = pool[Math.floor(random() * pool.length)]
+        if (other === id) continue
+        list.push(random() < 0.5 ? dHolds(other) : dLacks(other))
+      }
+      itemOf(id).demands = list
+    })
+    const order = [...pool].sort(() => random() - 0.5)
+    order.forEach(id => {
+      const refusal = take(id)
+      if (refusal === null) {
+        takes++
+        gameState.settle()
+        // THE THEOREM: a guarded take removes NOTHING — not this pick, not an older
+        // one, and not through a gate.
+        if (gameState.evicted.length > 0 || gameState.dropped.length > 0) removalsAfterAGuardedTake++
+        return
+      }
+      refusals++
+      // THE CONVERSE, measured: bypass the guard on that same refused click and see
+      // whether it really would have cost the player something they already held.
+      const before = held()
+      take(id, { gate: false, budget: false, demands: false })
+      gameState.settle()
+      if (before.some(name => !held().includes(name))) refusalsThatWouldHaveCost++
+      // put the world back, exactly as it stood
+      const survivors = gameState.picksInOrder.map(({ item }) => item.id)
+      gameState.startOver()
+      survivors.filter(each => each !== id).forEach(plant)
+      before.forEach(name => { const item = EVERY_ITEM.find(each => each.name === name); if (!gameState.selections[rowOf(item).id].includes(item)) plant(item.id) })
+      gameState.settle()
+    })
+    assert.equal(gameState.lastUnmetPick(), null, `run ${run}: every settled state is legal`)
+  }
+  assert.equal(removalsAfterAGuardedTake, 0, 'THE GUARDED-CLICK THEOREM: not one guarded take removed anything')
+  assert.ok(refusalsThatWouldHaveCost > 0, 'and the second question is not paranoia: bypassing the guard really did cost held picks')
+  // THE BOUND IS TIGHT. A chain of N with the head pulled out unwinds in exactly N
+  // rounds — N − 1 evictions plus the confirming round.
+  ;[3, 5, 10, 25, 50].forEach(n => {
+    clear()
+    for (let i = 1; i < n; i++) itemOf(`d:c${i}`).demands = [dHolds(`d:c${i - 1}`)]
+    for (let i = 0; i < n; i++) assert.equal(take(`d:c${i}`), null, `the chain of ${n} builds through the door`)
+    assert.equal(settleRounds(), 1, `a chain of ${n} built by clicking settles in ONE round`)
+    gameState.unSelect(TRAITS_ROW, itemOf('d:c0'))
+    assert.equal(settleRounds(), n, `a chain of ${n} with the head pulled out takes exactly ${n} rounds`)
+    assert.equal(gameState.evicted.length, n - 1)
+    assert.deepEqual(held(), [])
+  })
+  ok(`L29 the guarded-click theorem: 200 seeded worlds, ${takes} guarded takes, removals after a guarded take: 0 — and the converse, ${refusalsThatWouldHaveCost} of ${refusals} refusals provably cost a held pick when the guard was bypassed; the bound is TIGHT — chains of 3, 5, 10, 25 and 50 build in one round and unwind in exactly N`)
+}
+
+// ───────────────────────── L30 the repairs keep the files closed ─────────────────────────
+{
+  const listSection = { id: 'a:s.traits', key: 'traits', caption: 'Traits', kind: 'list', of: 'a:trait', placement: [] }
+  const numberField = { id: 'a:s.stats.strength', key: 'strength', caption: 'Strength', type: 'number', default: 10 }
+  const build = () => ({
+    content: { version: 7, meta: { pageTitle: 'T', heroTitle: 'T' }, books: [], sheet: 'a:s', groups: [], rowOverrides: {} },
+    rules:  { version: 7, groupRules: {} },
+    themes: { version: 7, page: { bodyBackground: '#fff', fontFamily: 'serif', heroImage: '', statusBackground: '#000', statusColor: '#fff' }, groupThemes: {} },
+    types: typesFile([
+      { id: 'a:s', label: 'S', sections: [fieldsSection('a:s', 'stats', 'Stats', [structuredClone(numberField)]), structuredClone(listSection)] },
+      { id: 'a:trait', label: 'Trait', sections: [fieldsSection('a:trait', 'identity', 'Identity', [])] }
+    ]),
+    things: thingsFile({
+      'a:trait': [
+        { ...thingOf('a:one', 'One'), demands: [{ field: 'a:s.nope', op: 'holds', value: 'a:two' }] },                 // 1 the slot is gone
+        { ...thingOf('a:two', 'Two'), demands: [{ field: 'a:s.traits', op: 'gte', value: 2 }] },                       // 2 the op does not fit
+        { ...thingOf('a:three', 'Three'), demands: [{ field: 'a:s.traits', op: 'none', value: 'x' }] },                // 3 a valueless op with a value
+        { ...thingOf('a:four', 'Four'), demands: [{ field: 'a:s.stats.strength', op: 'gte', value: '12' }] },          // 4 the value's type
+        { ...thingOf('a:five', 'Five'), demands: [{ field: 'a:s.traits', op: 'holds', value: 'a:ghost' }] },           // 5 a thing off the shelf
+        thingOf('a:six', 'Six')                                                                                        //   and one that demands nothing
+      ]
+    })
+  })
+  assert.deepEqual(danglingReferences(build()).map(({ path, pointer, what }) => `${path}.${pointer}: ${what}`), [
+    'things.things["a:trait"][0].demands[0].field: demand names a field that does not exist (a:s.nope)',
+    'things.things["a:trait"][1].demands[0].op: demand operator "gte" does not fit a list field (traits)',
+    'things.things["a:trait"][2].demands[0].value: demand operator "holds nothing" takes no value (found "x")',
+    'things.things["a:trait"][3].demands[0].value: demand value "12" is not a number (strength)',
+    'things.things["a:trait"][4].demands[0].value: demand names a thing that is not on the Traits shelf (a:ghost)'
+  ], 'five faults, five entries, each at the exact KEY it is about')
+  // a healthy set says nothing, and neither does a thing with no `demands` key
+  const healthy = build()
+  healthy.things.things['a:trait'] = [thingOf('a:six', 'Six'), { ...thingOf('a:one', 'One'), demands: [{ field: 'a:s.traits', op: 'holds', value: 'a:six' }] }]
+  assert.deepEqual(danglingReferences(healthy), [])
+
+  // forgetDemandField — a SLOT left the world, so every demand asking about it goes
+  const gone = build()
+  assert.deepEqual(forgetDemandField(gone.things, 'a:s.traits').map(({ thing, what }) => `${thing.name}: ${what}`), [
+    'Two: lost a demand — the slot it asked about changed or was removed',
+    'Three: lost a demand — the slot it asked about changed or was removed',
+    'Five: lost a demand — the slot it asked about changed or was removed'
+  ], 'reported ONCE per thing that lost something')
+  assert.equal('demands' in gone.things.things['a:trait'][1], false, 'and the KEY is deleted when the list empties — the file never carries a no-op')
+  assert.deepEqual(forgetDemandField(gone.things, 'a:s.traits'), [], 'a second run finds nothing and changes nothing')
+  assert.equal('demands' in gone.things.things['a:trait'][5], false, 'a thing with no demands key is never given one')
+  // forgetDemanded — a THING was removed, so every demand naming it goes
+  const removed = build()
+  assert.deepEqual(forgetDemanded(removed.things, 'a:two').map(({ thing, what }) => `${thing.name}: ${what}`),
+    ['One: lost a demand — Two was removed'], 'named from the shelf, before the caller removes the thing itself')
+  assert.equal('demands' in removed.things.things['a:trait'][0], false)
+  assert.deepEqual(forgetDemanded(removed.things, 'a:two'), [], 'idempotent')
+  // both repairs together close the audit — which is what "keeps the files closed" means
+  const repaired = build()
+  forgetDemandField(repaired.things, 'a:s.nope')
+  forgetDemandField(repaired.things, 'a:s.traits')
+  forgetDemandField(repaired.things, 'a:s.stats.strength')
+  assert.deepEqual(danglingReferences(repaired), [], 'nothing dangles afterwards')
+  assert.deepEqual(validateSet(repaired), [], 'and no thing was left holding an empty list')
+  ok('L30 the repairs keep the files closed: a set broken five ways names five entries at the exact key each fault is about; forgetDemandField and forgetDemanded splice in place, report once per thing with §6.4\'s sentence, DELETE the key when the list empties, never give a key to a thing that had none, and are no-ops the second time; together they close the audit')
+}
+
+// ───────────────────────── L31 migration v6 → v7 ─────────────────────────
+// A PURE STAMP WITH NO BODY. The step exists so that a v6 engine reading a v7 file
+// says one useful sentence instead of a dozen — and being byte-identical run twice
+// by HAVING NO BODY is a stronger promise than being careful.
+{
+  const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+  const v6 = () => {
+    const set = H()
+    FILE_NAMES.forEach(name => { set[name].version = 6 })
+    return set
+  }
+  const input = v6()
+  const out = migrateSet(deepFreeze(structuredClone(input)))
+  FILE_NAMES.forEach(name => assert.equal(out[name].version, 7, `${name} stamped 7`))
+  // FIVE VERSION LINES AND NOTHING ELSE — proved by putting the 6s back and comparing bytes
+  const putBack = structuredClone(out)
+  FILE_NAMES.forEach(name => { putBack[name].version = 6 })
+  assert.equal(JSON.stringify(putBack), JSON.stringify(input), 'the step moves five version lines and not one other byte')
+  assert.deepEqual(Object.keys(out.content), Object.keys(input.content), 'and writes no key anywhere')
+  assert.equal(JSON.stringify(JSON.stringify(out).match(/"demands"/g)), 'null', 'a v6 game gains no `demands` key: absent already means "demands nothing"')
+  assert.equal(JSON.stringify(migrateSet(v6())), JSON.stringify(out), 'twice is byte-identical')
+  assert.equal(migrateSet(out), out, 'and a set already at 7 comes back as the SAME OBJECT')
+  assert.doesNotMatch(JSON.stringify(out).replace(UUID, ''), UUID, 'mint-free')
+  assert.throws(() => migrateSet({ ...v6(), things: null }), /Missing data files for version 7: things/, 'a null file is still NAMED, not climbed')
+  assert.deepEqual(validateSet(out), [], 'the stamped set fits the v7 contract')
+  ok('L31 migration v6 → v7: a pure stamp — five version lines changed and not one other byte, no key written anywhere and no `demands` invented; byte-identical twice; a v7 set comes back as the same object; mint-free; a missing file is still named')
+}
+
+// ───────────────────────── P10 the sheet is a thing that demands nothing ─────────────────────────
+{
+  // THE SPLIT, and the order in it: `demands` sits fourth in thingKeys (fifth in the
+  // canonical thing key order, which begins with `id`) and is ABSENT from sheetKeys.
+  assert.deepEqual(thingKeys(CHARACTER), [...sheetKeys(CHARACTER).slice(0, 3), 'demands', ...sheetKeys(CHARACTER).slice(3)])
+  assert.deepEqual(thingKeys(CHARACTER).filter(key => !sheetKeys(CHARACTER).includes(key)), ['demands'], 'exactly one key separates a THING from a SHEET')
+  assert.equal(thingKeys(CHARACTER).indexOf('demands'), 3)
+  assert.equal(['id', ...thingKeys(CHARACTER)].indexOf('demands'), 4, 'fifth in the canonical order the editor writes')
+  assert.equal(sheetKeys(CHARACTER).includes('demands'), false)
+  // A THING WITH DEMANDS HYDRATES TO A SHEET WITHOUT THEM. The sheet is what demands
+  // are ABOUT; a sheet demands nothing, and that is why the two lists exist.
+  const demanding = { id: 'p:one', name: 'One', cost: 2, imageURL: '', demands: [{ field: 'basic:character.origin', op: 'any', value: '' }] }
+  const row = { id: 'r', label: 'Origin', fills: sectionKeyed('origin') }
+  const built = buildSheet({ type: CHARACTER, rows: [row], typed: BLANK_FIELDS, spent: 2, picksOf: () => [demanding], valuesFor: () => ({}) })
+  assert.deepEqual(Object.keys(built), sheetKeys(CHARACTER), 'the built sheet\'s keys ARE sheetKeys(type)')
+  assert.equal('demands' in built, false)
+  assert.deepEqual(built.origin, [{ thing: 'p:one' }], 'the pick is on the sheet; its RULES are not')
+  // the two walkers a sheet is drawn from never offer it either
+  assert.deepEqual(queryableFields(CHARACTER).filter(field => field.key === 'demands'), [], 'a demand is not a shelf question, so a row can never filter on one')
+  assert.deepEqual(sheetOfType(CHARACTER).filter(entry => entry.key === 'demands'), [], 'and it is not drawn on a card by the sheet walker')
+  assert.deepEqual(playerFields(CHARACTER).filter(field => field.key === 'demands'), [])
+  // BORN ABSENT: `default: null` is schema.js's own rule for "not written at birth",
+  // so a newborn thing is byte-identical to the one v6 wrote.
+  const entry = coreThingSchema.find(each => each.key === 'demands')
+  assert.deepEqual([entry.default, entry.optional, entry.onSheet, entry.id], [null, true, false, undefined], 'default null · optional · never on a sheet · and NO id, which is what keeps it off a row\'s filter')
+  const bornKeys = coreThingSchema.filter(each => each.default !== null).map(each => each.key)
+  assert.deepEqual(bornKeys, ['name', 'cost', 'imageURL'], 'a newborn writes the three it always wrote')
+  // and the keepsake is v6's bytes for the same play: a demand is no part of a sheet
+  const keptOfDemanding = keptFrom({ title: 'P', sheetId: 'basic:character', type: CHARACTER, rows: [row], typed: BLANK_FIELDS,
+    picksOf: () => [demanding], valuesFor: () => ({}) })
+  assert.equal(JSON.stringify(keptOfDemanding).includes('demands'), false, 'keptFrom writes no demand: KEPT_VERSION stays 1 because nothing about the FILE changed')
+  ok('P10 the sheet is a thing that demands nothing: thingKeys is sheetKeys with `demands` inserted fourth (fifth after `id`) and sheetKeys has it not; a thing WITH demands hydrates to a sheet without them; queryableFields, sheetOfType and playerFields never offer it; the entry is default null / optional / onSheet false with no id, so a newborn writes the same three keys v6 wrote; and the keepsake carries no demand at all')
 }
 
 // ───────────────────────── N1 hash grammar ─────────────────────────
