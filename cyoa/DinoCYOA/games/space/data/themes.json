@@ -1,0 +1,11 @@
+{
+  "version": 7,
+  "page": {
+    "bodyBackground": "#ffffff",
+    "fontFamily": "'Segoe UI', system-ui, sans-serif",
+    "heroImage": "",
+    "statusBackground": "#12101a",
+    "statusColor": "#ffd166"
+  },
+  "groupThemes": {}
+}

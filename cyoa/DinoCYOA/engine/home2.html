@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>DRAFT — Rebuild Israel's Farms! - Christian Friends of Leket Israel</title>
+<!--
+  ════════════════════════════════════════════════════════════════════
+  LOCAL DRAFT — NOT LIVE. Nothing on christianfriendsofleket.org has been changed.
+  This file reproduces the #cfli-lp block from /rebuild-israels-farms/ (markup, CSS, script)
+  with updated copy. Search for "UPDATED" to find every change.
+
+  Changes vs. the live page (as of Nov 2, 2026):
+   1. Devastation copy — "grows half the nation's food" → "grows roughly 70% of the nation's vegetables"
+   2. Leket Mobilizes counter — 70K+ volunteers (2025 only) → 150K+ volunteers sent to farms since Oct 7
+      (Leket reports: 25,000+ in late 2023, 51,000 in 2024, 73,894 in 2025)
+   3. Leket Mobilizes counter — "70M lbs" label now says "in 2025 alone" (that is the 2025 figure)
+   4. Still Wounded section — rewritten: three years on, labor gap still open (Palestinian workers barred,
+      Leket still running 20–25 volunteer buses/week), plus the 2026 Iran war hit (exports halted,
+      fertilizer +180%, farmers working under fire)
+   5. Why Leket counter — 300 → 346 nonprofit partners (Leket 2025 Annual Report)
+   6. Trust list — "60,000+ tons rescued every year" → "Nearly 34,000 metric tons (75 million lbs)"
+      (Leket 2025 Annual Report: 33,939 metric tons / 74.8M lbs)
+
+  Images, donate iframe, fonts and all other copy are unchanged from the live page.
+  ALL SCROLL EFFECTS, SNAP LOCKING, CONTENT ANIMATIONS, AND FORCED 100VH HEIGHTS REMOVED.
+  ════════════════════════════════════════════════════════════════════
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #1c100c; }
+  /* small local-only marker so this file is never mistaken for the live page — delete before publishing */
+  .cfli-draft-tag { position: fixed; left: 14px; top: 14px; z-index: 9999; font: 600 11px/1 'IBM Plex Mono', monospace; letter-spacing: .12em; text-transform: uppercase; color: #1c100c; background: #f59e2b; padding: 8px 12px; border-radius: 999px; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+</style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Atkinson+Hyperlegible+Next:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap');
+
+/* ════════════ SCOPED RESET + TOKENS ════════════ */
+#cfli-lp {
+  --navy: #0a0e17;
+  --charcoal: #141a26;
+  --charcoal-light: #1c2435;
+  --slate: #2a3347;
+  --amber: #e8871e;
+  --amber-bright: #f59e2b;
+  --amber-glow: rgba(232,135,30,0.15);
+  --amber-muted: rgba(232,135,30,0.08);
+  --cream: #f0e8db;
+  --cream-dim: #d9d0c2;
+  --white: #f5f1eb;
+  --red-dark: #8b2020;
+  --olive: #3d4a2a;
+  --border: rgba(255,255,255,0.07);
+  --border-light: rgba(255,255,255,0.04);
+  --card-bg: rgba(255,255,255,0.03);
+  --ember: #e85540;
+  --ember-text: #ff8a76;
+  --green: #6bbf73;
+  --sec-pad: clamp(64px, 9vh, 110px);
+  width: 100vw;
+  max-width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  position: relative;
+  overflow-x: clip;
+  font-family: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', 'Helvetica Neue', Arial, sans-serif;
+  background: #1c100c;
+  color: var(--cream);
+  line-height: 1.6;
+  font-size: 24px;
+  -webkit-font-smoothing: auto;
+  text-align: left;
+}
+#cfli-lp *, #cfli-lp *::before, #cfli-lp *::after { box-sizing: border-box; }
+#cfli-lp * { margin: 0; padding: 0; }
+#cfli-lp a { text-decoration: none; }
+#cfli-lp a:focus-visible,
+#cfli-lp .cta-btn:focus-visible { outline: 3px solid var(--cream); outline-offset: 3px; }
+#cfli-lp h1, #cfli-lp h2, #cfli-lp h3,
+#cfli-lp .stat-num, #cfli-lp .cta-btn {
+  font-family: 'Oswald', 'Arial Narrow', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+}
+
+/* ════════════ HERO ════════════ */
+#cfli-lp .intro-seq { position: relative; background: #1c100c; }
+#cfli-lp .intro-pin { position: relative; }
+#cfli-lp .hero {
+  position: relative;
+  min-height: 76vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: var(--sec-pad) 0;
+}
+#cfli-lp .hero-bg {
+  position: absolute; inset: 0;
+  background: url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/05/yossi-image-hero-section.jpg') center/cover no-repeat;
+}
+#cfli-lp .hero-scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, #1c100c 2%, rgba(28,16,12,0.55) 45%, rgba(28,16,12,0.22) 100%);
+}
+#cfli-lp .hero-inner { position: relative; z-index: 2; max-width: 1000px; padding: 0 48px; width: 100%; }
+#cfli-lp .hero-eyebrow {
+  font-size: 1.15rem; font-weight: 700; color: var(--amber-bright);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 20px;
+  display: flex; align-items: center; gap: 12px;
+}
+#cfli-lp .hero-eyebrow::before { content: ''; width: 40px; height: 2px; background: var(--amber); }
+#cfli-lp .hero h1 {
+  font-size: clamp(3rem, 7vw, 5.6rem);
+  line-height: 1.08;
+  color: var(--white);
+  margin-bottom: 20px;
+  text-shadow: 0 2px 30px rgba(0,0,0,0.4);
+}
+#cfli-lp .line-mask, #cfli-lp .line-mask .line { display: block; }
+#cfli-lp .hero h1 em { font-style: normal; color: var(--amber); }
+#cfli-lp .hero-bottom-cluster { margin-top: 10px; }
+#cfli-lp .hero-sub {
+  font-size: 1.8rem; color: var(--cream); margin-bottom: 32px;
+  font-weight: 500; line-height: 1.5; max-width: 640px;
+  text-shadow: 0 1px 12px rgba(0,0,0,0.5);
+}
+#cfli-lp .cta-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 20px 44px; min-height: 62px;
+  background: var(--amber); color: var(--navy);
+  font-size: 1.35rem; letter-spacing: 0.08em;
+  border: none; cursor: pointer;
+}
+#cfli-lp .cta-btn:hover { background: var(--amber-bright); box-shadow: 0 8px 30px rgba(232,135,30,0.3); }
+
+@media (min-width: 769px) {
+  #cfli-lp .hero { background: #140c08; padding: 0; }
+  #cfli-lp .hero-inner {
+    width: 56%;
+    max-width: 780px;
+    margin: 0 auto 0 0;
+    padding: var(--sec-pad) clamp(28px,3vw,56px) var(--sec-pad) clamp(48px,6vw,110px);
+  }
+  #cfli-lp .hero h1 { font-size: clamp(3rem, 4.4vw, 4.8rem); }
+  #cfli-lp .hero-bg { inset: 0 0 0 auto; width: 58%; background-position: center; }
+  #cfli-lp .hero-scrim {
+    background:
+      linear-gradient(to right, #140c08 40%, rgba(20,12,8,0) 72%),
+      linear-gradient(to top, #1c100c 0%, rgba(28,16,12,0) 30%);
+  }
+}
+
+/* ════════════ PANELS (compact natural height) ════════════ */
+#cfli-lp .panel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  padding: var(--sec-pad) 0;
+}
+#cfli-lp .panel--center { justify-content: center; }
+#cfli-lp .panel-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+#cfli-lp .panel-scrim { position: absolute; inset: 0; background: linear-gradient(to top, var(--navy) 0%, rgba(10,14,23,0.78) 35%, rgba(10,14,23,0.4) 70%, rgba(10,14,23,0.55) 100%); }
+#cfli-lp .panel-inner { position: relative; z-index: 2; max-width: 1100px; margin: 0 auto; padding: 0 48px; width: 100%; }
+#cfli-lp .panel-content { max-width: 760px; }
+#cfli-lp .panel--center .panel-content { max-width: 760px; margin: 0 auto; text-align: center; }
+#cfli-lp .panel-eyebrow {
+  font-size: 1.15rem; font-weight: 700; color: var(--amber-bright);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+#cfli-lp .panel-eyebrow::before { content: ''; width: 28px; height: 2px; background: var(--amber); }
+#cfli-lp .panel--center .panel-eyebrow { justify-content: center; }
+#cfli-lp .panel-title {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  line-height: 1.12; color: var(--white);
+  margin-bottom: 20px; text-shadow: 0 2px 24px rgba(0,0,0,0.5);
+}
+#cfli-lp .panel-title em { font-style: normal; color: var(--amber); }
+#cfli-lp .panel-text {
+  font-size: 1.5rem; line-height: 1.6; color: var(--cream);
+  margin-bottom: 18px; max-width: 28em;
+  text-shadow: 0 1px 16px rgba(0,0,0,0.5);
+}
+#cfli-lp .panel--center .panel-text { margin-left: auto; margin-right: auto; }
+#cfli-lp .panel-text strong { color: var(--white); font-weight: 600; }
+#cfli-lp .panel-text:last-child { margin-bottom: 0; }
+#cfli-lp .panel-quote {
+  font-size: clamp(1.9rem, 3.2vw, 2.6rem);
+  font-style: italic; color: var(--white); line-height: 1.45;
+  margin: 24px 0; padding-left: 24px; border-left: 3px solid var(--amber);
+  text-shadow: 0 1px 16px rgba(0,0,0,0.5);
+}
+#cfli-lp .panel-quote cite {
+  display: block; font-size: 1.25rem; font-weight: 600; font-style: normal;
+  color: var(--amber-bright); letter-spacing: 0.04em; margin-top: 12px;
+}
+#cfli-lp .panel-cta { margin-top: 28px; }
+
+/* Attack layer */
+#cfli-lp .attack-layer .panel-scrim { background: linear-gradient(to top, #20110d 0%, rgba(32,17,13,0.82) 35%, rgba(32,17,13,0.45) 70%, rgba(32,17,13,0.6) 100%); }
+#cfli-lp .attack-layer .panel-eyebrow { color: var(--ember-text); }
+#cfli-lp .attack-layer .panel-eyebrow::before { background: var(--ember); }
+#cfli-lp .attack-layer .panel-title em { color: var(--ember); }
+
+/* Bright-image panel */
+#cfli-lp .panel--bright { background: #0f2615; }
+#cfli-lp .panel--bright .panel-eyebrow,
+#cfli-lp .panel--bright .panel-title,
+#cfli-lp .panel--bright .panel-text {
+  text-shadow: 0 1px 2px rgba(0,0,0,1), 0 0 10px rgba(0,0,0,0.95), 0 0 26px rgba(0,0,0,0.85), 0 0 50px rgba(0,0,0,0.6);
+}
+#cfli-lp .panel--bright .cta-btn { box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
+
+/* Zone Turn & Zone Neutral */
+#cfli-lp .zone-turn { background: #211806; }
+#cfli-lp .zone-neutral { background: #181b21; }
+#cfli-lp .zone-turn .panel-scrim { background: linear-gradient(to top, #211806 0%, rgba(33,24,6,0.84) 35%, rgba(33,24,6,0.56) 70%, rgba(33,24,6,0.62) 100%); }
+#cfli-lp .zone-neutral .panel-scrim { background: linear-gradient(to top, #181b21 0%, rgba(24,27,33,0.84) 35%, rgba(24,27,33,0.56) 70%, rgba(24,27,33,0.62) 100%); }
+
+@media (min-width: 769px) {
+  #cfli-lp .zone-turn .panel-inner,
+  #cfli-lp .zone-neutral .panel-inner { max-width: none; margin: 0; padding-left: clamp(48px,6vw,110px); padding-right: 48px; }
+  #cfli-lp .zone-turn .panel-content,
+  #cfli-lp .zone-neutral .panel-content { max-width: 660px; }
+  #cfli-lp .zone-turn .panel-scrim {
+    background:
+      linear-gradient(to right, rgba(33,24,6,0.74) 0%, rgba(33,24,6,0.52) 40%, rgba(33,24,6,0.18) 64%, rgba(33,24,6,0) 80%),
+      linear-gradient(to top, rgba(33,24,6,0.5) 0%, rgba(33,24,6,0) 30%);
+  }
+  #cfli-lp .zone-neutral .panel-scrim {
+    background:
+      linear-gradient(to right, rgba(24,27,33,0.74) 0%, rgba(24,27,33,0.52) 40%, rgba(24,27,33,0.18) 64%, rgba(24,27,33,0) 80%),
+      linear-gradient(to top, rgba(24,27,33,0.5) 0%, rgba(24,27,33,0) 30%);
+  }
+  #cfli-lp .zone-turn .panel-eyebrow, #cfli-lp .zone-turn .panel-title,
+  #cfli-lp .zone-turn .panel-text, #cfli-lp .zone-turn .panel-quote,
+  #cfli-lp .zone-neutral .panel-eyebrow, #cfli-lp .zone-neutral .panel-title,
+  #cfli-lp .zone-neutral .panel-text, #cfli-lp .zone-neutral .panel-quote {
+    text-shadow: 0 1px 3px rgba(0,0,0,0.92), 0 0 16px rgba(0,0,0,0.72), 0 0 40px rgba(0,0,0,0.5);
+  }
+}
+
+/* ════════════ DEVASTATION (unified chapter) ════════════ */
+#cfli-lp .devastation { position: relative; background: #20110d; z-index: 1; }
+#cfli-lp .devastation-pin { position: relative; overflow: hidden; }
+#cfli-lp .devastation-pin .panel-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+#cfli-lp .devastation-scrim { position: absolute; inset: 0; background: linear-gradient(to top, #20110d 0%, rgba(32,17,13,0.72) 45%, rgba(32,17,13,0.42) 100%); }
+#cfli-lp .devastation-layer { position: relative; display: flex; }
+#cfli-lp .devastation-text { padding: var(--sec-pad) 0 calc(var(--sec-pad) * 0.65); z-index: 2; }
+#cfli-lp .devastation-figures { justify-content: center; padding: calc(var(--sec-pad) * 0.75) 0 var(--sec-pad); z-index: 3; }
+#cfli-lp .devastation .panel-eyebrow,
+#cfli-lp .devastation .figures-eyebrow { color: var(--ember-text); }
+#cfli-lp .devastation .panel-eyebrow::before,
+#cfli-lp .devastation .figures-eyebrow::before,
+#cfli-lp .devastation .figures-eyebrow::after { background: var(--ember); }
+#cfli-lp .devastation .panel-title em,
+#cfli-lp .devastation .fig-num { color: var(--ember); }
+#cfli-lp .figures-darken { position: absolute; inset: 0; background: rgba(26,12,9,0.78); }
+#cfli-lp .figures-inner { position: relative; z-index: 1; max-width: 1040px; width: 100%; padding: 0 48px; margin: 0 auto; text-align: center; }
+#cfli-lp .figures-eyebrow {
+  font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  margin-bottom: 12px; display: inline-flex; align-items: center; gap: 12px;
+}
+#cfli-lp .figures-eyebrow::before, #cfli-lp .figures-eyebrow::after { content: ''; width: 28px; height: 2px; }
+#cfli-lp .figures-lead {
+  font-family: 'Oswald', sans-serif; font-size: clamp(1.9rem, 3.4vw, 2.8rem);
+  font-weight: 600; color: var(--white); text-transform: uppercase;
+  letter-spacing: 0.02em; line-height: 1.15; margin-bottom: 44px;
+}
+#cfli-lp .fig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 44px 48px; max-width: 900px; margin: 0 auto; }
+#cfli-lp .fig-item { text-align: center; }
+#cfli-lp .fig-num {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: clamp(3rem, 7.5vw, 5.2rem); line-height: 1;
+  margin-bottom: 10px; text-shadow: 0 2px 24px rgba(0,0,0,0.5);
+}
+#cfli-lp .fig-label { font-size: 1.3rem; line-height: 1.4; font-weight: 500; color: var(--cream); max-width: 340px; margin: 0 auto; }
+
+/* ════════════ STATEMENT (compact headline banner) ════════════ */
+#cfli-lp .statement {
+  position: relative; background: #181206;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--sec-pad) 28px; overflow: hidden;
+}
+#cfli-lp .statement-inner { position: relative; max-width: 1000px; margin: 0 auto; text-align: center; }
+#cfli-lp .statement-eyebrow {
+  font-size: 1.15rem; font-weight: 700; color: var(--amber-bright);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 20px;
+  display: inline-flex; align-items: center; gap: 12px;
+}
+#cfli-lp .statement-eyebrow::before, #cfli-lp .statement-eyebrow::after { content: ''; width: 30px; height: 2px; background: var(--amber); }
+#cfli-lp .statement-title {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: clamp(2.8rem, 6.5vw, 4.8rem); line-height: 1.08;
+  color: var(--white); text-transform: uppercase; letter-spacing: 0.01em; margin-bottom: 20px;
+}
+#cfli-lp .statement-title em { font-style: normal; color: var(--amber); }
+#cfli-lp .statement-sub { font-size: 1.5rem; color: var(--cream); max-width: 30em; margin: 0 auto; line-height: 1.6; }
+
+/* ════════════ MOBILIZE (stats + quote flows together) ════════════ */
+#cfli-lp .mobilize { position: relative; background: #211806; z-index: 1; }
+#cfli-lp .mobilize-pin { position: relative; overflow: hidden; }
+#cfli-lp .mobilize-pin .panel-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+#cfli-lp .mobilize-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(28,19,7,0.78) 0%, rgba(28,19,7,0.58) 48%, rgba(28,19,7,0.78) 100%); }
+#cfli-lp .mobilize-layer { position: relative; display: flex; align-items: center; justify-content: center; padding: 0 28px; }
+#cfli-lp .mob-stats-layer { padding-top: var(--sec-pad); padding-bottom: calc(var(--sec-pad) * 0.5); z-index: 2; }
+#cfli-lp .mob-quote-layer { padding-top: calc(var(--sec-pad) * 0.35); padding-bottom: var(--sec-pad); z-index: 3; }
+#cfli-lp .mob-inner { max-width: 1040px; width: 100%; margin: 0 auto; text-align: center; }
+#cfli-lp .mob-eyebrow {
+  font-size: 1.15rem; font-weight: 700; color: var(--amber-bright);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px;
+}
+#cfli-lp .mob-headline {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: clamp(2.5rem, 5.5vw, 4rem); line-height: 1.1;
+  color: var(--white); text-transform: uppercase; letter-spacing: 0.01em; margin-bottom: 44px;
+}
+#cfli-lp .mob-headline em { font-style: normal; color: var(--amber); }
+#cfli-lp .mob-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 44px 48px; max-width: 900px; margin: 0 auto; }
+#cfli-lp .mob-item { text-align: center; }
+#cfli-lp .mob-num {
+  font-family: 'Oswald', sans-serif; font-weight: 700;
+  font-size: clamp(2.6rem, 6.5vw, 4.6rem); color: var(--amber);
+  line-height: 1; margin-bottom: 10px;
+}
+#cfli-lp .mob-label { font-size: 1.3rem; line-height: 1.4; font-weight: 500; color: var(--cream); max-width: 340px; margin: 0 auto; }
+#cfli-lp .mob-quote {
+  font-style: italic; font-size: clamp(2.1rem, 3.8vw, 3rem);
+  line-height: 1.42; color: var(--white); max-width: 880px; margin: 0 auto;
+  border-top: 1px solid rgba(255,255,255,0.18); padding-top: 36px;
+}
+#cfli-lp .mob-quote cite {
+  display: block; font-size: 1.25rem; font-weight: 600; font-style: normal;
+  color: var(--amber-bright); letter-spacing: 0.04em; margin-top: 18px;
+}
+#cfli-lp .mob-eyebrow, #cfli-lp .mob-headline, #cfli-lp .mob-num,
+#cfli-lp .mob-label, #cfli-lp .mob-quote, #cfli-lp .mob-quote cite {
+  text-shadow: 0 1px 2px rgba(0,0,0,1), 0 0 12px rgba(0,0,0,0.92), 0 0 30px rgba(0,0,0,0.78), 0 0 56px rgba(0,0,0,0.5);
+}
+
+/* ════════════ TRUST (merged single section) ════════════ */
+#cfli-lp .trust-section {
+  background: #0f2615;
+  padding: var(--sec-pad) 28px;
+  border-top: 1px solid var(--border);
+}
+#cfli-lp .trust-wrap { max-width: 1100px; margin: 0 auto; width: 100%; }
+#cfli-lp .trust-pull {
+  max-width: 820px; margin: 0 auto 36px; text-align: center;
+  font-style: italic; font-size: clamp(1.7rem, 2.8vw, 2.3rem);
+  line-height: 1.35; color: var(--white); position: relative;
+  padding-top: 36px; text-shadow: 0 2px 18px rgba(0,0,0,0.4);
+}
+#cfli-lp .trust-pull::before {
+  content: '\201C'; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  font-family: 'Oswald', sans-serif; font-style: normal; font-size: 3rem; line-height: 1; color: var(--green);
+}
+#cfli-lp .trust-pull cite {
+  display: block; font-style: normal; font-size: 1.25rem; font-weight: 600;
+  letter-spacing: 0.04em; color: var(--green); margin-top: 16px;
+}
+#cfli-lp .trust-header { text-align: center; margin-bottom: 32px; }
+#cfli-lp .card-label {
+  font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--green); margin-bottom: 10px;
+}
+#cfli-lp .trust-header h2 {
+  font-size: clamp(2.3rem, 3.6vw, 3.2rem); font-weight: 600;
+  color: var(--white); margin-bottom: 12px;
+}
+#cfli-lp .trust-header p { font-size: 1.35rem; color: var(--cream-dim); max-width: 38em; margin: 0 auto; line-height: 1.55; }
+#cfli-lp .trust-impact-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 32px; }
+#cfli-lp .trust-impact-card {
+  background: rgba(107,191,115,0.09); border: 1px solid rgba(107,191,115,0.3);
+  border-radius: 16px; padding: 28px 20px; text-align: center;
+}
+#cfli-lp .trust-impact-num {
+  font-family: 'Oswald', sans-serif; font-size: 3rem; font-weight: 700;
+  color: var(--green); line-height: 1; margin-bottom: 10px;
+}
+#cfli-lp .trust-impact-label { font-size: 1.25rem; line-height: 1.4; font-weight: 500; color: var(--cream); }
+#cfli-lp .trust-cta-row { text-align: center; margin: 0 0 44px; }
+#cfli-lp .trust-model {
+  background: #142a19; border: 1px solid rgba(107,191,115,0.24);
+  border-radius: 16px; padding: 40px 44px; margin: 0;
+}
+#cfli-lp .trust-model-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+#cfli-lp .trust-model-icon {
+  width: 48px; height: 48px;
+  background: rgba(107,191,115,0.14); border: 1px solid rgba(107,191,115,0.3);
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; flex-shrink: 0;
+}
+#cfli-lp .trust-model-title {
+  font-family: 'Oswald', sans-serif; font-size: 1.7rem; font-weight: 600;
+  color: var(--white); text-transform: uppercase; letter-spacing: 0.06em;
+}
+#cfli-lp .trust-model p { font-size: 1.5rem; color: var(--cream-dim); line-height: 1.6; margin-bottom: 16px; max-width: 65ch; }
+#cfli-lp .trust-model p:last-child { margin-bottom: 0; }
+#cfli-lp .trust-model strong { color: var(--cream); font-weight: 600; }
+#cfli-lp .cred-list { list-style: none; }
+#cfli-lp .cred-list li {
+  font-size: 1.4rem; color: var(--cream-dim); line-height: 1.6; max-width: 65ch;
+  padding: 14px 0; border-bottom: 1px solid var(--border-light);
+  display: flex; gap: 14px; align-items: baseline;
+}
+#cfli-lp .cred-list li:last-child { border-bottom: none; padding-bottom: 0; }
+#cfli-lp .cred-list li::before { content: ''; width: 8px; height: 8px; background: var(--green); border-radius: 50%; flex-shrink: 0; margin-top: 10px; }
+#cfli-lp .cred-list strong { color: var(--white); font-weight: 600; }
+
+/* ════════════ GLEANING SECTION ════════════ */
+#cfli-lp .gleaning-section {
+  background: #241a0c;
+  border-top: 1px solid rgba(232,135,30,0.3);
+  padding: var(--sec-pad) 28px;
+}
+#cfli-lp .gleaning-section .trust-wrap { max-width: 1100px; margin: 0 auto; }
+#cfli-lp .gleaning-card { background: transparent; border: none; padding: 0; margin: 0; }
+#cfli-lp .gleaning-card .trust-model-icon { background: rgba(232,135,30,0.14); border-color: rgba(232,135,30,0.35); }
+#cfli-lp .gleaning-card .trust-model-title { color: var(--amber-bright); }
+#cfli-lp .gleaning-card p { color: var(--cream); }
+#cfli-lp .gleaning-card strong { color: var(--white); }
+#cfli-lp .gleaning-card .scripture-inline { display: block; font-style: italic; font-size: 1.65rem; line-height: 1.5; color: var(--amber-bright); margin-bottom: 8px; }
+#cfli-lp .gleaning-card .scripture-ref { font-size: 1.15rem; letter-spacing: 0.06em; color: var(--amber-bright); font-style: normal; }
+#cfli-lp .gleaning-card .gleaning-invite {
+  color: var(--cream); font-size: 1.5rem;
+  border-top: 1px solid rgba(232,135,30,0.3);
+  margin-top: 24px; padding-top: 24px;
+}
+
+/* ════════════ DONATE ════════════ */
+#cfli-lp .donate-section {
+  padding: var(--sec-pad) 28px;
+  background: #f4ecdc;
+  position: relative;
+  overflow: hidden;
+}
+#cfli-lp .donate-section::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 20%, rgba(232,135,30,0.14), transparent 60%); }
+#cfli-lp .donate-grid {
+  position: relative; max-width: 1180px; margin: 0 auto; width: 100%;
+  display: grid; grid-template-columns: minmax(380px, 480px) 1fr;
+  gap: 48px; align-items: center;
+}
+#cfli-lp .donate-form-col { min-width: 0; }
+#cfli-lp .scrollable-iframe {
+  display: block;
+  width: 100%;
+  height: 500px;
+  border: none;
+  overflow: auto;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(27,23,16,0.10);
+}
+#cfli-lp .donate-inner { position: relative; text-align: left; }
+#cfli-lp .donate-eyebrow {
+  font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #7a3d02; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+#cfli-lp .donate-eyebrow::before { content: ''; width: 28px; height: 2px; background: #7a3d02; }
+#cfli-lp .donate-section h2 { font-size: clamp(2.2rem, 3.6vw, 3rem); color: #1b1710; margin-bottom: 14px; line-height: 1.12; }
+#cfli-lp .donate-section h2 em { font-style: normal; color: #8a4404; }
+#cfli-lp .donate-intro { font-size: 1.5rem; color: #4a4336; margin-bottom: 22px; line-height: 1.6; }
+#cfli-lp .scripture-box {
+  background: rgba(232,135,30,0.12); border: 1px solid rgba(122,61,2,0.28);
+  border-radius: 12px; padding: 20px 26px; margin: 22px 0;
+}
+#cfli-lp .scripture-box p { font-style: italic; font-size: 1.55rem; color: #3d4a2a; line-height: 1.6; }
+#cfli-lp .scripture-box .ref { display: block; font-size: 1.15rem; font-style: normal; color: #7a3d02; letter-spacing: 0.06em; margin-top: 8px; text-transform: uppercase; }
+#cfli-lp .impact-line { font-size: 1.5rem; color: #4a4336; margin: 20px 0 22px; line-height: 1.6; }
+#cfli-lp .impact-line strong { color: #7a3d02; font-weight: 700; font-size: 1.55rem; }
+#cfli-lp .donate-contact { font-size: 1.3rem; color: #4a4336; margin-top: 20px; }
+#cfli-lp .donate-contact a { color: #7a3d02; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
+#cfli-lp .donate-section a:focus-visible { outline-color: #1b1710; }
+
+/* ════════════ COLOPHON ════════════ */
+#cfli-lp .colophon {
+  padding: 26px 28px; text-align: center; font-size: 1.15rem;
+  color: var(--cream-dim); background: #1b1710;
+  border-top: 1px solid rgba(232,135,30,0.3); letter-spacing: 0.02em;
+}
+
+/* ════════════ RESPONSIVE ════════════ */
+@media (max-width: 880px) {
+  #cfli-lp .donate-grid { grid-template-columns: 1fr; gap: 32px; }
+  #cfli-lp .donate-inner { order: -1; }
+}
+@media (max-width: 768px) {
+  #cfli-lp .hero { min-height: 0; padding: 64px 0 56px; }
+  #cfli-lp .hero-inner, #cfli-lp .panel-inner, #cfli-lp .figures-inner { padding: 0 24px; }
+  #cfli-lp .trust-impact-row { grid-template-columns: 1fr; }
+  #cfli-lp .trust-model { padding: 28px 24px; }
+}
+@media (max-width: 600px) {
+  #cfli-lp { --sec-pad: 52px; }
+  #cfli-lp .cta-btn { width: 100%; justify-content: center; text-align: center; font-size: 1.1rem; letter-spacing: 0.06em; padding: 18px 20px; gap: 8px; }
+  #cfli-lp .hero h1 { font-size: clamp(2.4rem, 10.5vw, 3.1rem); line-height: 1.06; }
+  #cfli-lp .hero h1 .line-mask, #cfli-lp .hero h1 .line-mask .line { display: inline; }
+  #cfli-lp .hero-sub { margin-bottom: 24px; font-size: 1.5rem; }
+  #cfli-lp .fig-grid, #cfli-lp .mob-grid { grid-template-columns: 1fr; gap: 32px; }
+  #cfli-lp .panel-title, #cfli-lp .mob-headline { font-size: clamp(2.1rem, 9vw, 2.6rem); }
+  #cfli-lp .statement-title { font-size: clamp(2.3rem, 10vw, 2.9rem); }
+  #cfli-lp .figures-lead { font-size: clamp(1.6rem, 7vw, 2rem); margin-bottom: 32px; }
+  #cfli-lp .fig-num, #cfli-lp .mob-num { font-size: clamp(2.8rem, 14vw, 3.5rem); }
+  #cfli-lp .panel-quote { font-size: clamp(1.5rem, 6.5vw, 1.9rem); padding-left: 18px; }
+  #cfli-lp .mob-quote { font-size: clamp(1.6rem, 7vw, 2.1rem); padding-top: 28px; }
+  #cfli-lp .trust-pull { font-size: clamp(1.5rem, 6.5vw, 1.9rem); padding-top: 36px; margin-bottom: 28px; }
+  #cfli-lp .trust-header h2 { font-size: clamp(1.8rem, 8vw, 2.3rem); }
+  #cfli-lp .trust-model-header { align-items: flex-start; }
+  #cfli-lp .trust-model-title { font-size: 1.4rem; }
+  #cfli-lp .cred-list li { gap: 12px; padding: 12px 0; font-size: 1.25rem; }
+  #cfli-lp .gleaning-card .scripture-inline { font-size: 1.35rem; }
+  #cfli-lp .donate-section h2 { font-size: clamp(1.9rem, 8.5vw, 2.4rem); }
+  #cfli-lp .colophon { padding: 22px 20px; font-size: 1.05rem; }
+}
+@media (max-width: 480px) {
+  #cfli-lp { font-size: 20px; }
+  #cfli-lp .panel-text, #cfli-lp .statement-sub, #cfli-lp .trust-header p, #cfli-lp .donate-intro,
+  #cfli-lp .impact-line, #cfli-lp .trust-model p, #cfli-lp .gleaning-card .gleaning-invite { font-size: 1.3rem; }
+  #cfli-lp .fig-label, #cfli-lp .mob-label, #cfli-lp .trust-impact-label { font-size: 1.15rem; }
+  #cfli-lp .scripture-box p { font-size: 1.35rem; }
+}
+</style>
+</head>
+<body>
+<div id="cfli-lp">
+  <!-- ═══ INTRO: HERO + ATTACK ═══ -->
+  <div class="intro-seq">
+    <div class="intro-pin">
+      <!-- HERO -->
+      <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-scrim"></div>
+        <div class="hero-inner">
+          <div class="hero-top-cluster">
+            <div class="hero-eyebrow">Christian Friends of Leket Israel</div>
+            <h1>
+              <span class="line-mask"><span class="line">Gazan Terrorists Tried </span></span>
+              <span class="line-mask"><span class="line">to Destroy Yossi's Farm. </span></span>
+              <span class="line-mask"><span class="line"><em>He Rebuilt.</em></span></span>
+            </h1>
+          </div>
+          <div class="hero-bottom-cluster">
+            <p class="hero-sub">Now he needs you to stand with him.</p>
+            <div class="hero-cta-wrap">
+              <a href="#cfli-donate" class="cta-btn">Rebuild Israel's Farms <span class="arr">→</span></a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ATTACK -->
+      <div class="panel attack-layer">
+        <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/05/attack.jpg.jpg')"></div>
+        <div class="panel-scrim"></div>
+        <div class="panel-inner">
+          <div class="panel-content">
+            <div class="panel-eyebrow">Chapter One — October 7</div>
+            <h2 class="panel-title">They Came for the <em>Land.</em></h2>
+            <p class="panel-text">Yossi farmed near Gaza. A quiet life — <strong>his wife, four little boys, the land.</strong> That morning, armed terrorists stormed his community. His family hid in a bomb shelter.</p>
+            <p class="panel-text"><strong>They survived. But many farmers didn't.</strong></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ THE DEVASTATION ═══ -->
+  <section class="devastation">
+    <div class="devastation-pin">
+      <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/06/farmDamage.jpg')"></div>
+      <div class="devastation-scrim"></div>
+      <!-- TEXT -->
+      <div class="devastation-layer devastation-text">
+        <div class="panel-inner">
+          <div class="panel-content">
+            <div class="panel-eyebrow">October 7 — The Devastation</div>
+            <h2 class="panel-title">They Came for Israel's Food.<br>And Left the Fields to <em>Rot.</em></h2>
+            <!-- UPDATED (1): "half the nation's food" → "roughly 70% of the nation's vegetables" -->
+            <p class="panel-text">Israel's "vegetable barn" — the southern farmland that grows roughly 70% of the nation's vegetables — was deliberately targeted. Crops rotted in the ground. Equipment was destroyed. Workers fled.</p>
+            <p class="panel-text"><strong>A nation's food security was under siege.</strong></p>
+          </div>
+        </div>
+      </div>
+      <!-- FIGURES -->
+      <div class="devastation-layer devastation-figures">
+        <div class="figures-darken"></div>
+        <div class="figures-inner">
+          <div class="figures-eyebrow">The Toll</div>
+          <div class="figures-lead">What the Attack Cost Israel's Farms</div>
+          <div class="fig-grid">
+            <div class="fig-item">
+              <div class="fig-num">33%</div>
+              <div class="fig-label">Of foreign farm workers fled the country</div>
+            </div>
+            <div class="fig-item">
+              <div class="fig-num">150K</div>
+              <div class="fig-label">Tons of crops &amp; food destroyed</div>
+            </div>
+            <div class="fig-item">
+              <div class="fig-num">80%</div>
+              <div class="fig-label">Drop in fruit &amp; vegetable output in the months after the attack</div>
+            </div>
+            <div class="fig-item">
+              <div class="fig-num">$275M</div>
+              <div class="fig-label">Cost of wartime food loss in six months</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CHAPTER TWO — BACK TO WORK ═══ -->
+  <section class="panel zone-turn">
+    <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/06/yossiFarms.jpg')"></div>
+    <div class="panel-scrim"></div>
+    <div class="panel-inner">
+      <div class="panel-content">
+        <div class="panel-eyebrow">Chapter Two — Back to Work</div>
+        <h2 class="panel-title">Yossi Gets Back to <em>Work.</em></h2>
+        <p class="panel-text">He refused to walk away. Yossi returned to his land — <strong>determined to rebuild and replant.</strong></p>
+        <blockquote class="panel-quote">
+          I came back to my roots. This is how my father used to grow.
+          <cite>— Yossi, Southern Israel Farmer</cite>
+        </blockquote>
+        <div class="panel-cta">
+          <a href="#cfli-donate" class="cta-btn">Help Yossi Rebuild <span class="arr">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ STATEMENT — THE NEED ═══ -->
+  <section class="statement">
+    <div class="statement-inner">
+      <div class="statement-eyebrow">The Need</div>
+      <h2 class="statement-title">His Workers Had Fled.<br>He Couldn't Go Back <em>on His Own.</em></h2>
+      <p class="statement-sub">Rebuilding a farm takes hands — dozens of them. Yossi had none.</p>
+    </div>
+  </section>
+
+  <!-- ═══ CHAPTER THREE — LEKET MOBILIZES ═══ -->
+  <section class="mobilize">
+    <div class="mobilize-pin">
+      <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/06/volunteerBg.jpg')"></div>
+      <div class="mobilize-scrim"></div>
+      <!-- STATS -->
+      <div class="mobilize-layer mob-stats-layer">
+        <div class="mob-inner">
+          <div class="mob-eyebrow">Chapter Three — Leket Mobilizes</div>
+          <h2 class="mob-headline">Fortunately, <em>Leket Israel Was There.</em></h2>
+          <div class="mob-grid">
+            <div class="mob-item">
+              <!-- UPDATED (2): 70K+ (2025 only) → 150K+ since Oct 7 -->
+              <div class="mob-num">150K+</div>
+              <div class="mob-label">Volunteers sent to farms since October 7</div>
+            </div>
+            <div class="mob-item">
+              <div class="mob-num">600+</div>
+              <div class="mob-label">War-damaged farms supported</div>
+            </div>
+            <div class="mob-item">
+              <div class="mob-num">$4M</div>
+              <div class="mob-label">In emergency grants to border-region farmers</div>
+            </div>
+            <div class="mob-item">
+              <!-- UPDATED (3): label clarifies this is the 2025 figure (70.6M lbs) -->
+              <div class="mob-num">70M</div>
+              <div class="mob-label">Lbs of fresh produce rescued &amp; redistributed in 2025 alone</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- QUOTE -->
+      <div class="mobilize-layer mob-quote-layer">
+        <div class="mob-inner">
+          <blockquote class="mob-quote">
+            A bus of volunteers just showed up — and they saved half my fields. That's a whole world.
+            <cite>— Yossi, Southern Israel Farmer</cite>
+          </blockquote>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ THE FIGHT ISN'T OVER (STILL WOUNDED) ═══ -->
+  <!-- UPDATED (4): section rewritten — three years on; labor gap still open; 2026 Iran war -->
+  <section class="panel zone-neutral">
+    <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/05/rebuilding-farms.jpg')"></div>
+    <div class="panel-scrim"></div>
+    <div class="panel-inner">
+      <div class="panel-content">
+        <div class="panel-eyebrow">Three Years On — The Fight Isn't Over</div>
+        <h2 class="panel-title">Still <em>Wounded.</em></h2>
+        <p class="panel-text">Three years after October 7, Yossi's farm is back — but Israel's farms are not whole. Palestinian farmhands are still barred from the fields, and Leket is still sending <strong>20 to 25 buses of volunteers every week</strong> to farms that can't fill the gap on their own.</p>
+        <p class="panel-text">Then, in 2026, war with Iran hit the farms again. Exports of herbs, citrus and avocados ground to a halt. Fertilizer costs jumped 180%. And farmers kept working their open fields under Iranian and Hezbollah fire.</p>
+        <p class="panel-text">Israel's enemies want a nation that can't feed itself — dependent, vulnerable, weakened. <strong>Food security is national security. The fight isn't over.</strong></p>
+        <div class="panel-cta">
+          <a href="#cfli-donate" class="cta-btn">Stand With Israel's Farmers <span class="arr">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ WHERE TERROR REIGNED (THE PROMISE) ═══ -->
+  <section class="panel panel--center panel--bright">
+    <div class="panel-bg" style="background-image:url('https://www.christianfriendsofleket.org/wp-content/uploads/2026/06/regrowSmall.jpg')"></div>
+    <div class="panel-inner">
+      <div class="panel-content">
+        <div class="panel-eyebrow">The Promise</div>
+        <h2 class="panel-title">Where Terror Reigned,<br><em>Life Grows Again.</em></h2>
+        <p class="panel-text">The soil has seen fire, but it's not finished. With your help, the fields come back — and Israel's farmers hold their ground.</p>
+        <div class="panel-cta">
+          <a href="#cfli-donate" class="cta-btn">Stand With Yossi <span class="arr">→</span></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ WHY LEKET ISRAEL (TRUST — merged into one cohesive section) ═══ -->
+  <section class="trust-section">
+    <div class="trust-wrap">
+      <blockquote class="trust-pull">
+        "This is the strength of the people — the volunteers, the support we receive."
+        <cite>— Yossi, Southern Israel Farmer</cite>
+      </blockquote>
+      <div class="trust-header">
+        <div class="card-label">Why Leket Israel</div>
+        <h2>Built for This Moment. Trusted for 23 Years.</h2>
+        <p>When everything fell apart, Leket Israel didn't need to spin up — we were already there. The bus of volunteers that saved Yossi's fields was one of thousands we sent, drawing on a network built over more than two decades:</p>
+      </div>
+      <div class="trust-impact-row">
+        <div class="trust-impact-card">
+          <!-- UPDATED (5): 300 → 346 (Leket 2025 Annual Report) -->
+          <div class="trust-impact-num">346</div>
+          <div class="trust-impact-label">Nonprofit partners feeding Israel's most vulnerable</div>
+        </div>
+        <div class="trust-impact-card">
+          <div class="trust-impact-num">700+</div>
+          <div class="trust-impact-label">Farms in the gleaning network nationwide</div>
+        </div>
+        <div class="trust-impact-card">
+          <div class="trust-impact-num">23</div>
+          <div class="trust-impact-label">Years of unbroken service — before, during, and after crisis</div>
+        </div>
+      </div>
+      <div class="trust-cta-row">
+        <a href="#cfli-donate" class="cta-btn">Give Through Leket Israel <span class="arr">→</span></a>
+      </div>
+
+      <div class="trust-model">
+        <div class="trust-model-header">
+          <div class="trust-model-icon">★</div>
+          <div class="trust-model-title">Why You Can Trust Leket Israel</div>
+        </div>
+        <ul class="cred-list">
+          <li><span><strong>Trusted by Israel itself</strong> — when the Israeli government needed an emergency food response, it turned to Leket.</span></li>
+          <li><span><strong>Active every single day since 2003</strong> — Israel's largest food-rescue organization, through every crisis and every calm.</span></li>
+          <!-- UPDATED (6): "60,000+ tons" → "Nearly 34,000 metric tons (75 million lbs)" per Leket 2025 Annual Report -->
+          <li><span><strong>Nearly 34,000 metric tons of nutritious food rescued every year</strong> — 75 million pounds, reaching 470,000 Israelis in need each week.</span></li>
+          <li><span><strong>Honored at the highest level</strong> — Leket's founder received Israel's Presidential Volunteer Award for a lifetime of service.</span></li>
+          <li><span><strong>Transparent and accountable</strong> — audited financials published every year, and US donations are tax-deductible through American Friends of Leket Israel.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ THE GLEANING MODEL ═══ -->
+  <section class="gleaning-section">
+    <div class="trust-wrap">
+      <div class="trust-model gleaning-card">
+        <div class="trust-model-header">
+          <div class="trust-model-icon">🌾</div>
+          <div class="trust-model-title">The Gleaning Model — A Commandment Still Kept Today</div>
+        </div>
+        <p><span class="scripture-inline">"When you reap the harvest of your land, you shall not wholly reap the corners of your field, nor shall you gather the gleanings of your harvest… you shall leave them for the poor and the stranger."</span> <span class="scripture-ref">— Leviticus 19:9-10</span></p>
+        <p>The Hebrew word <strong>leket</strong> means "to glean." Three thousand years ago, God commanded farmers to leave the corners of their fields and the gleanings of the harvest for the poor and the stranger. When Boaz left grain in his field for Ruth, he was keeping that command. Leket Israel carries it into the present — rescuing <strong>surplus food that would otherwise be wasted</strong> and bringing it to those in need.</p>
+        <p>Fresh produce from farms. Cooked meals from hotels, corporate kitchens, and IDF bases. Delivered free through Leket's own fleet of refrigerated trucks.</p>
+        <p class="gleaning-invite">When you give, you help leave the corners of the field — keeping a commandment older than the nation of Israel. You stand with God's people and the farmers who feed them, inside His ancient promise to bless those who bless Israel.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ DONATE ═══ -->
+  <section class="donate-section" id="cfli-donate">
+    <div class="donate-grid">
+      <!-- LEFT: the form itself (styled inline with width: 100%; height: 500px; border: none; overflow: auto;) -->
+      <div class="donate-form-col">
+        <iframe src="https://secured.israelgives.org/en/pay/leket2?projectid=29669&amp;successurl=https://christianfriendsofleket.org/thank-you-for-donating-to-leket-israel/%3Ftsum%3D%7Bsum%7D%26tcurrency%3D%7Bcurrency%7D%26tfreq%3D%7Bfrequency%7D%26projecteid%3D29669%26projectename%3DTBNILSpring%26transid%3D%7Bdonid%7D%26myfname%3D%7Bfname%7D%26mylname%3D%7Blname%7D%26phone%3D%7Bphone%7D%26email%3D%7Bemail%7D&amp;pptop=1" class="scrollable-iframe" style="width: 100%; height: 500px; border: none; overflow: auto;" name="myiFrame" title="Donate to Leket Israel" allow="payment" scrolling="yes" allowfullscreen="" loading="lazy"></iframe>
+      </div>
+      <!-- RIGHT: the ask -->
+      <div class="donate-inner">
+        <div class="donate-eyebrow">Make Your Gift</div>
+        <h2>They Tried to Destroy His Farm. <em>They Failed.</em> Make Sure They Never Succeed Again.</h2>
+        <p class="donate-intro">Every gift helps rebuild farms, feed families, and stand with a nation that refuses to break.</p>
+        <div class="scripture-box">
+          <p>"I will bless those who bless you."</p>
+          <span class="ref">Genesis 12:3</span> s
+        </div>
+        <p class="impact-line">Your gift puts <strong>hands back in the fields</strong> and helps rebuild the farms that feed a nation.</p>
+        <p class="donate-contact">Questions about donating? Email <a href="mailto:donations@leket.org">donations@leket.org</a></p>
+      </div>
+    </div>
+  </section>
+
+  <div class="colophon">Christian Friends of Leket Israel · christianfriendsofleket.org</div>
+</div>
+<div class="cfli-draft-tag">Local draft — not live</div>
+</body>
+</html>
